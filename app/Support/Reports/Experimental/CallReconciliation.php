@@ -2,9 +2,18 @@
 
 namespace App\Support\Reports\Experimental;
 
+use App\Models\CallReportLabel;
+use App\Models\CallReportOverride;
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Support\Leads\CallTypeCorrections;
+use App\Support\Leads\LeadOfficeHours;
 use App\Support\Phone\NumberNames;
+use App\Support\Reports\Tagging\CallLabels;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * One day, per person: calls taken, what the caller wanted, jobs booked (TEMPORARY).
@@ -42,44 +51,29 @@ use App\Support\Tenancy\TenantContext;
  * obvious duplicate row. The union of both name sets is returned and a person
  * who appears on only one side is visible as a row of zeroes on the other.
  *
- * ── AN ALIAS IS SOMEBODY'S ANSWER, NEVER A RESEMBLANCE ──────────
+ * ── ONE PERSON, TWO SPELLINGS ──────────
  *
- * `ALIASES` is how two spellings become one person, and every entry in it is a
- * human saying so. Jose, asked whether the two Adelines were the same person:
- * "YES". That is the only thing that may put a row in this list.
- *
- * It is deliberately not a similarity rule, not a normaliser, not an initials
- * match. Those would work on this pair and would also merge two real people
- * who happen to share a surname — silently, and in the direction where one
- * person's work lands on another's row. A list of confirmed pairs cannot do
- * that: it can only be incomplete, which is visible as a duplicate row.
+ * PersonNames decides, from data: a pair stored on somebody's word, Workiz's
+ * own team list, or the one Workiz person with the same first and last word.
+ * It was a constant here (ALIASES) until Jose, 2026-11-04: "Shouldnt u be able
+ * to update them without an update?" A pair is now a row, not a release.
  */
 final class CallReconciliation
 {
-    /**
-     * Spellings confirmed to be one person, mapped to the name to keep.
-     *
-     * Keyed by the RingCentral spelling because that is the one the phone
-     * directory holds; the value is the name the report shows. Add only on
-     * somebody's word.
-     */
-    public const ALIASES = [
-        // Jose, 2026-09-14, asked whether these are the same person: "YES".
-        'Adeline Pierre Louis-Aghaji' => 'Adeline Pierrelouis',
+    /** @var array<string, array<string, array{value: string, by: ?string}>> call id => field => override */
+    private array $overrides = [];
 
-        // Jose, 2026-10-06, asked whether each pair is one person: "Yes, all three".
-        'Chevel Richards' => 'Chevel Richards Turner',
-        'Hyanne Faelnar' => 'Hyanne Kylla Faelnar',
-        'Danika Kaye' => 'Danika Kaye Navarroza',
-    ];
+    /** @var array<string, PersonNames> organization => its names, read once per instance */
+    private array $names = [];
+
+    private function names(): PersonNames
+    {
+        return $this->names[(string) app(TenantContext::class)->get()?->getKey()] ??= PersonNames::forTenant();
+    }
 
     private function canonical(?string $name): ?string
     {
-        if ($name === null) {
-            return null;
-        }
-
-        return self::ALIASES[$name] ?? $name;
+        return $this->names()->canonical($name);
     }
 
     /**
@@ -88,7 +82,7 @@ final class CallReconciliation
      * @return array{
      *     day: string,
      *     totals: array{calls: int, answered: int, reached_nobody: int, new_client: int, existing_client: int, jobs: int, avg_talk_seconds: ?int},
-     *     people: list<array{person: string, rang: int, answered: int, new_client: int, existing_client: int, jobs: int, avg_talk_seconds: ?int, in_calls: bool, in_jobs: bool}>
+     *     people: list<array{person: string, rang: int, answered: int, outbound: int, new_client: int, existing_client: int, jobs: int, avg_talk_seconds: ?int, in_calls: bool, in_jobs: bool}>
      * }
      */
     public function forDay(array $calls, array $jobs, string $day): array
@@ -148,6 +142,17 @@ final class CallReconciliation
         ));
         $calls = array_values(array_filter($calls, fn (array $call) => ($call['direction'] ?? 'Inbound') === 'Inbound'));
 
+        // The calls each person PLACED (Ana, 2026-11-16: the people who only
+        // call out had no row, since a row came only from a call that rang
+        // someone). RingCentral names the extension owner as the caller.
+        $placed = [];
+        foreach ([...$unansweredOut, ...$connectedOut] as $call) {
+            $who = $this->canonical($call['caller_label'] ?? null);
+            if ($who !== null) {
+                $placed[$who] = ($placed[$who] ?? 0) + 1;
+            }
+        }
+
         $booked = $this->jobsCreatedBetween($jobs, $from, $to);
 
         /*
@@ -161,9 +166,10 @@ final class CallReconciliation
         foreach ($jobs as $job) {
             $day = substr((string) ($job['created_at'] ?? ''), 0, 10);
             $status = strtolower(trim((string) ($job['status'] ?? '')));
-            if ($day !== '' && $day < $from && ! in_array($status, ['done', 'canceled', 'cancelled'], true)
-                && ($phone = NumberNames::lastTen($job['phone'] ?? null)) !== null) {
-                $openJobs[$phone] = ['created_at' => $job['created_at'], 'scheduled_for' => $job['scheduled_for'] ?? null, 'status' => $job['status'] ?? null];
+            if ($day !== '' && $day < $from && ! in_array($status, ['done', 'canceled', 'cancelled'], true)) {
+                foreach ($this->phones($job) as $phone) {
+                    $openJobs[$phone] = ['created_at' => $job['created_at'], 'scheduled_for' => $job['scheduled_for'] ?? null, 'status' => $job['status'] ?? null];
+                }
             }
         }
         $existingJob = fn (array $call) => $openJobs[NumberNames::lastTen($call['from'] ?? null) ?? ''] ?? null;
@@ -177,20 +183,73 @@ final class CallReconciliation
         $bookedPhones = [];
 
         foreach ($booked as $job) {
-            if (($phone = NumberNames::lastTen($job['phone'] ?? null)) !== null) {
+            foreach ($this->phones($job) as $phone) {
                 $bookedPhones[$phone] = true;
             }
         }
 
         $converted = array_flip($converted);
+
+        /*
+         * NEEDS ATTENTION (Jose, 2026-11-12: "make a new filter for the AI heard
+         * a booking, no job yet"). The AI heard a new client book, and no job
+         * matches yet: neither booked nor not booked until it is chased, so it
+         * stays out of Not booked and out of the booking rate. A matching job
+         * makes it Booked, and it leaves on its own. A tenant's labels: none outside one.
+         *
+         * An EXISTING client too (Trey, 2026-11-13: "jobs that are existing,
+         * booked and show ai heard a booking no job yet are also jobs i
+         * manually have to double check"): the job for their number is the one
+         * they already had (Leads moves most of them for "a job booked before
+         * the call"), so it cannot show this call booked. It leaves when
+         * somebody sets the booking by hand.
+         */
+        $aiBooked = ! app(TenantContext::class)->has() ? [] : CallReportLabel::query()->where('provider', 'grok')->where('label', 'booked')
+            ->whereIn('call_id', array_filter(array_column($calls, 'id')))->pluck('call_id')->flip()->all();
+        $needsAttention = fn (array $call) => isset($aiBooked[(string) ($call['id'] ?? '')]) && ($call['answered_by'] ?? null) !== null
+            && $this->markOf($call) === null && match (RingCentralCallLog::clientOf($call['queue'] ?? null)) {
+                'new' => ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null,
+                'existing' => ($this->overrides[(string) ($call['id'] ?? '')]['booking'] ?? null) === null && ! isset($converted[(string) ($call['id'] ?? '')]),
+                default => false,
+            };
+
+        /*
+         * ANOTHER COMPANY'S CALL (Analorena, 2026-11-23, approved by Jose:
+         * "Companies like Ace, Angisweep, and the others need to be reviewed
+         * manually"). A new client on a line assigned to a company other than
+         * the call account's, with no job for the number, is Awaiting review:
+         * out of Not booked and the booking rate until somebody sets the
+         * booking by hand. A matching job still makes it Booked.
+         */
+        $lines = $this->lines($calls);
+        $awaitingReview = fn (array $call) => ($lines[(string) ($call['to_number'] ?? '')]['other'] ?? false)
+            && ($call['answered_by'] ?? null) !== null && $this->markOf($call) === null
+            && RingCentralCallLog::clientOf($call['queue'] ?? null) === 'new' && ! $needsAttention($call)
+            && ($this->overrides[(string) ($call['id'] ?? '')]['booking'] ?? null) === null
+            && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null;
+
+        /*
+         * MISSED AFTER HOURS (Analorena, 2026-11-23, approved by Jose: "not
+         * count the calls that are outside business hours for missed calls"):
+         * the office hours of the line's branch (Leads' leads.office_hours), in
+         * that branch's time zone. Counted apart, never dropped.
+         */
+        $hours = app(LeadOfficeHours::class);
+        $afterHours = fn (array $call) => ($call['answered_by'] ?? null) === null
+            && ($place = $lines[(string) ($call['to_number'] ?? '')]['place'] ?? null) !== null
+            && isset($call['started_at']) && ! $hours->isOpenAt($place, CarbonImmutable::parse((string) $call['started_at']));
         $notBooked = 0;
+        $missedAfterHours = 0;
 
         $rang = [];
         $answered = [];
         $talkSeconds = [];
         $talkCalls = [];
         $new = [];
+        $bookedNew = [];
         $existing = [];
+        $attention = [];
+        $review = [];
 
         $reachedNobody = 0;
         $newTotal = 0;
@@ -201,7 +260,9 @@ final class CallReconciliation
             // and was picked up by none reached nobody too. Measured 9/23: 25
             // such calls sat in neither card, so Answered + Reached nobody did
             // not add up to Calls.
-            if (($call['answered_by'] ?? null) === null) {
+            if ($afterHours($call)) {
+                $missedAfterHours++;
+            } elseif (($call['answered_by'] ?? null) === null) {
                 $reachedNobody++;
             }
 
@@ -210,11 +271,13 @@ final class CallReconciliation
                 $rang[$person] = ($rang[$person] ?? 0) + 1;
             }
 
-            $queue = $call['queue'] ?? null;
+            // Marked Spam or Not a customer by hand (Trey, 2026-11-04): still a call, listed with its
+            // mark, but nobody's client, so out of the client counts, the booking rate and Not booked.
+            $client = $this->markOf($call) !== null ? null : RingCentralCallLog::clientOf($call['queue'] ?? null);
 
-            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE) {
+            if ($client === 'new') {
                 $newTotal++;
-            } elseif ($queue === RingCentralCallLog::EXISTING_CLIENT_QUEUE) {
+            } elseif ($client === 'existing') {
                 $existingTotal++;
             }
 
@@ -236,16 +299,26 @@ final class CallReconciliation
                 $talkCalls[$who] = ($talkCalls[$who] ?? 0) + 1;
             }
 
-            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null) {
+            if ($needsAttention($call)) {
+                // The booking rate's base: existing clients were never in it.
+                if ($client === 'new') {
+                    $attention[$who] = ($attention[$who] ?? 0) + 1;
+                }
+            } elseif ($awaitingReview($call)) {
+                $review[$who] = ($review[$who] ?? 0) + 1;
+            } elseif ($client === 'new' && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null) {
                 $notBooked++;
             }
 
             // Attributed to whoever TOOK it. A call that rang four people was
             // one caller with one question, and counting it for all four would
             // make the day's new-client calls outnumber the day's calls.
-            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE) {
+            if ($client === 'new') {
                 $new[$who] = ($new[$who] ?? 0) + 1;
-            } elseif ($queue === RingCentralCallLog::EXISTING_CLIENT_QUEUE) {
+                if ($this->isBooked($call, $bookedPhones, $converted)) {
+                    $bookedNew[$who] = ($bookedNew[$who] ?? 0) + 1;
+                }
+            } elseif ($client === 'existing') {
                 $existing[$who] = ($existing[$who] ?? 0) + 1;
             }
         }
@@ -293,6 +366,7 @@ final class CallReconciliation
         $names = array_values(array_unique(array_merge(
             array_keys($rang),
             array_keys($answered),
+            array_keys($placed),
             array_keys($made),
         )));
 
@@ -305,7 +379,15 @@ final class CallReconciliation
                 'person' => $name,
                 'rang' => $rang[$name] ?? 0,
                 'answered' => $answered[$name] ?? 0,
+                'outbound' => $placed[$name] ?? 0,
                 'new_client' => $new[$name] ?? 0,
+                // Of those new-client calls they answered, the ones booked:
+                // the booking rate's top (Trey, 2026-11-04).
+                'booked_new' => $bookedNew[$name] ?? 0,
+                // Out of the booking rate until chased: new_client less these is its base.
+                'needs_attention' => $attention[$name] ?? 0,
+                // Another company's, out of the booking rate until reviewed.
+                'awaiting_review' => $review[$name] ?? 0,
                 'existing_client' => $existing[$name] ?? 0,
                 'jobs' => $made[$name] ?? 0,
 
@@ -324,8 +406,11 @@ final class CallReconciliation
                 // and all this holds is one day of calls, so somebody who books
                 // jobs without answering phones - a normal way to work - must
                 // not be flagged as a mismatch.
-                'in_calls' => isset($rang[$name]) || isset($answered[$name]),
-                'in_jobs' => isset($workizRoster[$name]),
+                'in_calls' => isset($rang[$name]) || isset($answered[$name]) || isset($placed[$name]),
+                // On Workiz's team list, or booked a job in the window: someone
+                // who takes existing clients books nothing and still has an
+                // account (Christine Malana, 2026-11-04).
+                'in_jobs' => isset($workizRoster[$name]) || $this->names()->inWorkiz($name),
 
                 // Set by hand per person (Jose, 2026-10-05, item 5).
                 'tag' => $tags[$name] ?? null,
@@ -341,16 +426,30 @@ final class CallReconciliation
                 'answered' => array_sum($answered),
                 'reached_nobody' => $reachedNobody,
                 'new_client' => $newTotal,
+                // The Overview's conversion: booked out of answered new-client calls.
+                'answered_new' => array_sum($new),
+                'booked_new' => array_sum($bookedNew),
                 'existing_client' => $existingTotal,
                 'jobs' => count($booked),
                 'not_booked' => $notBooked,
+                'needs_attention' => array_sum($attention),
+                'awaiting_review' => array_sum($review),
+                // Nobody answered, outside the line's office hours: not in reached_nobody.
+                'missed_after_hours' => $missedAfterHours,
                 'outbound_unanswered' => count($unansweredOut),
+                'outbound' => count($unansweredOut) + count($connectedOut),
 
                 'avg_talk_seconds' => array_sum($talkCalls) > 0
                     ? (int) round(array_sum($talkSeconds) / array_sum($talkCalls))
                     : null,
             ],
             'people' => $people,
+            // The business's two queue names, so the screen splits calls by
+            // the same setting the counts above used.
+            'queues' => ['new' => RingCentralCallLog::newClientQueue(), 'existing' => RingCentralCallLog::existingClientQueue()],
+            // And the label lists' names (Settings › Lists), so a label the
+            // business added is shown by its own name.
+            'labels' => CallLabels::names(),
 
             /*
              * ── THE CALLS THEMSELVES, FLAT ──────────────────────────
@@ -383,9 +482,16 @@ final class CallReconciliation
                 'reclassified' => $call['reclassified'] ?? null,
                 'result' => $call['result'] ?? null,
                 'outcome' => $this->outcome($call),
-                'booked' => $this->isBooked($call, $bookedPhones, $converted),
+                // Needs Attention is neither, so it is not listed under Booked too.
+                'booked' => $this->isBooked($call, $bookedPhones, $converted) && ! $needsAttention($call),
                 'existing_job' => $this->isBooked($call, $bookedPhones, $converted) ? null : $existingJob($call),
                 'converted' => isset($converted[(string) ($call['id'] ?? '')]),
+                'mark' => $this->markOf($call),
+                'needs_attention' => $needsAttention($call),
+                'awaiting_review' => $awaitingReview($call),
+                'after_hours' => $afterHours($call),
+                // Who set the client, the booking or the mark by hand, per field.
+                'set_by' => array_map(fn ($o) => $o['by'], $this->overrides[(string) ($call['id'] ?? '')] ?? []) ?: null,
                 'talk_seconds' => $call['talk_seconds'] ?? null,
                 'recording_id' => $call['recording_id'] ?? null,
                 'answered_by' => $this->canonical($call['answered_by'] ?? null),
@@ -460,6 +566,19 @@ final class CallReconciliation
     }
 
     /**
+     * A job's numbers, last ten digits: its Phone and its SecondPhone.
+     *
+     * @return list<string>
+     */
+    private function phones(array $job): array
+    {
+        return array_values(array_filter([
+            NumberNames::lastTen($job['phone'] ?? null),
+            NumberNames::lastTen($job['second_phone'] ?? null),
+        ]));
+    }
+
+    /**
      * Jobs BOOKED on the day, from `created_at`.
      *
      * Filtered here because Workiz cannot be asked for it: its `start_date`
@@ -480,18 +599,65 @@ final class CallReconciliation
     }
 
     /**
+     * Each dialled number's company and place, as assigned in Leads › Manage ›
+     * Phone lines (Jose, 2026-11-17: whose call it is comes from the number it
+     * came in on). `other`: another company's than the call account's. An
+     * unassigned line is the account's, at the organization.
+     *
+     * @param  list<array<string, mixed>>  $calls
+     * @return array<string, array{other: bool, place: Model}>
+     */
+    private function lines(array $calls): array
+    {
+        if (! app(TenantContext::class)->has()) {
+            return [];
+        }
+
+        $org = app(TenantContext::class)->get();
+        $assigned = (array) app(SettingsResolver::class)->get('leads.line_numbers', $org);
+        $own = app(RingCentralCallLog::class)->companyId();
+        $branches = Franchise::query()->get()->keyBy('id');
+        $companies = Company::query()->get()->keyBy('id');
+        $out = [];
+
+        foreach (array_unique(array_map(fn ($c) => (string) ($c['to_number'] ?? ''), $calls)) as $number) {
+            [$type, $id] = array_pad(explode(':', (string) ($assigned[$number] ?? ''), 2), 2, '');
+            $branch = $type === 'franchise' ? $branches->get($id) : null;
+            $company = $branch !== null ? $companies->get($branch->company_id) : ($type === 'company' ? $companies->get($id) : null);
+            $out[$number] = [
+                'other' => $company !== null && $own !== null && (string) $company->getKey() !== $own,
+                'place' => $branch ?? $company ?? $org,
+            ];
+        }
+
+        return $out;
+    }
+
+    /** spam | not_a_customer, set by hand; null when unmarked. */
+    private function markOf(array $call): ?string
+    {
+        return $this->overrides[(string) ($call['id'] ?? '')]['mark']['value'] ?? null;
+    }
+
+    /**
      * @param  array<string, true>  $bookedPhones
      * @param  array<string, int>  $converted
      */
     private function isBooked(array $call, array $bookedPhones, array $converted): bool
     {
+        if (($set = $this->overrides[(string) ($call['id'] ?? '')]['booking'] ?? null) !== null) {
+            return $set['value'] === 'booked';
+        }
+
         if (isset($converted[(string) ($call['id'] ?? '')])) {
             return true;
         }
 
+        // Only a call somebody answered can have booked the job: the caller's
+        // missed calls showed under Booked as "Missed call" (Jose, 2026-11-11).
         $phone = NumberNames::lastTen($call['from'] ?? null);
 
-        return $phone !== null && isset($bookedPhones[$phone]);
+        return ($call['answered_by'] ?? null) !== null && $phone !== null && isset($bookedPhones[$phone]);
     }
 
     /**
@@ -508,13 +674,19 @@ final class CallReconciliation
             return $calls;
         }
 
-        $fixes = CallTypeCorrections::forCalls(array_values(array_filter(array_map(fn ($c) => isset($c['id']) ? (string) $c['id'] : null, $calls))));
+        $ids = array_values(array_filter(array_map(fn ($c) => isset($c['id']) ? (string) $c['id'] : null, $calls)));
+        $fixes = CallTypeCorrections::forCalls($ids);
+        // Set by hand on the report (Jose, 2026-11-03, for Trey): wins over
+        // Leads' read and Workiz, for the client and for the booking.
+        $this->overrides = CallReportOverride::forCalls($ids);
 
         return array_map(function (array $call) use ($fixes) {
-            $fix = $fixes[(string) ($call['id'] ?? '')] ?? null;
+            $set = $this->overrides[(string) ($call['id'] ?? '')]['client'] ?? null;
+            $fix = $set === null ? ($fixes[(string) ($call['id'] ?? '')] ?? null)
+                : ['corrected_type' => $set['value'], 'reason' => 'Set by '.($set['by'] ?? 'someone'), 'evidence' => null, 'decided_by' => $set['by'] ?? 'someone'];
             $queue = match ($fix['corrected_type'] ?? null) {
-                'new' => RingCentralCallLog::NEW_CLIENT_QUEUE,
-                'existing' => RingCentralCallLog::EXISTING_CLIENT_QUEUE,
+                'new' => RingCentralCallLog::newClientQueue(),
+                'existing' => RingCentralCallLog::existingClientQueue(),
                 default => null,
             };
 

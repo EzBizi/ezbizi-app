@@ -89,16 +89,19 @@ final class PendingRegistry
         $workiz = fn () => SocialConnection::query()->where('provider', SocialProvider::Workiz->value);
 
         return [
-            // Asked only of an organization that uses Workiz at all: a branch
-            // without it is a gap there, and nothing anywhere else.
+            // Asked only of a COMPANY that already uses Workiz: a sister branch
+            // without it is a gap. Organization-wide it flagged nine branches
+            // of other businesses (Premier Garage, Roofirst...) that never use
+            // Workiz at all (review 2026-11-02).
             new PendingCheck(
                 key: 'workiz.branch_connection',
                 label: 'Workiz connection',
                 module: 'integrations',
                 scopes: [SettingDefinition::SCOPE_FRANCHISE],
                 permissions: [SocialProvider::Workiz->connectPermission()],
-                missing: fn (Franchise $f) => $workiz()->exists() && ! $workiz()
-                    ->where('scope_type', SocialConnection::SCOPE_FRANCHISE)->where('scope_id', $f->getKey())->exists(),
+                missing: fn (Franchise $f) => $workiz()->where('scope_type', SocialConnection::SCOPE_FRANCHISE)
+                    ->whereIn('scope_id', Franchise::query()->where('company_id', $f->company_id)->select('id'))->exists()
+                    && ! $workiz()->where('scope_type', SocialConnection::SCOPE_FRANCHISE)->where('scope_id', $f->getKey())->exists(),
                 fill: $openWorkiz,
             ),
             // A Workiz account the company's web login reads that no branch matched.

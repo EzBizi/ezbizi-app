@@ -1,3 +1,4 @@
+import '../widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -182,9 +183,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
               for (var i = 0; i < tabs.length; i++)
                 Offstage(
                   offstage: i != selected,
-                  child: _shown.contains(i)
-                      ? tabs[i].$4(i == selected)
-                      : const SizedBox.shrink(),
+                  child: ModuleActionGate(
+                    active: i == selected,
+                    child: _shown.contains(i)
+                        ? tabs[i].$4(i == selected)
+                        : const SizedBox.shrink(),
+                  ),
                 ),
             ],
           ),

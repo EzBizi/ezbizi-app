@@ -7,6 +7,7 @@ use App\Models\TimeClockShift;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use App\Support\TimeClock\TimeClock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
@@ -61,6 +62,37 @@ class TimeClockAuditTest extends TestCase
             $this->assertSame($shift->id, $row->target_id, $action);
             $this->assertSame($alpha['org']->id, $row->organization_id, $action);
         }
+    }
+
+    /**
+     * Jose, 2026-11-24: "Administrator Role Accounts should not have logs". By
+     * the shift owner's role: the administrator's own correction is not
+     * recorded, the same administrator correcting a technician still is.
+     */
+    public function test_an_administrators_shift_is_not_audited_and_a_technicians_still_is(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $admin = $alpha['admin'];
+        $tech = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
+        $this->assertTrue($this->inTenant($alpha['org'], fn () => $admin->fresh()->isAdministrator()));
+
+        $shift = fn ($user) => $this->inTenant($alpha['org'], fn () => TimeClockShift::query()->create([
+            'organization_id' => $alpha['org']->id, 'user_id' => $user->id,
+            'clocked_in_at' => '2026-09-08 12:00:00', 'clocked_out_at' => '2026-09-08 20:00:00', 'ended_by' => TimeClockShift::ENDED_BY_PERSON,
+        ]));
+        $correct = fn ($s) => $this->inTenant($alpha['org'], fn () => app(TimeClock::class)
+            ->correct($admin->fresh(), $s, null, Carbon::parse('2026-09-08 19:00:00', 'UTC'), reason: 'Left early'));
+        Carbon::setTestNow(Carbon::parse('2026-09-09 14:00:00', 'UTC'));
+
+        $mine = $shift($admin);
+        $theirs = $shift($tech);
+        $correct($mine);
+        $correct($theirs);
+
+        $rows = fn ($s) => AuditEvent::query()->withoutGlobalScopes()->where('action', 'like', 'time_clock.%')->where('target_id', $s->id)->count();
+        $this->assertSame(0, $rows($mine), 'an administrator\'s shift leaves no log');
+        $this->assertSame(1, $rows($theirs), 'a technician\'s shift edited by an administrator is still logged');
+        $this->assertSame('2026-09-08 19:00:00', $mine->fresh()->clocked_out_at->toDateTimeString(), 'the hours themselves still change');
     }
 
     public function test_the_registry_gate_cannot_see_the_write_so_this_file_is_the_gate(): void

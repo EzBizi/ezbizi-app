@@ -8,6 +8,56 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  // Print (Merav, 2026-11-04): disabled, not hidden, with no rows; with rows
+  // it hands over a PDF.
+  testWidgets('Print is disabled with no rows and prints a PDF with them', (
+    tester,
+  ) async {
+    var rows = <Map<String, Object?>>[];
+    final api = ApiClient(
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'data': {'rows': rows},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+    final printed = <List<int>>[];
+    printPdf = (pdf, _) async => printed.add(pdf);
+    tester.view.physicalSize = const Size(2400, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    Future<void> open() async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MarketingReport(api: api, now: () => DateTime(2026, 10, 14)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await open();
+    final button = find.byKey(const Key('marketing-print'));
+    expect(tester.widget<ButtonStyleButton>(button).onPressed, isNull);
+
+    rows = [
+      {'branch': 'Connecticut', 'source': 'LS Ads', 'cost_minor': 3000000},
+    ];
+    await open();
+    await tester.tap(button);
+    await tester.runAsync(() => Future.delayed(const Duration(seconds: 2)));
+    await tester.pump();
+    expect(printed, hasLength(1));
+    expect(ascii.decode(printed.single.take(4).toList()), '%PDF');
+  });
+
   testWidgets('asks for last week and shows cost, jobs and profit per source', (
     tester,
   ) async {
@@ -112,5 +162,66 @@ void main() {
     await tester.tap(find.byKey(const Key('date-range-apply')));
     await tester.pumpAndSettle();
     expect(asked.last, {'from': '2026-09-01', 'to': '2026-09-30'});
+  });
+
+  // Jose, 2026-11-16: Ace's one account names no branch; its cost is shared
+  // out by jobs, so the cell is marked as an estimate and says how.
+  testWidgets('a shared-out cost is marked as an estimate and explained', (
+    tester,
+  ) async {
+    const why =
+        'Includes 23% of Ace Home Care LLC (no branch in its name): this '
+        "branch's 11 of the 47 Ace Fireplace Services jobs created.";
+    final api = ApiClient(
+      client: MockClient(
+        (request) async => http.Response(
+          jsonEncode({
+            'data': {
+              'rows': [
+                {
+                  'branch': 'Connecticut',
+                  'source': 'Ace Fireplace Services',
+                  'clicks': 293,
+                  'conversions': 20.1,
+                  'cost_minor': 317059,
+                  'cost_note': why,
+                  'jobs_created': 11,
+                  'done_jobs': 5,
+                  'gross_minor': 1225631,
+                },
+              ],
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+    tester.view.physicalSize = const Size(2400, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MarketingReport(api: api, now: () => DateTime(2026, 11, 16)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final cell = find.descendant(
+      of: find.byKey(const Key('marketing-table')),
+      matching: find.text(r'≈ $3,170.59'),
+    );
+    expect(cell, findsOneWidget);
+    expect(
+      tester
+          .widget<Tooltip>(
+            find.ancestor(of: cell, matching: find.byType(Tooltip)).first,
+          )
+          .message,
+      why,
+    );
   });
 }

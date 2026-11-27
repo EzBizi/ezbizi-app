@@ -5,6 +5,9 @@ namespace App\Support\Scheduling;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
+use App\Support\Settings\SettingRegistry;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -152,7 +155,14 @@ final class Overbooking
      * ads otherwise I'm going to lose money". The morning email, the
      * Overbooking tab and the dashboard all read this one number.
      */
-    public const FULL_DAYS = 10;
+    public static function fullDays(): int
+    {
+        $org = app(TenantContext::class)->get();
+
+        return max(1, (int) ($org === null
+            ? app(SettingRegistry::class)->getOrFail('scheduling.full_days')->default
+            : app(SettingsResolver::class)->get('scheduling.full_days', $org)));
+    }
 
     /**
      * Areas that work in the window and have no spot left on any day of it.

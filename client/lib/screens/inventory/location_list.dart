@@ -1,6 +1,10 @@
+import '../../widgets/module_page_header.dart';
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/load_more.dart';
@@ -53,12 +57,22 @@ class _LocationListState extends State<LocationList> {
   String? _selectedId;
   Map<String, dynamic>? _open;
 
-
   @override
   void initState() {
     super.initState();
     _load();
+    // A place opened or closed elsewhere, or stock moving in or out of one
+    // (its value on the tiles): page one re-read quietly.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'inventory_locations', 'inventory'},
+      (_) {
+        if (_page == 1 && !_fetching) return _load(quiet: true);
+      },
+      active: () => widget.visible && LiveChanges.visible(this)(),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void didUpdateWidget(covariant LocationList oldWidget) {
@@ -68,13 +82,15 @@ class _LocationListState extends State<LocationList> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }
 
   bool get _hasPane => _adding || _open != null;
 
-  Future<void> _load({int page = 1}) async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     if (page > 1 && _fetching) return;
 
     final request = ++_request;
@@ -82,8 +98,10 @@ class _LocationListState extends State<LocationList> {
     setState(() {
       _loading = page == 1 && _locations.isEmpty;
       _fetching = true;
-      _error = null;
-      _pageError = null;
+      if (!quiet) {
+        _error = null;
+        _pageError = null;
+      }
     });
 
     final response = await widget.api.get('/inventory/locations', {
@@ -94,6 +112,10 @@ class _LocationListState extends State<LocationList> {
     });
 
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) {
+      setState(() => _fetching = false);
+      return;
+    }
 
     setState(() {
       _loading = false;
@@ -115,7 +137,8 @@ class _LocationListState extends State<LocationList> {
       _page = page;
       if (page == 1) {
         final meta = response.body['meta'];
-        Map<String, dynamic>? block(String key) => meta is Map && meta[key] is Map
+        Map<String, dynamic>? block(String key) =>
+            meta is Map && meta[key] is Map
             ? Map<String, dynamic>.from(meta[key] as Map)
             : null;
         _tiles = block('tiles');
@@ -176,19 +199,21 @@ class _LocationListState extends State<LocationList> {
             ? '1 location in this view.'
             : '$_total in this view.',
         action: canCreate
-            ? Refused(
-                reason: refused,
-                child: FilledButton.icon(
-                  key: const ValueKey('tour-inventory-locations-add'),
-                  onPressed: refused == null
-                      ? () => setState(() {
-                          _adding = true;
-                          _selectedId = null;
-                          _open = null;
-                        })
-                      : null,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add location'),
+            ? ModuleAction(
+                child: Refused(
+                  reason: refused,
+                  child: FilledButton.icon(
+                    key: const ValueKey('tour-inventory-locations-add'),
+                    onPressed: refused == null
+                        ? () => setState(() {
+                            _adding = true;
+                            _selectedId = null;
+                            _open = null;
+                          })
+                        : null,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add location'),
+                  ),
                 ),
               )
             : null,
@@ -223,24 +248,15 @@ class _LocationListState extends State<LocationList> {
         Padding(
           key: const ValueKey('tour-inventory-locations-search'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: TextField(
+          child: ListSearch(
             controller: _search,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: 'Name',
-              suffixIcon: _search.text.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.clear),
-                      tooltip: 'Clear the search',
-                      onPressed: () {
-                        _search.clear();
-                        _load();
-                      },
-                    ),
-            ),
-            onSubmitted: (_) => _load(),
+            hint: 'Name',
             onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _load(),
+            onClear: () {
+              _search.clear();
+              _load();
+            },
           ),
         ),
         Padding(
@@ -260,13 +276,17 @@ class _LocationListState extends State<LocationList> {
         ),
         Expanded(
           child: _locations.isEmpty
-              ? Center(
-                  child: Text(
-                    _search.text.trim().isEmpty && !_closed && _tile == null
-                        ? 'There are no locations.'
-                        : 'Nothing matches those filters.',
-                  ),
-                )
+              ? _search.text.trim().isEmpty && !_closed && _tile == null
+                    ? const EmptyState(
+                        icon: Icons.warehouse_outlined,
+                        title: 'No locations yet',
+                        message: 'There are no locations.',
+                      )
+                    : const EmptyState(
+                        icon: Icons.search_off,
+                        title: 'No matches',
+                        message: 'Nothing matches those filters.',
+                      )
               : LayoutBuilder(
                   builder: (context, box) => box.maxWidth >= 760 && !_hasPane
                       ? _table(context)
@@ -343,12 +363,14 @@ class _LocationListState extends State<LocationList> {
                       ),
                       Text(
                         [
-                          vehicle?['label'],
-                          inventoryOwnerLabel(
-                            location,
-                            widget.session.me!.organization.name,
-                          ),
-                        ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
+                              vehicle?['label'],
+                              inventoryOwnerLabel(
+                                location,
+                                widget.session.me!.organization.name,
+                              ),
+                            ]
+                            .where((p) => p != null && '$p'.isNotEmpty)
+                            .join(' · '),
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall,
                       ),

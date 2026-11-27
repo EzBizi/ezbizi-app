@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -10,6 +11,7 @@ import '../../widgets/franchise_field.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import 'area_delete_panel.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Capacity settings — the area rail, the pattern overview, and one area's grid.
 ///
@@ -392,7 +394,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
 
   Future<void> _scheduleNew() async {
     final now = DateTime.now();
-    final tomorrow = _ymd(DateTime(now.year, now.month, now.day + 1));
+    final tomorrow = formatCalendarDay(
+      DateTime(now.year, now.month, now.day + 1),
+    );
     final picked = await _pickDate(initial: tomorrow);
     if (picked == null || !mounted) return;
     if (picked.compareTo(tomorrow) < 0) {
@@ -952,15 +956,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           child: Row(
             children: [
               Expanded(
-                child: TextField(
+                child: ListSearch(
                   controller: _search,
+                  hint: 'Search areas',
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Search areas',
-                    border: OutlineInputBorder(),
-                  ),
                 ),
               ),
               IconButton(
@@ -1229,7 +1228,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         TextField(
           key: const Key('scheduling-area-name'),
           controller: _formName,
-          autofocus: true,
+          autofocus: autofocusOnOpen,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _submitForm(),
           decoration: const InputDecoration(
@@ -2114,11 +2113,6 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     );
   }
 
-  static String _ymd(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
-
   /// A date picker, never a typed date. Jose, on A1 Tools: "i want a date
   /// picker, not the yyyy--mm-dd shit".
   Future<String?> _pickDate({String? initial}) async {
@@ -2129,7 +2123,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       firstDate: DateTime(now.year, now.month, now.day),
       lastDate: DateTime(now.year + 2),
     );
-    return picked == null ? null : _ymd(picked);
+    return picked == null ? null : formatCalendarDay(picked);
   }
 
   Future<void> _areaWrite(Future<ApiResponse> Function(String id) call) async {
@@ -2561,16 +2555,11 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           if (_zipList.length > 8)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: TextField(
+              child: ListSearch(
                 key: const Key('scheduling-zip-search'),
                 controller: _zipSearch,
+                hint: 'Find a zip or city in this area',
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Find a zip or city in this area',
-                  border: OutlineInputBorder(),
-                ),
               ),
             ),
           if (_zipList.isEmpty)

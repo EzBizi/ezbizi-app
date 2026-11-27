@@ -108,6 +108,9 @@ final class GoogleToken
          * credential change on that row. Rodrigo can revoke it at any time;
          * the refresh then fails as invalid_grant and the row reads broken.
          */
+        // A row made by the one Google sign-in renews through the client that
+        // signed it in, whichever product it is (Jose, 2026-11-05).
+        $service = $connection->credentials['oauth_service'] ?? $service;
         $own = $connection->credentials['client_id'] ?? null;
         $clientId = is_string($own) && $own !== '' ? $own : config("services.{$service}.client_id");
         $secret = is_string($own) && $own !== ''
@@ -240,10 +243,27 @@ final class GoogleToken
         return new SocialOAuthGrant(
             accessToken: $access,
             refreshToken: $refresh,
+            // What the person left ticked: Google lets each scope be unticked.
+            scopes: array_values(array_filter(explode(' ', (string) $response->json('scope')))),
             expiresIn: is_numeric($response->json('expires_in'))
                 ? (int) $response->json('expires_in')
                 : null,
+            extra: ['account_email' => self::idTokenEmail($response->json('id_token'))],
         );
+    }
+
+    /**
+     * The Google login a consent was given by, from the id_token the `openid
+     * email` scopes add (Jose, 2026-11-02: three sign-ins made 37 rows and
+     * only display names said whose). Read unverified: it came straight from
+     * Google's token endpoint over TLS, not from the browser.
+     */
+    private static function idTokenEmail(mixed $idToken): ?string
+    {
+        $payload = is_string($idToken) ? explode('.', $idToken)[1] ?? '' : '';
+        $email = json_decode((string) base64_decode(strtr($payload, '-_', '+/')), true)['email'] ?? null;
+
+        return is_string($email) && $email !== '' ? strtolower($email) : null;
     }
 
     private static function label(string $service): string

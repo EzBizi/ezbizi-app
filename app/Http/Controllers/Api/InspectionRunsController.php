@@ -10,6 +10,7 @@ use App\Models\Job;
 use App\Models\Service;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Inspection\BeforeAfter;
 use App\Support\Inspection\BoundAnswers;
 use App\Support\Inspection\FieldType;
 use App\Support\Inspection\InspectionAccess;
@@ -84,7 +85,7 @@ class InspectionRunsController extends Controller
             ]);
         }
 
-        // A phone number, typed any way ("(305) 724-2199", "305.724.2199"),
+        // A phone number, typed any way ("(305) 555-0107", "305.555.0107"),
         // matches on digits: phones are stored E.164, so the digits a person
         // types are a contiguous run of the stored ones. Jobs carry no phone
         // of their own — a job's phone is its customer's.
@@ -157,7 +158,7 @@ class InspectionRunsController extends Controller
                 ->keyBy('inspection_definition_id');
 
         $message = $offered->isEmpty()
-            ? 'This organization has not offered any inspections to this role yet.'
+            ? 'No inspection is granted to your role. Ask an admin to tick one under Roles & permissions › Inspection › Named inspections.'
             : null;
 
         return response()->json([
@@ -410,6 +411,9 @@ class InspectionRunsController extends Controller
                 'job_id' => $report->job_id,
             ]);
             $this->audit->log('inspection.submitted', $report);
+
+            // Before/After pills on the job's photo tab.
+            BeforeAfter::label($report);
 
             return $report;
         });

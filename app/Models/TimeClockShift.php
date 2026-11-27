@@ -21,6 +21,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class TimeClockShift extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A write here is its person's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['people', User::class, 'user_id'];
+
     use HasUuids;
 
     /** Who closed the shift (design 2026-09-08 §5.2). Null while open. */

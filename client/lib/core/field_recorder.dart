@@ -17,6 +17,17 @@ import 'package:record/record.dart';
 
 import 'api_client.dart';
 
+/// What a technician confirms before every recording: the Field card and the
+/// job's Record pill both show this, so they cannot drift (2026-11-03). Keep
+/// it true to the server: Whisper transcribes on our box, the audio goes
+/// once it is words (within a day at most), the summary is Grok's, and the
+/// words are kept 90 days unless a manager keeps them.
+const fieldRecordingDisclosure =
+    'This records the sound around your phone: you, and anyone near you. '
+    'It is written up on our server and the audio is deleted once it is, '
+    'within a day at most. Field managers can read the transcript and an AI '
+    'summary of it, which are kept for 90 days unless a manager keeps them.';
+
 enum FieldRecorderStatus { idle, recording, paused }
 
 @immutable

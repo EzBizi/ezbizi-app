@@ -21,7 +21,6 @@ import 'package:geolocator/geolocator.dart';
 import 'api_client.dart';
 import 'build_info.dart';
 import 'client_platform.dart';
-import 'field_os.dart';
 import 'field_recorder.dart';
 import 'session.dart';
 
@@ -54,6 +53,9 @@ class FieldTracker {
 
   static FieldTracker? startIfPhone(ApiClient api, Session session) =>
       onPhone ? FieldTracker._(api, session) : null;
+
+  /// [currentPosition], swappable in tests.
+  static Future<Position?> Function() locate = currentPosition;
 
   /// Where this phone is now, asking for permission if need be. Null when
   /// refused or unavailable. Phones only: see [onPhone].

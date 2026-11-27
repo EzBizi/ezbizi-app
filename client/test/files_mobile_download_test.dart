@@ -23,4 +23,22 @@ void main() {
 
     expect(shared, [('eric-coo.pdf', 4)]);
   });
+
+  // Jose 2026-11-03: an image.png attachment "did nothing" on iPhone.
+  test('any file on a phone goes to the share sheet, not a silent save', () async {
+    final shared = <String>[];
+    final wasPhone = io.isPhone;
+    final wasShare = io.sharePdf;
+    io.isPhone = () => true;
+    io.sharePdf = (Uint8List bytes, String name) async => shared.add(name);
+    addTearDown(() {
+      io.isPhone = wasPhone;
+      io.sharePdf = wasShare;
+    });
+
+    io.download('image.png', [137, 80, 78, 71]);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(shared, ['image.png']);
+  });
 }

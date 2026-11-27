@@ -37,6 +37,7 @@ class ContractDiffPanel extends StatelessWidget {
     required this.busy,
     required this.error,
     required this.onConfirm,
+    this.cover,
   });
 
   final ContractVocabulary vocabulary;
@@ -56,6 +57,10 @@ class ContractDiffPanel extends StatelessWidget {
 
   /// Runs the publish. Null when there is nothing this panel could commit.
   final VoidCallback? onConfirm;
+
+  /// The server's cover answer, `{changed, from, to}` (full-code audit,
+  /// 2026-11-27: a cover-only change, or a removed cover, showed nothing).
+  final Map<String, dynamic>? cover;
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +104,14 @@ class ContractDiffPanel extends StatelessWidget {
               padding: EdgeInsets.symmetric(vertical: 24),
               child: Center(child: CircularProgressIndicator()),
             ),
+          if (cover?['changed'] == true) ...[
+            Text(
+              'Front page: ${_coverWord(cover!['from'])} → ${_coverWord(cover!['to'])}',
+              key: const ValueKey('contract-diff-cover'),
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+          ],
           if (renamedFrom != null) ...[
             _section(context, 'Renamed', [
               _line(
@@ -284,3 +297,9 @@ class ContractDiffPanel extends StatelessWidget {
     );
   }
 }
+
+String _coverWord(Object? source) => switch (source) {
+  'logo' => 'your logo',
+  'file' => 'an uploaded image',
+  _ => 'none',
+};

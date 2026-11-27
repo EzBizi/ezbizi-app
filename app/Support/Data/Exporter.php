@@ -4,6 +4,7 @@ namespace App\Support\Data;
 
 use App\Models\Customer;
 use App\Models\User;
+use App\Support\NotesMarkup;
 use App\Support\Privacy\HoldsSensitiveValues;
 use App\Support\Privacy\SensitiveValues;
 use App\Support\Scoping\ViewScope;
@@ -124,7 +125,7 @@ class Exporter
                             $values = $this->readable($row, $columns, $user, $includeSensitive);
 
                             fputcsv($out, array_map(
-                                fn (string $c) => $this->cell($values[$c]),
+                                fn (string $c) => self::cell($values[$c]),
                                 $columns,
                             ));
                         }
@@ -192,6 +193,19 @@ class Exporter
      * @return array<string, mixed>
      */
     private function readable(Model $row, array $columns, User $user, bool $includeSensitive): array
+    {
+        $values = $this->values($row, $columns, $user, $includeSensitive);
+
+        // An export leaves the app: notes go out as text, without <b>/<i>/<u>.
+        if (array_key_exists('notes', $values)) {
+            $values['notes'] = NotesMarkup::plain($values['notes']);
+        }
+
+        return $values;
+    }
+
+    /** @return array<string, mixed> */
+    private function values(Model $row, array $columns, User $user, bool $includeSensitive): array
     {
         if (! $row instanceof HoldsSensitiveValues) {
             return array_combine(
@@ -288,7 +302,7 @@ class Exporter
      * escaped, because `+` genuinely starts a formula in Excel; Importer::parse
      * strips the marker back off, so a round trip is lossless.
      */
-    private function cell(mixed $value): string
+    public static function cell(mixed $value): string
     {
         if ($value === null || $value === false) {
             return $value === false ? '0' : '';

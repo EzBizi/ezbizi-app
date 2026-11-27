@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_window.dart';
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
@@ -10,10 +11,10 @@ import 'scheduling/booked_available_pane.dart';
 import 'scheduling/capacity_settings.dart';
 import 'scheduling/helpers_pane.dart';
 import 'scheduling/locations_pane.dart';
-import 'scheduling/overbooking_pane.dart';
 import 'scheduling/routing_pane.dart';
 import 'scheduling/schedule_pane.dart';
 import 'scheduling/technician_roster.dart';
+import 'scheduling/zip_reports.dart';
 import 'settings_screen.dart';
 
 /// Scheduling: Availability, the Schedule board, and Settings.
@@ -55,6 +56,15 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
 
   void _takeLink() {
     final link = DeepLinks.take('scheduling');
+    // A phone bottom-bar slot (design 208).
+    if (link?.type == 'tab') {
+      final at = _tabs.indexWhere((t) => t.$1 == link!.id);
+      if (at >= 0) {
+        _tab = at;
+        _shown.add(at);
+      }
+      return;
+    }
     if (link?.type != 'booked_vs_available') return;
     final at = _tabs.indexWhere((t) => t.$1 == 'rescheduling');
     if (at < 0) return;
@@ -98,12 +108,6 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
       ),
     ),
     (
-      'overbooking',
-      'Overbooking',
-      Icons.warning_amber_outlined,
-      () => OverbookingPane(api: widget.api, visible: _visible('overbooking')),
-    ),
-    (
       'rescheduling',
       'Re-Scheduling',
       Icons.swap_horiz,
@@ -114,8 +118,6 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
         session: widget.session,
         visible: _visible('rescheduling'),
         canEdit: widget.session.me?.can('scheduling.edit') ?? false,
-        // The endpoints take either grant (a3f200840).
-        showAvailability: _mayOpen('overbooking') || _mayOpen('rescheduling'),
         linkDate: _linkDate,
         linkSerial: _linkSerial,
       ),
@@ -246,6 +248,10 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
           color: theme.colorScheme.surface,
           child: TabBarLike(
             key: const ValueKey('tour-scheduling-tabs'),
+            windowPaths: [
+              for (final tab in tabs)
+                AppWindow.pathFor('scheduling', tab: tab.$1),
+            ],
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: selected,
             onSelected: _select,
@@ -297,6 +303,18 @@ class SchedulingSettings extends StatefulWidget {
 class _SchedulingSettingsState extends State<SchedulingSettings> {
   int _tab = 0;
   final Set<int> _shown = {0};
+  int _wrongZips = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // The open-report badge shows before the tab is opened.
+    widget.api.get('/scheduling/zip-reports').then((r) {
+      if (mounted && r.ok) {
+        setState(() => _wrongZips = (r.body['meta'] as Map?)?['open'] ?? 0);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -348,6 +366,17 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
             visible: visible,
           ),
         ),
+      // Nelly Escobar, suggestion 01a20e5c (Jose 11-24): reported wrong ZIPs.
+      (
+        'Wrong ZIPs',
+        Icons.flag_outlined,
+        (visible) => ZipReportsSettings(
+          api: widget.api,
+          session: widget.session,
+          visible: visible,
+          onCount: (n) => setState(() => _wrongZips = n),
+        ),
+      ),
       // The suggested-availability radius and look-ahead (Jose, 2026-10-13:
       // "make it so i can change that in the app as well on the scheduling
       // settings"): the Settings rows of the scheduling group, as Field's
@@ -371,6 +400,9 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
           key: const ValueKey('tour-scheduling-settings-tabs'),
           level: TabLevel.secondary,
           labels: [for (final t in tabs) (t.$1, t.$2)],
+          missing: [
+            for (final t in tabs) t.$1 == 'Wrong ZIPs' ? _wrongZips : 0,
+          ],
           selected: _tab,
           onSelected: (i) => setState(() {
             _tab = i;

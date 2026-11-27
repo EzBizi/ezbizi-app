@@ -262,7 +262,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'Phone number',
             // Formatted here, raw in the field this opens. The row is being
             // READ — checking a number you already know is the commonest
-            // reason to come here at all — and +13057242199 is not something
+            // reason to come here at all — and +13055550107 is not something
             // anybody reads back.
             formatPhoneNumber(_profile['phone'] as String? ?? ''),
             () => _open(context, 'Who you are', _identity()),
@@ -426,6 +426,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _scheduleCard() => WorkScheduleCard(
     schedule: _schedule,
     canEdit: _profile['can_edit_schedule'] == true,
+    caption: _profile['can_edit_schedule'] == true
+        ? null
+        : 'Your manager sets your work schedule.',
     onEdit: _editSchedule,
   );
 
@@ -446,7 +449,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     // `weekday` is 1..7 from Monday, which is the order `days` is written in,
     // so the -1 is an index rather than an assumption about locale.
-    final window = days[WorkScheduleCard.days[DateTime.now().weekday - 1]];
+    final window = days[weekdayKeys[DateTime.now().weekday - 1]];
     if (window is! Map) return UiStrings.t('time_clock.off_today');
 
     return UiStrings.t('time_clock.today_hours')
@@ -555,6 +558,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     VoidCallback onTap,
   ) {
     final theme = Theme.of(context);
+    final shown = value == null ? null : (value.isEmpty ? 'Not given' : value);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    // On a phone the value goes under the label: beside it, a long address
+    // took the row and left "Home address" one letter wide (phone audit
+    // 2026-11-04, Section 4 #2).
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return ListTile(
+        leading: Icon(icon, size: 20),
+        title: Text(label, style: theme.textTheme.bodyMedium),
+        subtitle: shown == null
+            ? null
+            : Text(
+                shown,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: muted,
+              ),
+        trailing: const Icon(Icons.chevron_right, size: 18),
+        onTap: onTap,
+      );
+    }
     return ListTile(
       leading: Icon(icon, size: 20),
       title: Text(label, style: theme.textTheme.bodyMedium),
@@ -592,9 +618,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       MaterialPageRoute<void>(
         builder: (_) => Scaffold(
           appBar: AppBar(title: Text(title)),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: body,
+          // The sides and the bottom: on an iPhone Duo's cover screen the card
+          // ran under the clock column on the right (mobile review 11-24).
+          body: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: body,
+            ),
           ),
         ),
       ),

@@ -106,6 +106,11 @@ final class WorkspaceMailboxReader implements LabelsThreads, MailboxReader, Repl
         return $this->gmail->availableFolders($mailbox);
     }
 
+    public function sendProblem(Mailbox $mailbox): ?string
+    {
+        return $this->gmail->sendProblem($mailbox);
+    }
+
     public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
         $this->workspace->assertCanOpen($mailbox);

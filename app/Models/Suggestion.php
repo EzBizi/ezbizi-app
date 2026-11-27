@@ -8,6 +8,7 @@ use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
+use App\Support\Suggestions\SuggestionAlerts;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -66,19 +67,49 @@ class Suggestion extends Model implements HoldsPersonalData
     /** What `decide` accepts. `new` is absent on purpose — see StaffSuggestionsController. */
     public const DECIDABLE = [self::STATUS_REVIEWING, self::STATUS_APPROVED, self::STATUS_DENIED];
 
+    /**
+     * Where an approved suggestion is on its way to the app, in order
+     * (Jose, 2026-11-17). Set by staff as they route, merge and release.
+     */
+    public const PROGRESS = ['approved', 'building', 'testing', 'releasing', 'live'];
+
     /** The two that reach the author's bell. */
     public const ANNOUNCED = [self::STATUS_APPROVED, self::STATUS_DENIED];
 
     protected $fillable = [
         'organization_id', 'user_id', 'body', 'module', 'files', 'status',
-        'decision_note', 'decided_by', 'decided_at',
+        'decision_note', 'decided_by', 'decided_at', 'progress', 'release_version',
     ];
+
+    /**
+     * The author's pop-up, once per transition, whoever saves the row (the
+     * staff queue, the desk's tinker): approved, and progress reaching live.
+     */
+    protected static function booted(): void
+    {
+        static::updated(function (Suggestion $row) {
+            if ($row->wasChanged('status') && $row->status === self::STATUS_APPROVED) {
+                SuggestionAlerts::approved($row);
+            }
+
+            if ($row->wasChanged('progress') && $row->progress === 'live') {
+                SuggestionAlerts::live($row);
+            }
+        });
+    }
 
     /** The one extra choice beside the module keys: Settings is pinned, not a module. */
     public const MODULE_SETTINGS = 'settings';
 
-    /** Screenshots, photos, a PDF, or a written-up .md/.txt note. */
-    public const FILE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif', 'pdf', 'md', 'txt'];
+    /**
+     * Screenshots, photos, a PDF, or a written-up .md/.txt note.
+     *
+     * `bmp` because the 0.0.0562 Windows app pastes the clipboard's CF_DIB as
+     * BMP bytes named pasted-N.png, and `mimes` (the content check) refused
+     * them. Newer clients re-encode a paste as PNG; this keeps that release
+     * working. A bitmap is a plain raster, not a carrier for script.
+     */
+    public const FILE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif', 'bmp', 'pdf', 'md', 'txt'];
 
     public const MAX_FILES = 5;
 

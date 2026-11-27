@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
 import 'number_quality_pane.dart';
 import 'phone_refs.dart';
@@ -296,10 +297,8 @@ class _TrustPaneState extends State<TrustPane> {
           'one that answers “Scam Likely”.',
       note: profileApproved
           ? null
-          : 'Waiting on the Business Profile above. Voice Integrity needs it '
-                'APPROVED, not merely created — which is why this can read '
-                'rejected while CNAM reads approved, for one reason rather '
-                'than two.',
+          : 'Waiting on the Business Profile above: Voice Integrity starts '
+                'once that profile is approved.',
     );
   }
 
@@ -569,16 +568,19 @@ class _TrustPaneState extends State<TrustPane> {
 
             if (note != null) ...[
               const SizedBox(height: 8),
+              // A wait on somebody else is not a fault: amber, never the
+              // error red (UI pass 2026-11-17).
               Container(
+                key: const ValueKey('trust-card-note'),
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.errorContainer,
+                  color: ToneColours.of(context, Tone.caution).fill,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   note,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onErrorContainer,
+                    color: ToneColours.of(context, Tone.caution).ink,
                   ),
                 ),
               ),

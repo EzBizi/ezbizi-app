@@ -260,9 +260,10 @@ final class ImapMessageMapper
         $filename = $this->filename($structure, $params);
 
         if ($attachments) {
-            // Anything with a filename is an attachment, whatever its type — a
-            // PDF and an inline logo are both files that arrived.
-            if ($filename !== '') {
+            // Anything with a filename is an attachment, whatever its type,
+            // except a part of the body: inline, or a Content-ID not marked as
+            // an attachment -- a signature logo the HTML draws by cid (Eve 11-11).
+            if ($filename !== '' && ! $this->isInline($structure)) {
                 $found[] = [
                     'name'  => $this->decodeHeader($filename),
                     'mime'  => ($type === '' ? 'application' : $type).'/'.($subtype === '' ? 'octet-stream' : $subtype),
@@ -463,6 +464,23 @@ final class ImapMessageMapper
         }
 
         return $params['name'] ?? '';
+    }
+
+    /** @param  array<int, mixed>  $leaf */
+    private function isInline(array $leaf): bool
+    {
+        $disposition = '';
+
+        foreach (array_slice($leaf, 7) as $element) {
+            if (is_array($element) && is_string($element[0] ?? null)
+                && in_array(strtolower($element[0]), ['attachment', 'inline'], true)) {
+                $disposition = strtolower($element[0]);
+            }
+        }
+
+        $contentId = $this->stringOr($leaf[3] ?? null);
+
+        return $disposition === 'inline' || ($contentId !== '' && $disposition !== 'attachment');
     }
 
     private function hasFlag(mixed $flags, string $flag): bool

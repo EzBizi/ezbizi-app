@@ -21,10 +21,8 @@ use Illuminate\Support\Str;
  */
 final class CustomerLinks
 {
-    public const JOIN_DAYS = 60;
 
     /** How long a job's review link works (Jose, 2026-10-08: "a unique one"). */
-    public const REVIEW_DAYS = 90;
 
     public static function token(Customer $customer): string
     {
@@ -39,7 +37,7 @@ final class CustomerLinks
      */
     public static function jobToken(Customer $customer, Job $job): string
     {
-        $body = $customer->getKey().'.'.$job->getKey().'.'.now()->addDays(self::REVIEW_DAYS)->timestamp;
+        $body = $customer->getKey().'.'.$job->getKey().'.'.now()->addDays(self::days('customers.review_link_days', $customer))->timestamp;
 
         return $body.'.'.self::mac($body);
     }
@@ -63,7 +61,8 @@ final class CustomerLinks
         if (is_string($token) && preg_match('/^[A-Za-z0-9]{7}$/', $token) === 1) {
             $code = ReviewCode::query()->whereKey($token)->where('expires_at', '>=', now())->first();
 
-            return $code === null ? null : [(string) $code->customer_id, $code->job_id === null ? null : (string) $code->job_id];
+            // A Review QR names a technician, not a customer: no customer token (qrOwner reads it).
+            return $code === null || $code->customer_id === null ? null : [(string) $code->customer_id, $code->job_id === null ? null : (string) $code->job_id];
         }
 
         if (! is_string($token) || ! str_contains($token, '.')) {
@@ -107,6 +106,44 @@ final class CustomerLinks
             : ($parts['scheme'] ?? 'https').'://'.$parts['host'].'/r/'.self::code($customer, $job);
     }
 
+    /**
+     * A Review QR (Jose, 2026-11-23): the branch's reviews page through its site's /r/ with a code that names
+     * the technician who made it, so every scan, face and form counts for them. One code per person and
+     * branch, reused while it has a month left; it carries no customer.
+     */
+    public static function qrLink(\App\Models\User $user, Franchise $franchise): ?array
+    {
+        $link = self::siteValue(null, 'review_link', $franchise->getKey());
+        $parts = $link === null ? false : parse_url($link);
+        if (! is_array($parts) || ! isset($parts['host'])) {
+            return null;
+        }
+        $row = ReviewCode::query()->whereNull('customer_id')->where('user_id', $user->getKey())
+            ->where('franchise_id', $franchise->getKey())->where('expires_at', '>', now()->addDays(30))->first();
+        if ($row === null) {
+            do {
+                $code = Str::random(7);
+            } while (ReviewCode::query()->withoutGlobalScopes()->whereKey($code)->exists());
+            $row = ReviewCode::create(['code' => $code, 'customer_id' => null, 'job_id' => null, 'user_id' => $user->getKey(),
+                'franchise_id' => $franchise->getKey(), 'expires_at' => now()->addYear()]);
+        }
+
+        return ['url' => ($parts['scheme'] ?? 'https').'://'.$parts['host'].'/r/'.$row->code, 'code' => $row->code,
+            'expires_at' => $row->expires_at];
+    }
+
+    /** The code and technician behind a Review QR scan, or null for any other token. @return array{0: string, 1: string}|null */
+    public static function qrOwner(?string $token): ?array
+    {
+        if (! is_string($token) || preg_match('/^[A-Za-z0-9]{7}$/', $token) !== 1) {
+            return null;
+        }
+        $row = ReviewCode::query()->whereKey($token)->whereNull('customer_id')->whereNotNull('user_id')
+            ->where('expires_at', '>=', now())->first();
+
+        return $row === null ? null : [(string) $row->code, (string) $row->user_id];
+    }
+
     /** A job's short code: the one already sent while it has a month left, else a new random one. */
     public static function code(Customer $customer, Job $job): string
     {
@@ -122,7 +159,7 @@ final class CustomerLinks
         } while (ReviewCode::query()->withoutGlobalScopes()->whereKey($code)->exists());
 
         ReviewCode::create(['code' => $code, 'customer_id' => $customer->getKey(), 'job_id' => $job->getKey(),
-            'expires_at' => now()->addDays(self::REVIEW_DAYS)]);
+            'expires_at' => now()->addDays(self::days('customers.review_link_days', $customer))]);
 
         return $code;
     }
@@ -144,7 +181,7 @@ final class CustomerLinks
             } while (ReviewCode::query()->withoutGlobalScopes()->whereKey($code)->exists());
 
             ReviewCode::create(['code' => $code, 'customer_id' => $customer->getKey(), 'job_id' => null,
-                'expires_at' => now()->addDays(self::JOIN_DAYS)]);
+                'expires_at' => now()->addDays(self::days('customers.join_link_days', $customer))]);
         }
 
         return url('/api/m/'.$code);
@@ -152,7 +189,7 @@ final class CustomerLinks
 
     public static function joinUrl(Customer $customer): string
     {
-        return URL::temporarySignedRoute('memberships.join', now()->addDays(self::JOIN_DAYS), ['customer' => $customer->getKey()]);
+        return URL::temporarySignedRoute('memberships.join', now()->addDays(self::days('customers.join_link_days', $customer)), ['customer' => $customer->getKey()]);
     }
 
     /**
@@ -194,5 +231,16 @@ final class CustomerLinks
     private static function mac(string $id): string
     {
         return substr(hash_hmac('sha256', 'membership-customer:'.$id, (string) config('app.key')), 0, 24);
+    }
+
+    /** A link lifetime from the organization's settings (Jose, 11-04: no constants). */
+    private static function days(string $key, Customer $customer): int
+    {
+        $organization = \App\Models\Organization::query()->withoutGlobalScopes()->findOrFail($customer->organization_id);
+
+        // Inside the customer's organization: a link is built from jobs, public
+        // pages and commands too, and Setting refuses an unscoped read.
+        return max(1, (int) app(\App\Support\Tenancy\TenantContext::class)->run($organization,
+            fn () => app(\App\Support\Settings\SettingsResolver::class)->get($key, $organization)));
     }
 }

@@ -1,6 +1,8 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/status_pill.dart';
 
 /// One card on Financials' home (UI queue 121, Jose picked layout 1 and
@@ -137,11 +139,7 @@ Tone _sourceTone(String? source) => switch (source) {
 String? refreshedLabel(String? iso, {DateTime? now}) {
   final at = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
   if (at == null) return null;
-  final minutes = (now ?? DateTime.now()).difference(at).inMinutes;
-  if (minutes < 1) return 'refreshed just now';
-  if (minutes < 60) return 'refreshed $minutes min ago';
-  if (minutes < 60 * 24) return 'refreshed ${minutes ~/ 60} h ago';
-  return 'refreshed ${minutes ~/ (60 * 24)} d ago';
+  return 'refreshed ${formatAgo(at, now: now)}';
 }
 
 const _hues = {
@@ -230,7 +228,11 @@ class _FinancialHomeState extends State<FinancialHome> {
       builder: (context, box) {
         final phone = box.maxWidth < 700;
         final columns = box.maxWidth >= 1000 ? 4 : (phone ? 2 : 3);
-        final height = phone ? 104.0 : 132.0;
+        // Grows with the reader's text size: at iOS accessibility sizes the
+        // tiles overflowed by 21 px (mobile review 11-24).
+        final height = MediaQuery.textScalerOf(
+          context,
+        ).scale(phone ? 104.0 : 132.0);
 
         Widget grid(List<Widget> cards) => GridView(
           shrinkWrap: true,
@@ -252,13 +254,9 @@ class _FinancialHomeState extends State<FinancialHome> {
                 alignment: Alignment.centerLeft,
                 child: SizedBox(
                   width: phone ? double.infinity : 320,
-                  child: TextField(
+                  child: ListSearch(
                     key: const ValueKey('financials-home-search'),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Find an area or base',
-                    ),
+                    hint: 'Find an area or base',
                     onChanged: (t) => setState(() => _query = t.trim()),
                   ),
                 ),
@@ -396,9 +394,13 @@ class _Card extends StatelessWidget {
                 ],
               ),
               const Spacer(),
+              // Two lines: the figure is a sentence ("This week: $0.00
+              // refunded · 0 disputes"), and one line cut it on every card
+              // at 1440 (UI pass 2026-11-17). The Spacer above gives way.
               Text(
                 card.figure ?? '—',
-                maxLines: 1,
+                key: ValueKey('financial-card-figure-${card.id}'),
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,

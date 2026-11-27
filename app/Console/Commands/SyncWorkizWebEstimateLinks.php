@@ -2,10 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Models\WorkizRecord;
-use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizWebSession;
 use Illuminate\Console\Command;
@@ -32,18 +30,7 @@ class SyncWorkizWebEstimateLinks extends Command
     public function handle(TenantContext $tenant): int
     {
         $since = now()->subDays((int) $this->option('days'));
-        $read = 0;
-
-        $connections = SocialConnection::query()->withoutGlobalScopes()
-            ->where('provider', SocialProvider::WorkizWeb->value)->where('status', 'connected')->get();
-
-        foreach ($connections as $connection) {
-            $organization = Organization::query()->withoutGlobalScopes()->find($connection->organization_id);
-
-            if ($organization !== null) {
-                $read += $tenant->run($organization, fn () => $this->connection($connection, $since));
-            }
-        }
+        $read = WorkizWebSession::eachConnection($tenant, fn (SocialConnection $connection) => $this->connection($connection, $since));
 
         $this->info($read.' Workiz estimate link(s) read.');
 

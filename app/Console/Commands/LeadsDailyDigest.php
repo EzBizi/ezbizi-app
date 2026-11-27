@@ -48,11 +48,17 @@ class LeadsDailyDigest extends Command
                 }
                 arsort($bySource);
 
-                $byCompany = DB::table('leads')->join('companies', 'companies.id', '=', 'leads.company_id')
-                    ->where('leads.organization_id', $organization->getKey())->where('leads.is_test', false)
+                // The same leads the totals count, so the companies add up to them.
+                $perCompany = fn (bool $booked) => DB::table('leads')->join('companies', 'companies.id', '=', 'leads.company_id')
+                    ->where('leads.organization_id', $organization->getKey())->where('leads.is_test', false)->whereNull('leads.hidden_at')
                     ->whereBetween('leads.received_at', [$day->copy()->utc(), $day->copy()->endOfDay()->utc()])
-                    ->groupBy('companies.name')->orderByDesc(DB::raw('COUNT(*)'))
+                    // Booked as the dashboard counts it (LeadDashboardController::measure).
+                    ->when($booked, fn ($q) => $q->where(fn ($q) => $q->where('leads.status', Lead::STATUS_BOOKED)->orWhereNotNull('leads.job_id')))
+                    ->groupBy('companies.name')->orderByDesc(DB::raw('COUNT(*)'))->orderBy('companies.name')
                     ->pluck(DB::raw('COUNT(*)'), 'companies.name')->map(fn ($n) => (int) $n)->all();
+                $byCompany = $perCompany(false);
+                $bookedByCompany = $perCompany(true);
+                $several = count($byCompany) > 1;
 
                 $answeredPct = $t['answerable'] > 0 ? (int) round(100 * $t['answered'] / $t['answerable']) : null;
                 $median = $t['first_reply_median_seconds'] === null ? null : (int) round($t['first_reply_median_seconds'] / 60);
@@ -63,14 +69,27 @@ class LeadsDailyDigest extends Command
                     .implode(', ', array_map(fn ($n, $w) => "$n $w", $bySource, array_keys($bySource))).')'
                     .($answeredPct === null ? '' : " - {$answeredPct}% of texts answered")
                     .($median === null ? '' : ", first reply in {$median} min (median)")
+                    .($several ? ' - by company: '.implode(', ', array_map(fn ($n, $c) => "$c $n", $byCompany, array_keys($byCompany))) : '')
                     ." - {$t['booked']} booked"
-                    .(count($byCompany) > 1 ? ' - '.implode(', ', array_map(fn ($n, $c) => "$c $n", $byCompany, array_keys($byCompany))) : '')
+                    .($several && $bookedByCompany !== [] ? ' ('.implode(', ', array_map(fn ($n, $c) => "$c $n", $bookedByCompany, array_keys($bookedByCompany))).')' : '')
                     .'.';
+
+                // The same, a line each, for a message that may break lines (sent as a report, 2026-11-11).
+                $lines = implode("\n", array_filter([
+                    '*'.$day->format('D M j').': '.$t['leads'].' leads*',
+                    ...array_map(fn ($n, $w) => "$w: $n", $bySource, array_keys($bySource)),
+                    ...($several ? ['Leads by company:', ...array_map(fn ($n, $c) => "$c: $n", $byCompany, array_keys($byCompany))] : []),
+                    $answeredPct === null ? null : "Texts answered: {$answeredPct}%",
+                    $median === null ? null : "First reply: {$median} min (median)",
+                    "*Booked: {$t['booked']}*",
+                    ...($several && $bookedByCompany !== [] ? ['Booked by company:', ...array_map(fn ($n, $c) => "$c: $n", $bookedByCompany, array_keys($bookedByCompany))] : []),
+                ], fn ($l) => $l !== null));
 
                 $events->emit('lead.daily_digest', $organization, [
                     'after' => [
                         'date' => $day->toDateString(),
                         'summary' => $summary,
+                        'summary_lines' => $lines,
                         'leads' => $t['leads'],
                         'answerable' => $t['answerable'],
                         'answered' => $t['answered'],
@@ -81,6 +100,7 @@ class LeadsDailyDigest extends Command
                         'automatic_replies' => $m['automatic']['replies'],
                         'by_source' => $bySource,
                         'by_company' => $byCompany,
+                        'booked_by_company' => $bookedByCompany,
                     ],
                 ]);
                 $raised++;

@@ -47,6 +47,13 @@ class BusinessProfileListingTest extends TestCase
         $this->assertSame('match', $status[$good->id]);
         $this->assertSame('mismatch', $status[$bad->id]);
         $this->assertSame('unknown', $status[$none->id], 'no branch, nothing to compare with');
+
+        $this->inTenant($this->t['org'], fn () => PhoneNumber::factory()->create(['organization_id' => $this->t['org']->id,
+            'connection_id' => \App\Models\PhoneConnection::query()->value('id'),
+            'scope_type' => PhoneNumber::SCOPE_COMPANY, 'scope_id' => $this->t['company']->id, 'e164' => '+19375550177']));
+        $company = $this->listing('(937) 555-0177', null);
+        $status = collect($this->getJson('/api/v1/business-profile/phone-check')->json('data'))->pluck('status', 'id');
+        $this->assertSame('match', $status[$company->id], 'a company line counts for every listing of that company');
     }
 
     public function test_review_stats_sources_and_whatsapp_link(): void
@@ -72,6 +79,13 @@ class BusinessProfileListingTest extends TestCase
         $sources = $this->getJson('/api/v1/reviews/sources')->assertOk()->assertJsonPath('reply_rule_id', null);
         $google = collect($sources->json('data'))->firstWhere('source', 'google');
         $this->assertSame(2, $google['count']);
+        $thumbtack = collect($sources->json('data'))->firstWhere('source', 'thumbtack');
+        $this->assertFalse($thumbtack['connected'], 'no Thumbtack connection yet');
+        $this->inTenant($this->t['org'], fn () => (new \App\Models\SocialConnection)->forceFill(['organization_id' => $this->t['org']->id,
+            'scope_type' => 'company', 'scope_id' => $this->t['company']->id, 'provider' => 'thumbtack', 'remote_id' => 'tt1', 'display_name' => 'TT'])->save());
+        $thumbtack = collect($this->getJson('/api/v1/reviews/sources')->json('data'))->firstWhere('source', 'thumbtack');
+        $this->assertTrue($thumbtack['connected'], 'connected for leads (Jose, 2026-11-09)');
+        $this->assertFalse($thumbtack['reviews_available']);
 
         $id = $this->listing('1', null)->id;
         $this->getJson("/api/v1/business-profile/locations/{$id}")->assertOk()->assertJsonPath('data.whatsapp_link', 'https://wa.me/19375550100');

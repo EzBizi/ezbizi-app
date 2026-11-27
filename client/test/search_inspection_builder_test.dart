@@ -2,6 +2,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/inspection/builder_tab.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -48,7 +49,7 @@ void main() {
   }
 
   Finder inDialog(Finder f) =>
-      find.descendant(of: find.byType(AlertDialog), matching: f);
+      find.descendant(of: find.byType(SidePanel), matching: f);
 
   testWidgets('two inspections already offer the search, and typing narrows '
       'them', (tester) async {

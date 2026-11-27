@@ -79,6 +79,7 @@ class Address {
   static const _reserved = {
     'reset',
     'invite',
+    'join',
     'signup',
     'api',
     'assets',

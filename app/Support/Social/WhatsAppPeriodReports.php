@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppReportBatch;
+use App\Support\Reports\ReportJobs;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\PeriodReport;
 use Illuminate\Support\Carbon;
@@ -37,7 +38,7 @@ final class WhatsAppPeriodReports
     /** The batch for the period that just ended, made once. */
     public function batchFor(string $period, ?Carbon $today = null): WhatsAppReportBatch
     {
-        $today = ($today ?? Carbon::now('America/New_York'))->copy()->startOfDay();
+        $today = ($today ?? Carbon::now(\App\Support\Settings\OrgTimezone::of()))->copy()->startOfDay();
 
         [$from, $to] = $period === 'month'
             ? [$today->copy()->subMonthNoOverflow()->startOfMonth(), $today->copy()->subMonthNoOverflow()->endOfMonth()]
@@ -92,6 +93,19 @@ final class WhatsAppPeriodReports
         return $files;
     }
 
+    /**
+     * A file's figures as text, sent before it: its branch's, or every branch
+     * with jobs for the consolidated one. ponytail: read now, not frozen with
+     * the PDF; freeze it too if an approved batch's figures ever move.
+     */
+    private function text(WhatsAppReportBatch $batch, PeriodReport $report, string $title, ?string $branchId): string
+    {
+        $branches = $branchId !== null ? Franchise::query()->whereKey($branchId)->get()
+            : Franchise::query()->switchedOn()->whereIn('id', ReportJobs::branchesWithJobs())->get();
+
+        return $report->summaryText($title, $branches, $batch->starts_on->toDateString(), $batch->ends_on->toDateString());
+    }
+
     /** The frozen PDFs of a revision, the consolidated one last. */
     public function files(WhatsAppReportBatch $batch, ?int $revision = null): Collection
     {
@@ -110,7 +124,8 @@ final class WhatsAppPeriodReports
         $label = $this->label($batch);
         $consolidated = collect($this->freeze($batch, $report))->last();
 
-        $reached = $this->groups->deliverDocument(self::APPROVAL, $label.' (for approval)', $consolidated->bytes(), $consolidated->filename);
+        $reached = $this->groups->deliverDocument(self::APPROVAL, $label.' (for approval)', $consolidated->bytes(), $consolidated->filename,
+            $this->text($batch, $report, ucfirst($label), null));
 
         $this->groups->deliver(self::APPROVAL, $label,
             "\u{1F4CA} *".ucfirst($label)." - ready for approval*\n"
@@ -118,7 +133,7 @@ final class WhatsAppPeriodReports
             ."\u{2705} Reply *APPROVE* to send them to every group\n"
             ."\u{1F4E5} Reply *SEPARATELY* to get each company's PDF here, privately\n"
             ."\u{23F8} Reply *HOLD* to keep them back for now\n"
-            ."\u{1F504} Reply *REFRESH* for a new copy once the Airtable P&L is in");
+            ."\u{1F504} Reply *REFRESH* for a new copy once the Airtable P&L is in", file: false);
 
         return $reached;
     }
@@ -140,7 +155,7 @@ final class WhatsAppPeriodReports
 
         foreach ($files as $file) {
             $sent += $this->groups->deliverDocument($file->franchise_id === null ? 'financial' : 'daily:'.$file->franchise_id,
-                $file->title, $file->bytes(), $file->filename);
+                $file->title, $file->bytes(), $file->filename, $this->text($batch, $report, $file->title, $file->franchise_id));
         }
 
         return $sent;
@@ -163,7 +178,8 @@ final class WhatsAppPeriodReports
             $files = $this->files($batch->refresh());
         }
 
-        $documents = $files->map(fn (ReportBatchFile $f) => ['title' => $f->title, 'pdf' => $f->bytes(), 'filename' => $f->filename])->all();
+        $documents = $files->map(fn (ReportBatchFile $f) => ['title' => $f->title, 'pdf' => $f->bytes(), 'filename' => $f->filename,
+            'text' => $this->text($batch, $report, $f->title, $f->franchise_id)])->all();
         $label = $this->label($batch);
 
         return $this->groups->deliverDocumentsToMember(self::APPROVAL, $to, ucfirst($label), $documents);
@@ -211,7 +227,7 @@ final class WhatsAppPeriodReports
             'HOLD' => "\u{23F8} *On hold.* Nothing goes to the groups. Reply *APPROVE* when it is ready, or *REFRESH* for a new copy.",
             'SEPARATELY' => "\u{1F4E5} *Sending you each company's PDF now, privately.* Nothing goes to the groups.",
             default => "\u{2705} *Approved!*\n\n\u{1F4E4} Sending the ".$label.' to every group now.',
-        });
+        }, file: false);
 
         return true;
     }

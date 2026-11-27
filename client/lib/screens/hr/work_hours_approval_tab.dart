@@ -11,11 +11,13 @@
 /// strings; nothing here reads the device clock to decide a day.
 library;
 
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/deep_links.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -68,10 +70,28 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
     unawaited(_load(date: link?.date));
     DeepLinks.pending.addListener(_onLink);
     widget.session.addListener(_onSession);
+    // Somebody clocking in or out, or a correction asked for: the open
+    // day re-read with no spinner, never in the middle of an action.
+    _live = LiveChanges.of(widget.api).subscribe({'people'}, (_) {
+      if (!_loading && !_busy) return _refreshQuiet();
+    }, active: LiveChanges.visible(this));
+  }
+
+  LiveSubscription? _live;
+
+  /// The open day read again in place.
+  Future<void> _refreshQuiet() async {
+    final date = _day?['date'] as String?;
+    final response = await widget.api.get('/hr/time-clock/approvals', {
+      if (date != null && date.isNotEmpty) 'date': date,
+    });
+    if (!mounted || !response.ok || _busy || _loading) return;
+    _adopt(response);
   }
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_onLink);
     widget.session.removeListener(_onSession);
     super.dispose();
@@ -161,6 +181,11 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
     {'user_id': '${(row['person'] as Map?)?['id']}', 'date': _day?['date']},
   );
 
+  Future<void> _excuse(Map<String, dynamic> row) => _post(
+    '/hr/time-clock/approvals/excuse',
+    {'user_id': '${(row['person'] as Map?)?['id']}', 'date': _day?['date']},
+  );
+
   Future<void> _approveAll() =>
       _post('/hr/time-clock/approvals/all', {'date': _day?['date']});
 
@@ -172,6 +197,7 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
         api: widget.api,
         formats: _formats,
         dayLabel: '${_day?['label'] ?? ''}',
+        date: '${_day?['date'] ?? ''}',
         row: row,
         personId: personId,
         onSaved: (response) {
@@ -294,7 +320,10 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
                 top: false,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: FilledButton.icon(
+                  // Outlined, not filled: a sticky full-width button under
+                  // the thumb approved everyone on a stray tap (phone audit
+                  // 2026-11-04, Section 3 #6).
+                  child: OutlinedButton.icon(
                     key: const ValueKey('tour-work_hours-approval-all'),
                     onPressed: _busy ? null : _approveAll,
                     icon: const Icon(Icons.done_all, size: 18),
@@ -312,6 +341,22 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
     if (!_canApprove) return const [];
     final id = (row['person'] as Map?)?['id'];
     final shifts = (row['shifts'] as List?) ?? const [];
+    // A no-show has nothing to approve (Jose, 2026-11-09): excuse it, or
+    // add the hours somebody worked without clocking in.
+    if (row['status'] == 'no_show') {
+      return [
+        OutlinedButton(
+          key: ValueKey('approval-excuse-$id'),
+          onPressed: _busy ? null : () => _excuse(row),
+          child: const Text('Excused / day off'),
+        ),
+        FilledButton(
+          key: ValueKey('approval-add-hours-$id'),
+          onPressed: _busy ? null : () => _adjust(row),
+          child: const Text('Add hours'),
+        ),
+      ];
+    }
     return [
       if (shifts.isNotEmpty)
         OutlinedButton(
@@ -319,7 +364,7 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
           onPressed: _busy ? null : () => _adjust(row),
           child: const Text('Adjust'),
         ),
-      if (row['status'] != 'approved')
+      if (row['status'] == 'waiting')
         FilledButton(
           key: ValueKey('approval-approve-$id'),
           onPressed: _busy ? null : () => _approve(row),
@@ -442,16 +487,9 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
     // Standard field height, as tall as Leads search (Jose, 2026-10-27).
     final search = SizedBox(
       width: 240,
-      child: TextField(
+      child: ListSearch(
         key: const Key('work-hours-approval-search'),
-        textAlignVertical: TextAlignVertical.center,
-        decoration: const InputDecoration(
-          isDense: true,
-          prefixIconConstraints: BoxConstraints(minWidth: 36),
-          prefixIcon: Icon(Icons.search, size: 18),
-          hintText: 'Find a person',
-          border: OutlineInputBorder(),
-        ),
+        hint: 'Find a person',
         onChanged: (v) => setState(() => _query = v),
       ),
     );
@@ -658,7 +696,12 @@ Widget _shiftsText(BuildContext context, Map<String, dynamic> row) {
     return Text(
       "Didn't clock in",
       key: const ValueKey('approval-no-show'),
-      style: base?.copyWith(color: scheme.error, fontWeight: FontWeight.w700),
+      // Caution, not red: a missed shift is for the manager to look at, not
+      // an error (deep dive 2026-11-02 #7).
+      style: base?.copyWith(
+        color: ToneColours.of(context, Tone.caution).ink,
+        fontWeight: FontWeight.w700,
+      ),
     );
   }
 
@@ -703,6 +746,13 @@ List<Widget> _chips(Map<String, dynamic> row) {
 
 List<Widget> _status(Map<String, dynamic> row, DisplayFormats formats) {
   final adjusted = _adjustmentsOf(row).isNotEmpty;
+  if (row['status'] == 'no_show') {
+    return const [StatusPill('No-show', tone: Tone.bad)];
+  }
+  if (row['status'] == 'excused') {
+    final by = (row['approved_by'] as Map?)?['name'];
+    return [StatusPill(by == null ? 'Excused' : 'Excused by $by')];
+  }
   if (row['status'] == 'approved') {
     final by = (row['approved_by'] as Map?)?['name'];
     final at = formatStamp(row['approved_at'], '', formats: formats);
@@ -781,7 +831,11 @@ class _DayBar extends StatelessWidget {
           ),
     ];
 
+    // Full width: on a phone the card's column starts its children at their
+    // own width, and a painter has none, so the bar drew as a 2 px stub
+    // (phone audit 2026-11-04, Section 3 #7).
     return SizedBox(
+      width: double.infinity,
       height: 16,
       child: CustomPaint(
         key: ValueKey('approval-bar-${(row['person'] as Map?)?['id']}'),
@@ -1122,6 +1176,7 @@ class _AdjustPanel extends StatefulWidget {
     required this.api,
     required this.formats,
     required this.dayLabel,
+    required this.date,
     required this.row,
     required this.personId,
     required this.onSaved,
@@ -1130,6 +1185,9 @@ class _AdjustPanel extends StatefulWidget {
   final ApiClient api;
   final DisplayFormats formats;
   final String dayLabel;
+
+  /// The day, YYYY-MM-DD: Add hours on a no-show needs it.
+  final String date;
   final Map<String, dynamic> row;
   final String personId;
   final ValueChanged<ApiResponse> onSaved;
@@ -1152,7 +1210,25 @@ class _AdjustPanelState extends State<_AdjustPanel> {
     _fill();
   }
 
+  /// A no-show has no shift to adjust: one new shift, at the schedule.
+  static const _newShift = 'new';
+
   void _fill() {
+    if (_shiftsOf(_row).isEmpty) {
+      final scheduled = (_row['scheduled_local'] as Map?) ?? const {};
+      _times.putIfAbsent(
+        _newShift,
+        () => (TextEditingController(), TextEditingController()),
+      );
+      _times[_newShift]!.$1.text = '${scheduled['start'] ?? ''}';
+      _times[_newShift]!.$2.text = '${scheduled['end'] ?? ''}';
+      _held[_newShift] = (null, null);
+      return;
+    }
+    // Hours added: the new shift is a real one now. Its fields leave the
+    // tree this frame, so they are dropped here, not disposed under it.
+    _times.remove(_newShift);
+    _held.remove(_newShift);
     for (final shift in _shiftsOf(_row)) {
       final id = '${shift['id']}';
       final inAt = shift['clocked_in_local'] as String?;
@@ -1202,10 +1278,17 @@ class _AdjustPanelState extends State<_AdjustPanel> {
     });
     ApiResponse? last;
     for (final MapEntry(key: id, value: fields) in changes.entries) {
-      final response = await widget.api.post(
-        '/hr/time-clock/approvals/shifts/$id/adjust',
-        {...fields, 'reason': reason},
-      );
+      final response = id == _newShift
+          ? await widget.api.post('/hr/time-clock/approvals/hours', {
+              ...fields,
+              'user_id': widget.personId,
+              'date': widget.date,
+              'reason': reason,
+            })
+          : await widget.api.post(
+              '/hr/time-clock/approvals/shifts/$id/adjust',
+              {...fields, 'reason': reason},
+            );
       if (!mounted) return;
       if (!response.ok) {
         setState(() {
@@ -1260,6 +1343,29 @@ class _AdjustPanelState extends State<_AdjustPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (shifts.isEmpty && _times[_newShift] != null) ...[
+            Text('Hours worked', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
+            CalendarDayField(
+              key: const ValueKey('approval-add-in'),
+              controller: _times[_newShift]!.$1,
+              formats: widget.formats,
+              label: 'In',
+              withTime: true,
+              dense: true,
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 8),
+            CalendarDayField(
+              key: const ValueKey('approval-add-out'),
+              controller: _times[_newShift]!.$2,
+              formats: widget.formats,
+              label: 'Out',
+              withTime: true,
+              dense: true,
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
           for (final (i, shift) in shifts.indexed) ...[
             if (i > 0) const SizedBox(height: 16),
             Text('Shift ${i + 1}', style: theme.textTheme.titleSmall),

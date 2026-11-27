@@ -1,6 +1,13 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../core/phone_numbers.dart';
+import '../../core/theme.dart';
+import '../../widgets/call_correction.dart';
+import '../../widgets/call_text.dart';
+import '../../widgets/status_pill.dart';
 
 import '../../core/api_client.dart';
 import '../../widgets/date_range_picker.dart';
@@ -20,11 +27,15 @@ class ScoringPersonCalls extends StatefulWidget {
     required this.api,
     required this.person,
     required this.span,
+    this.canCorrect = false,
   });
 
   final ApiClient api;
   final String person;
   final DateSpan span;
+
+  /// May set a call's client and booking by hand (reports.handles, design 179).
+  final bool canCorrect;
 
   @override
   State<ScoringPersonCalls> createState() => _ScoringPersonCallsState();
@@ -112,15 +123,10 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
+        ListSearch(
           key: const ValueKey('scoring-calls-search'),
+          hint: 'Search their calls by number or words',
           onChanged: _search,
-          decoration: const InputDecoration(
-            isDense: true,
-            prefixIcon: Icon(Icons.search),
-            hintText: 'Search their calls by number or words',
-            border: OutlineInputBorder(),
-          ),
         ),
         const SizedBox(height: 8),
         if (_error != null)
@@ -173,17 +179,28 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
                   Text(_when(c['started_at']), style: muted),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      '${c['caller_number'] ?? 'unknown number'}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Copyable(
+                        c['caller_number'] == null
+                            ? 'unknown number'
+                            : formatPhoneNumber('${c['caller_number']}'),
+                        copy: '${c['caller_number'] ?? ''}',
+                        style: theme.textTheme.bodyMedium,
+                      ),
                     ),
                   ),
-                  Text(
-                    score == null ? '—' : '${score.round()}/10',
-                    key: ValueKey('scoring-call-score-$id'),
-                    style: theme.textTheme.titleSmall,
-                  ),
+                  score == null
+                      ? Text(
+                          '—',
+                          key: ValueKey('scoring-call-score-$id'),
+                          style: theme.textTheme.titleSmall,
+                        )
+                      : StatusPill(
+                          '${score.round()}/10',
+                          key: ValueKey('scoring-call-score-$id'),
+                          tone: scoreTone(score),
+                        ),
                   Icon(open ? Icons.expand_less : Icons.expand_more, size: 18),
                 ],
               ),
@@ -205,15 +222,17 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
                       ),
                   ],
                 ),
+              if (open && c['strength'] != null) ...[
+                const SizedBox(height: 6),
+                const ToneHeading('Did well', Tone.ok),
+                Copyable('${c['strength']}'),
+              ],
               if (c['improve'] != null) ...[
-                const SizedBox(height: 4),
-                Text('To improve: ${c['improve']}', style: muted),
+                const SizedBox(height: 6),
+                const ToneHeading('To improve', Tone.caution),
+                Copyable('${c['improve']}'),
               ],
               if (open) ...[
-                if (c['strength'] != null) ...[
-                  const SizedBox(height: 4),
-                  Text('Did well: ${c['strength']}', style: muted),
-                ],
                 if (recording != null) ...[
                   const SizedBox(height: 8),
                   RecordingPlaybackBar(
@@ -229,11 +248,32 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
                 ],
                 if (c['transcript'] != null) ...[
                   const SizedBox(height: 8),
-                  SelectableText(
-                    '${c['transcript']}',
-                    style: theme.textTheme.bodySmall,
-                  ),
+                  CallTranscriptText('${c['transcript']}'),
                 ],
+                // The same controls as Performance (design 179). Only a value
+                // set by hand is selected: Scoring does not read the phones'.
+                if (widget.canCorrect)
+                  for (final (field, label, values) in [
+                    ('client', 'Client', CallCorrection.client),
+                    ('booking', 'Booking', CallCorrection.booking),
+                    ('mark', 'Mark', CallCorrection.mark),
+                  ]) ...[
+                    const SizedBox(height: 6),
+                    CallCorrection(
+                      key: field == 'client'
+                          ? const ValueKey('tour-call-corrections')
+                          : null,
+                      api: widget.api,
+                      callId: id,
+                      field: field,
+                      label: label,
+                      values: values,
+                      current: (c['set'] as Map?)?[field]?['value'] as String?,
+                      setBy: (c['set'] as Map?)?[field]?['by'],
+                      onSaved: _load,
+                      onError: (m) => setState(() => _error = m),
+                    ),
+                  ],
               ],
             ],
           ),

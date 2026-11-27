@@ -23,6 +23,11 @@ class EmploymentEvent extends Model implements HoldsPersonalData
 {
     use HasUuids;
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A write here is its person's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['people', User::class, 'user_id'];
+
 
     public const STARTED = 'started';
 

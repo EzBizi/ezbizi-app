@@ -91,7 +91,7 @@ void main() {
     );
     expect(find.text('John Lynch  ·  Submitted'), findsOneWidget);
     expect(find.text('2145550100'), findsOneWidget);
-    expect(find.text('1430 Red Oaks Dr, Dallas 75201'), findsOneWidget);
+    expect(find.text('1430 Sample Oaks Dr, Dallas 75201'), findsOneWidget);
     expect(find.text('Ivan Sharkov'), findsOneWidget);
     expect(find.text('Gate code 4411'), findsOneWidget);
     // An online booking with nobody on it yet says so.
@@ -113,6 +113,37 @@ void main() {
       findsOneWidget,
       reason: 'Only the franchise row is still open.',
     );
+  });
+
+  // Jose, 2026-11-09: an overbooked area's customers can be offered a move.
+  testWidgets('an opened area row offers a move; the franchise row does not', (
+    tester,
+  ) async {
+    final posted = <String>[];
+    await _pump(
+      tester,
+      _data,
+      <Uri>[],
+      jobs: _jobs,
+      canEdit: true,
+      posted: posted,
+    );
+
+    await tester.tap(find.text('Texas › Dallas').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Offer a move'));
+    await tester.pumpAndSettle();
+
+    expect(jsonDecode(posted.single), {
+      'area_id': 'a-1',
+      'date': '2026-10-05',
+      'kind': 'overbooked',
+    });
+    expect(find.byKey(const ValueKey('booked-offer-panel')), findsOneWidget);
+
+    await tester.tap(find.text('Texas (whole franchise)'));
+    await tester.pumpAndSettle();
+    expect(find.text('Offer a move'), findsNothing);
   });
 
   testWidgets('an opened row draws at phone width without overflowing', (
@@ -216,7 +247,7 @@ const _jobs = [
       'name': 'John Lynch',
       'phone': '2145550100',
       'email': 'john@example.com', //
-      'address': '1430 Red Oaks Dr, Dallas 75201',
+      'address': '1430 Sample Oaks Dr, Dallas 75201',
     },
   },
   {
@@ -241,6 +272,8 @@ Future<void> _pump(
   List<Uri> asked, {
   double width = 1100,
   List<Map<String, dynamic>> jobs = const [],
+  bool canEdit = false,
+  List<String>? posted,
 }) async {
   tester.view.physicalSize = Size(width, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -249,6 +282,7 @@ Future<void> _pump(
   final api = ApiClient(
     client: MockClient((request) async {
       asked.add(request.url);
+      if (request.method == 'POST') posted?.add(request.body);
       return http.Response(
         jsonEncode({
           'data': request.url.path.endsWith('/overbooking/jobs') ? jobs : data,
@@ -262,7 +296,9 @@ Future<void> _pump(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: OverbookingPane(api: api, visible: true)),
+      home: Scaffold(
+        body: OverbookingPane(api: api, visible: true, canEdit: canEdit),
+      ),
     ),
   );
   await tester.pumpAndSettle();

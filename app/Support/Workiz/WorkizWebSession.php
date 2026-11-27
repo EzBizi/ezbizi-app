@@ -4,8 +4,11 @@ namespace App\Support\Workiz;
 
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Support\Social\MetaAdInsights;
+use App\Support\Social\SocialProvider;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -33,6 +36,31 @@ final class WorkizWebSession
     public const BUSY = 'Another Workiz read was using this login; it is read next time.';
 
     public const EXPIRED = 'Workiz signed this session out. Sign in to Workiz and send the session to EzBizi again.';
+
+    /**
+     * Run $read inside the organization of every connected Workiz web login,
+     * and add up what each returns. $read is handed the login and the total so
+     * far (the job-companies read spends one limit across all of them).
+     *
+     * @param  callable(SocialConnection, int): int  $read
+     */
+    public static function eachConnection(TenantContext $tenant, callable $read): int
+    {
+        $total = 0;
+
+        $connections = SocialConnection::query()->withoutGlobalScopes()
+            ->where('provider', SocialProvider::WorkizWeb->value)->where('status', 'connected')->get();
+
+        foreach ($connections as $connection) {
+            $organization = Organization::query()->withoutGlobalScopes()->find($connection->organization_id);
+
+            if ($organization !== null) {
+                $total += $tenant->run($organization, fn () => $read($connection, $total));
+            }
+        }
+
+        return $total;
+    }
 
     /**
      * Keep the cookies a person sent, after one call proves them. Answers the
@@ -66,11 +94,13 @@ final class WorkizWebSession
 
     /**
      * One internal call. JSON in and out; the cookie jar follows Set-Cookie,
-     * so a franchise switch carries into the next call.
+     * so a franchise switch carries into the next call. A $file
+     * ['name', 'bytes', 'mime'] goes as Workiz's own `the_file` multipart
+     * field, with $json as the other form fields.
      *
      * @return array{data: mixed, refused: ?string}
      */
-    public static function call(SocialConnection $connection, string $path, ?array $json = null, string $form = ''): array
+    public static function call(SocialConnection $connection, string $path, ?array $json = null, string $form = '', ?array $file = null): array
     {
         $cred = (array) $connection->credentials;
         $request = Http::withoutRedirecting()->withHeaders([
@@ -80,6 +110,8 @@ final class WorkizWebSession
         ])->timeout(60);
 
         $response = match (true) {
+            $file !== null => $request->attach('the_file', $file['bytes'], $file['name'], ['Content-Type' => $file['mime']])
+                ->post(self::ORIGIN.$path, $json ?? []),
             $json !== null => $request->post(self::ORIGIN.$path, $json),
             $form !== '' => $request->withBody($form, 'application/x-www-form-urlencoded; charset=UTF-8')->post(self::ORIGIN.$path),
             default => $request->get(self::ORIGIN.$path),
@@ -182,6 +214,58 @@ final class WorkizWebSession
      * Nationwide), the longest such name if several; the tenant's own mapping
      * (`credentials.accounts`) overrides it. Null when neither names one.
      */
+    /** The login's account whose books are this branch's, or null. */
+    public static function accountFor(SocialConnection $connection, string $franchiseId): ?string
+    {
+        $account = collect(self::accounts($connection))
+            ->search(fn ($name, $a) => self::franchiseFor($connection, (string) $a, (string) $name)?->getKey() === $franchiseId);
+
+        return $account === false ? null : (string) $account;
+    }
+
+    /**
+     * Take tags off a job in Workiz. v2's PUT {tags} only ever adds (measured
+     * 2026-11-10 on NY Y7TCXI, and {tags: []} changes nothing); the job page's
+     * own POST /ajaxc/jobTags/remove/ {id, objectId, context: job} does it
+     * (measured on NY 900018655: removed, then added back).
+     *
+     * @param  list<string>  $names
+     * @return array{removed: list<string>, refused: ?string}
+     */
+    public static function removeJobTags(string $franchiseId, string $uuid, array $names): array
+    {
+        $login = SocialConnection::query()->where('provider', SocialProvider::WorkizWeb->value)->where('status', 'connected')->first();
+        $account = $login === null ? null : self::accountFor($login, $franchiseId);
+
+        if ($account === null) {
+            return ['removed' => [], 'refused' => 'No Workiz web login reaches this branch, so tags can only be added in Workiz, not removed.'];
+        }
+
+        return self::inAccount($login, $account, function () use ($login, $uuid, $names) {
+            $all = self::call($login, '/ajaxc/jobTags/getAll/');
+            $job = self::call($login, '/ajaxc/job/get/'.rawurlencode($uuid).'/');
+            $objectId = ((array) ($job['data']['data'] ?? $job['data'] ?? []))['id'] ?? null;
+
+            if ($all['refused'] !== null || $job['refused'] !== null || ! is_numeric($objectId)) {
+                return ['removed' => [], 'refused' => $all['refused'] ?? $job['refused'] ?? 'Workiz did not find this job.'];
+            }
+
+            $ids = collect((array) ($all['data']['data'] ?? $all['data']))->filter(fn ($t) => is_array($t))
+                ->mapWithKeys(fn ($t) => [mb_strtolower(trim((string) ($t['name'] ?? ''))) => (string) ($t['id'] ?? '')]);
+            $removed = [];
+
+            foreach ($names as $name) {
+                $id = $ids[mb_strtolower(trim($name))] ?? null;
+
+                if ($id !== null && (self::call($login, '/ajaxc/jobTags/remove/', ['id' => $id, 'objectId' => (string) $objectId, 'context' => 'job'])['data']['flag'] ?? false) === true) {
+                    $removed[] = $name;
+                }
+            }
+
+            return ['removed' => $removed, 'refused' => null];
+        });
+    }
+
     public static function franchiseFor(SocialConnection $connection, string $account, string $name = ''): ?Franchise
     {
         $id = ((array) ($connection->credentials['accounts'] ?? []))[$account] ?? null;

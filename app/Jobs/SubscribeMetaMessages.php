@@ -4,13 +4,17 @@ namespace App\Jobs;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Social\ConnectionSetup;
+use App\Support\Social\MetaLeadForms;
 use App\Support\Social\MetaMessages;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use Throwable;
 
 /**
  * Tell Meta to deliver a connected Page's or Instagram account's messages to us.
@@ -29,6 +33,9 @@ use RuntimeException;
 final class SubscribeMetaMessages implements ShouldQueue
 {
     use Queueable;
+
+    /** How far back a reconnect reads what it missed; a longer outage is rare enough to run by hand. */
+    private const CATCH_UP_DAYS = 7;
 
     public int $tries = 3;
 
@@ -72,6 +79,10 @@ final class SubscribeMetaMessages implements ShouldQueue
         $response = $connection->provider === SocialProvider::FacebookPage->value
             ? $post($fields.',leadgen')
             : null;
+        // Said on the card, not dropped quietly (Jose, 2026-11-12: a connect finishes its own setup).
+        $leadgenRefused = $response !== null && ($response->failed() || $response->json('success') !== true)
+            ? (string) ($response->json('error.message') ?? 'HTTP '.$response->status())
+            : null;
 
         if ($response === null || $response->failed() || $response->json('success') !== true) {
             $response = $post($fields);
@@ -87,9 +98,35 @@ final class SubscribeMetaMessages implements ShouldQueue
         // A reconnect is a new row: the enquiries the old one brought were
         // hidden with it (connection_id nulled) and come back here (Jose,
         // 2026-10-14: "the facebook messenger leads are not appearing anymore").
+        //
+        // And what arrived while it was disconnected was never delivered at all:
+        // it is read back from Meta (37 Messenger enquiries on 2026-11-05).
         app(TenantContext::class)->run(
             Organization::findOrFail($connection->organization_id),
-            fn () => app(MetaMessages::class)->reclaim($connection),
+            function () use ($connection, $leadgenRefused) {
+                if ($connection->provider === SocialProvider::FacebookPage->value) {
+                    $connection->forceFill(['credentials' => [...(array) $connection->credentials, 'leadgen_refused' => $leadgenRefused]])->save();
+                }
+
+                app(MetaMessages::class)->reclaim($connection);
+
+                // Never a reason to subscribe again: the hourly run asks the same.
+                try {
+                    app(MetaMessages::class)->catchUp($connection, now()->subDays(self::CATCH_UP_DAYS));
+
+                    if ($connection->provider === SocialProvider::FacebookPage->value) {
+                        app(MetaLeadForms::class)->catchUp($connection, now()->subDays(self::CATCH_UP_DAYS));
+                    }
+                } catch (Throwable $e) {
+                    Log::warning('Meta catch-up after a reconnect failed.', ['connection_id' => $connection->getKey(), 'reason' => $e->getMessage()]);
+                }
+            },
         );
+    }
+
+    /** The card goes broken with what did not finish, not green over failed_jobs (Jose, 2026-11-12). */
+    public function failed(Throwable $e): void
+    {
+        ConnectionSetup::failed($this->connectionId, 'Meta did not accept the message subscription, so messages and lead forms are not arriving. Reconnect.', $e);
     }
 }

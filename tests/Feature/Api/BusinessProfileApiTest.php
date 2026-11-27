@@ -82,6 +82,44 @@ class BusinessProfileApiTest extends TestCase
             ->assertJsonCount(1, 'data.failures');
     }
 
+    /** Scheduling › Locations, 2026-11-05: a listing with no storefront is placed by its service area. */
+    public function test_a_service_area_listing_keeps_its_places(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->inTenant($t['org'], function () use ($t) {
+            $c = new SocialConnection;
+            $c->forceFill([
+                'organization_id' => $t['org']->id,
+                'scope_type' => SocialConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'provider' => SocialProvider::GoogleBusinessProfile->value,
+                'remote_id' => 'acct-1',
+                'display_name' => 'acct-1',
+            ]);
+            $c->connect(['refresh_token' => 'rt-1']);
+            $c->save();
+        });
+        config([
+            'services.business_profile.client_id' => 'client.apps.googleusercontent.com',
+            'services.business_profile.client_secret' => 'client-secret',
+        ]);
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600], 200),
+            'mybusinessbusinessinformation.googleapis.com/v1/*acct-1/locations*' => Http::response(['locations' => [
+                ['name' => 'locations/1', 'title' => 'A1 Chimney', 'serviceArea' => ['businessType' => 'CUSTOMER_LOCATION_ONLY',
+                    'places' => ['placeInfos' => [['placeName' => 'Warren, MI, USA', 'placeId' => 'p1'], ['placeName' => 'Detroit, MI, USA', 'placeId' => 'p2']]]]],
+                // An area given only as a region has no places, and must not break the read.
+                ['name' => 'locations/2', 'title' => 'A1 Region', 'serviceArea' => ['businessType' => 'CUSTOMER_LOCATION_ONLY', 'regionCode' => 'US']],
+            ]], 200),
+        ]);
+
+        $this->signedInAs($t['admin'])->postJson('/api/v1/business-profile/sync')->assertOk()->assertJsonPath('data.fetched', 2);
+
+        Http::assertSent(fn ($r) => str_contains((string) urldecode($r->url()), 'serviceArea'));
+        $places = $this->inTenant($t['org'], fn () => BusinessLocation::query()->orderBy('remote_name')->pluck('service_places')->all());
+        $this->assertSame([['Warren, MI, USA', 'Detroit, MI, USA'], null], $places);
+    }
+
     public function test_a_listing_is_shown_with_its_address_on_one_line(): void
     {
         $t = $this->provisionTenant('A1-Group');

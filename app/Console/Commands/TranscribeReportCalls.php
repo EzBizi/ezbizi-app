@@ -9,7 +9,7 @@ use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Services\Leads\CallTranscripts;
 use App\Support\Phone\NumberNames;
-use App\Support\Reports\Experimental\CallReconciliation;
+use App\Support\Reports\Experimental\PersonNames;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
@@ -39,6 +39,9 @@ use Throwable;
  */
 class TranscribeReportCalls extends Command
 {
+    /** @var array<string, PersonNames> organization => its names, for this run */
+    private array $names = [];
+
     protected $signature = 'ezbizi:transcribe-report-calls
         {--days=2 : days back to look, including today}
         {--minutes=3 : how long a run may take}
@@ -158,8 +161,11 @@ class TranscribeReportCalls extends Command
      */
     private function who(array $call): array
     {
+        // Per organization: one run reads several, and each has its own pairs.
+        $names = $this->names[(string) app(TenantContext::class)->get()?->getKey()] ??= PersonNames::forTenant();
+
         return [
-            'answered_by' => CallReconciliation::ALIASES[$call['answered_by']] ?? $call['answered_by'],
+            'answered_by' => $names->canonical($call['answered_by']) ?? $call['answered_by'],
             'call_started_at' => isset($call['started_at']) ? CarbonImmutable::parse($call['started_at']) : null,
             'caller_number' => $call['from'] ?? null,
             'recording_id' => $call['recording_id'] ?? null,

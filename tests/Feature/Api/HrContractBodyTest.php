@@ -843,6 +843,7 @@ class HrContractBodyTest extends TestCase
                 'options' => ['Bag', 'Drill'], 'required' => false]),
             $this->field(['key' => 'passport', 'label' => 'Passport', 'type' => 'file',
                 'filled_by' => 'employee', 'required' => false]),
+            $this->field(['key' => 'stages', 'label' => 'Hourly rate stages', 'type' => 'rate_steps', 'required' => false]),
             $this->signatureField(),
         ];
 

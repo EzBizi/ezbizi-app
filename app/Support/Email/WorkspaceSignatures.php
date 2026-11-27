@@ -2,11 +2,16 @@
 
 namespace App\Support\Email;
 
+use App\Models\Company;
 use App\Models\GoogleWorkspaceConnection;
 use App\Models\GoogleWorkspacePerson;
+use App\Models\GoogleWorkspaceSignatureTemplate;
 use App\Models\User;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Collection;
+use App\Support\Files\FileStore;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Google Workspace management (Jose, 2026-10-22): the people on a connected
@@ -22,7 +27,17 @@ final class WorkspaceSignatures
     public const SCOPE_SETTINGS = 'https://www.googleapis.com/auth/gmail.settings.basic';
 
     /** What a template may say, filled per person. */
-    public const PLACEHOLDERS = ['name', 'first_name', 'last_name', 'email', 'phone', 'title', 'company'];
+    public const PLACEHOLDERS = [
+        'name', 'first_name', 'last_name', 'email', 'title', 'company',
+        'phone', 'mobile', 'office_phone', 'extension', 'photo_url',
+        'website', 'address', 'linkedin', 'facebook', 'instagram',
+    ];
+
+    /** What a person can be given here because no directory holds it (Jose, 2026-11-09). */
+    public const PERSON_FIELDS = [
+        'title', 'phone', 'mobile', 'office_phone', 'extension', 'photo_url',
+        'website', 'address', 'linkedin', 'facebook', 'instagram',
+    ];
 
     /** Gmail refuses a signature longer than this. */
     public const MAX_LENGTH = 10000;
@@ -64,16 +79,19 @@ final class WorkspaceSignatures
     {
         $links = GoogleWorkspacePerson::query()
             ->where('google_workspace_connection_id', $connection->getKey())
-            ->with('user:id,name,email,first_name,last_name,phone')
+            ->with('user:id,name,email,first_name,last_name,phone,avatar_path')
             ->get()
             ->keyBy('address');
 
         $byEmail = User::query()
             ->where('is_active', true)
-            ->get(['id', 'name', 'email', 'first_name', 'last_name', 'phone'])
+            ->get(['id', 'name', 'email', 'first_name', 'last_name', 'phone', 'avatar_path'])
             ->keyBy(fn (User $u) => mb_strtolower((string) $u->email));
 
-        return array_map(function (array $person) use ($links, $byEmail) {
+        $templates = $this->templates($connection)->keyBy('id');
+        $logo      = $this->companyLogoUrl($connection);
+
+        return array_map(function (array $person) use ($links, $byEmail, $connection, $templates, $logo) {
             $row  = $links->get($person['address']);
             $user = $row?->user;
             $how  = $user !== null ? 'linked' : null;
@@ -84,9 +102,18 @@ final class WorkspaceSignatures
                 $how  = 'same_email';
             }
 
+            $person['fields'] = $row?->fields ?? [];   // the client reads either shape
+            [$source, $using] = $this->resolve($connection, $row, $templates);
+            $rendered = $source === null ? null : $this->render($source, $person, $user, $this->companyName($connection), $logo);
+
             return [
                 ...$person,
                 'user'                  => $user ? ['id' => $user->id, 'name' => $user->name] : null,
+                // Which signature this address gets, and whether Gmail has that exact one.
+                'template_id'           => $row?->signature_template_id,
+                'using'                 => $using,
+                'pushed'                => $row?->signature_applied_hash === null ? null
+                    : ($rendered !== null && hash('sha256', $rendered) === $row->signature_applied_hash ? 'current' : 'changed'),
                 // What a signature would be filled with, and where each value
                 // comes from: EzBizi's person first, the directory second.
                 'fills'                 => $this->fills($person, $user),
@@ -120,10 +147,118 @@ final class WorkspaceSignatures
         $this->rowFor($connection, $address)->forceFill(['signature_html' => $html])->save();
     }
 
-    /** The signature this address gets: its own, else the Workspace template. */
+    /** The signature this address gets: its own, its template, the default, the old single template. */
     public function sourceFor(GoogleWorkspaceConnection $connection, string $address): ?string
     {
-        return $this->row($connection, $address)?->signature_html ?? $connection->signature_template;
+        return $this->resolve($connection, $this->row($connection, $address), $this->templates($connection)->keyBy('id'))[0];
+    }
+
+    /**
+     * @param  Collection<string, GoogleWorkspaceSignatureTemplate>  $templates
+     * @return array{0: ?string, 1: array{kind: string, id: ?string, name: ?string}}
+     */
+    private function resolve(GoogleWorkspaceConnection $connection, ?GoogleWorkspacePerson $row, Collection $templates): array
+    {
+        if ($row?->signature_html !== null) {
+            return [$row->signature_html, ['kind' => 'own', 'id' => null, 'name' => 'Own signature']];
+        }
+
+        if (($t = $templates->get($row?->signature_template_id ?? '')) !== null) {
+            return [$t->html, ['kind' => 'template', 'id' => $t->id, 'name' => $t->name]];
+        }
+
+        if (($t = $templates->get($connection->default_signature_template_id ?? '')) !== null) {
+            return [$t->html, ['kind' => 'default', 'id' => $t->id, 'name' => $t->name]];
+        }
+
+        $legacy = $connection->signature_template;
+
+        return [$legacy, ['kind' => $legacy === null ? 'none' : 'legacy', 'id' => null, 'name' => null]];
+    }
+
+    /** @return Collection<int, GoogleWorkspaceSignatureTemplate> */
+    public function templates(GoogleWorkspaceConnection $connection): Collection
+    {
+        return GoogleWorkspaceSignatureTemplate::query()
+            ->where('google_workspace_connection_id', $connection->getKey())
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
+     * Give these addresses a template; null puts them back on the default.
+     *
+     * @param  list<string>  $addresses
+     */
+    public function assign(GoogleWorkspaceConnection $connection, array $addresses, ?string $templateId): void
+    {
+        foreach ($addresses as $address) {
+            $this->rowFor($connection, $address)->forceFill(['signature_template_id' => $templateId])->save();
+        }
+    }
+
+    /** @param array<string, mixed> $fields  an empty value removes it */
+    public function setFields(GoogleWorkspaceConnection $connection, string $address, array $fields): void
+    {
+        $row  = $this->rowFor($connection, $address);
+        $kept = $row->fields ?? [];
+
+        foreach (array_intersect_key($fields, array_flip(self::PERSON_FIELDS)) as $key => $value) {
+            if (trim((string) $value) === '') {
+                unset($kept[$key]);
+            } else {
+                $kept[$key] = trim((string) $value);
+            }
+        }
+
+        $row->forceFill(['fields' => $kept === [] ? null : $kept])->save();
+    }
+
+    /**
+     * The company's logo at a public address Gmail can fetch for ever, or null
+     * when it has none. Copied beside the uploaded signature photos under a
+     * keyed hash of its path: public, but not a guessable address that would
+     * list every organization's logo (the reason logos are served privately).
+     * A new logo is a new path, so a new address.
+     */
+    public function companyLogoUrl(GoogleWorkspaceConnection $connection): ?string
+    {
+        $company = $connection->scope_type === 'company' ? Company::find($connection->scope_id) : null;
+
+        return $this->publicCopy($company?->logo_path ?? $connection->organization?->logo_path);
+    }
+
+    /**
+     * A stored picture (logo or EzBizi photo) at a permanent public address,
+     * copied beside the uploaded signature photos under a keyed hash of its
+     * path. Null when there is none or it cannot be read.
+     */
+    public function publicCopy(?string $path): ?string
+    {
+        if ($path === null || $path === '') {
+            return null;
+        }
+
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $name      = hash_hmac('sha1', $path, (string) config('app.key'))
+            .'.'.(in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true) ? $extension : 'png');
+
+        if (! Storage::disk('local')->exists('signature-photos/'.$name)) {
+            $bytes = app(FileStore::class)->contents($path);
+
+            if ($bytes === null) {
+                return null;
+            }
+
+            Storage::disk('local')->put('signature-photos/'.$name, $bytes);
+        }
+
+        return url('/api/v1/signature-photos/'.$name);
+    }
+
+    public function companyName(GoogleWorkspaceConnection $connection): string
+    {
+        return $this->workspace->scopeLabel($connection);
     }
 
     /**
@@ -153,28 +288,112 @@ final class WorkspaceSignatures
      *
      * @param  array<string, mixed>  $person  a row from {@see people()}
      */
-    public function render(string $template, array $person, ?User $user, string $company): string
+    public function render(string $template, array $person, ?User $user, string $company, ?string $logoUrl = null): string
     {
-        $name  = (string) ($user?->name ?: ($person['name'] ?? ''));
-        $parts = preg_split('/\s+/', trim($name), 2) ?: [];
-
-        $values = [
-            'name'       => $name,
-            'first_name' => (string) ($user?->first_name ?: ($person['first_name'] ?? $parts[0] ?? '')),
-            'last_name'  => (string) ($user?->last_name ?: ($person['last_name'] ?? $parts[1] ?? '')),
-            'email'      => (string) ($person['address'] ?? ''),
-            'phone'      => (string) ($user?->phone ?: ($person['phone'] ?? '')),
-            'title'      => (string) ($person['title'] ?? ''),
-            'company'    => $company,
-        ];
-
-        return preg_replace_callback(
+        $values = $this->values($person, $user, $company);
+        $fill   = fn (string $html) => preg_replace_callback(
             '/\{\{\s*([a-z_]+)\s*\}\}/',
             fn (array $m) => array_key_exists($m[1], $values)
                 ? htmlspecialchars($values[$m[1]], ENT_QUOTES | ENT_HTML5, 'UTF-8')
                 : $m[0],
+            $html,
+        ) ?? $html;
+
+        // {{#mobile}}...{{/mobile}} is kept only when that value is there, so an
+        // empty field drops its whole line instead of leaving a label behind.
+        // {{^photo_url}} is the opposite: kept only when the value is missing --
+        // and then only if its pictures exist. A stock-photo address per person
+        // (/photos/{{email}}.jpg) is missing for most people, and Gmail would
+        // show each of them a broken picture (79 of 96 at A-1, 2026-11-10).
+        // A missing one becomes the company logo in the same slot, never a
+        // dropped column: dropping it narrowed the whole signature, tagline bar
+        // and all (Jose 11-13, Eric's).
+        $template = preg_replace_callback(
+            '/\{\{([#^])\s*([a-z_]+)\s*\}\}(.*?)\{\{\/\s*\2\s*\}\}/s',
+            function (array $m) use ($values, $fill, $logoUrl) {
+                if ((trim($values[$m[2]] ?? '') === '') !== ($m[1] === '^')) {
+                    return '';
+                }
+
+                if ($m[1] !== '^' || $this->picturesExist($fill($m[3]))) {
+                    return $m[3];
+                }
+
+                return $logoUrl === null ? '' : (preg_replace(
+                    '/(<img[^>]+src=")[^"]*(")/i',
+                    '${1}'.htmlspecialchars($logoUrl, ENT_QUOTES | ENT_HTML5, 'UTF-8').'${2}',
+                    $m[3],
+                ) ?? '');
+            },
             $template,
         ) ?? $template;
+
+        return $fill($template);
+    }
+
+    /**
+     * Whether every picture in this HTML answers. Remembered for a day, so a
+     * list of a hundred people is not a hundred fetches on every preview.
+     * ponytail: a picture added after a miss shows up within a day.
+     */
+    private function picturesExist(string $html): bool
+    {
+        preg_match_all('/<img[^>]+src="([^"]+)"/i', $html, $found);
+
+        foreach ($found[1] as $src) {
+            $url = html_entity_decode($src, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+            $ok = \Illuminate\Support\Facades\Cache::remember('signature-picture:'.sha1($url), 86400, function () use ($url) {
+                try {
+                    return Http::timeout(5)->head($url)->successful();
+                } catch (\Throwable) {
+                    return false;
+                }
+            });
+
+            if (! $ok) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Every placeholder's value for one person: what was set for them here,
+     * then their EzBizi person, then the Google directory, then nothing.
+     *
+     * @param  array<string, mixed>  $person
+     * @return array<string, string>
+     */
+    public function values(array $person, ?User $user, string $company): array
+    {
+        $own   = is_array($person['fields'] ?? null) ? $person['fields'] : [];
+        $name  = (string) ($user?->name ?: ($person['name'] ?? ''));
+        $parts = preg_split('/\s+/', trim($name), 2) ?: [];
+        $first = fn (mixed ...$v): string => (string) (collect($v)->first(fn ($x) => filled($x)) ?? '');
+
+        $values = [
+            'name'       => $name,
+            'first_name' => $first($user?->first_name, $person['first_name'] ?? null, $parts[0] ?? null),
+            'last_name'  => $first($user?->last_name, $person['last_name'] ?? null, $parts[1] ?? null),
+            'email'      => (string) ($person['address'] ?? ''),
+            'company'    => $company,
+            'title'      => $first($own['title'] ?? null, $person['title'] ?? null),
+            'phone'      => $first($own['phone'] ?? null, $user?->phone, $person['phone'] ?? null),
+        ];
+
+        foreach (self::PERSON_FIELDS as $key) {
+            $values[$key] ??= (string) ($own[$key] ?? '');
+        }
+
+        // Their EzBizi photo when none was set for the signature (Jose 11-13:
+        // Eric has one and his signature showed none).
+        if (($values['photo_url'] ?? '') === '' && $user?->avatar_path !== null) {
+            $values['photo_url'] = (string) $this->publicCopy($user->avatar_path);
+        }
+
+        return $values;
     }
 
     /** @throws GoogleWorkspaceRefused */
@@ -201,7 +420,10 @@ final class WorkspaceSignatures
             throw GoogleWorkspaceRefused::impersonationFailed($address);
         }
 
-        $this->rowFor($connection, $address)->forceFill(['signature_applied_at' => now()])->save();
+        $this->rowFor($connection, $address)->forceFill([
+            'signature_applied_at'   => now(),
+            'signature_applied_hash' => hash('sha256', $html),
+        ])->save();
     }
 
     private function gmail(string $address): \Illuminate\Http\Client\PendingRequest

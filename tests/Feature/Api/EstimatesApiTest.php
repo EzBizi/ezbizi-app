@@ -88,6 +88,8 @@ class EstimatesApiTest extends TestCase
             ->assertOk()->json('meta');
 
         $this->assertSame(['draft' => 2, 'sent' => 1, 'accepted' => 1, 'declined' => 0, 'archived' => 0], $meta['status_counts']);
+        $this->assertSame(['accepted', 'declined', 'archived'], $meta['transitions']['sent']);
+        $this->assertSame([], $meta['transitions']['archived']);
         $this->assertSame(['USD' => ['quoted' => 100000, 'accepted' => 40000]], $meta['totals']);
     }
 
@@ -105,7 +107,9 @@ class EstimatesApiTest extends TestCase
 
         $this->assertSame([$theirs['id']], $search('crown'));
         $this->assertSame([$theirs['id']], $search('C-900'));
-        $this->assertSame([$mine['id']], $search($mine['number']));
+        // A number is a substring search, so another estimate whose number contains this one
+        // (E-7 inside E-17) also matches; the claim is that the number finds its estimate.
+        $this->assertContains($mine['id'], $search($mine['number']));
         $this->assertCount(2, $search(''), 'The control: an empty search filters nothing.');
     }
 

@@ -3,6 +3,9 @@
 namespace App\Support\Ai;
 
 use App\Models\AiTrace;
+use App\Models\Organization;
+use App\Support\Settings\SettingRegistry;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
@@ -30,11 +33,12 @@ final class GrokCli
      * 2026-10-13: "use emojis, line breaks ... better ui-ux experience").
      * WhatsApp renders *bold* and _italic_, not Markdown headings or tables.
      */
-    public const WHATSAPP_STYLE = 'FORMAT FOR WHATSAPP: start with a short *bold* title line with one fitting emoji. '
-        ."Then one fact per line, each line starting with a fitting emoji (for example \u{1F4B0} money, "
-        ."\u{1F4C5} dates, \u{1F527} jobs, \u{1F464} people, \u{2705} done, \u{274C} canceled, \u{1F4CD} places, "
-        ."\u{1F4DE} phone). Put a blank line between groups. Use *bold* for names and key numbers. No "
-        .'Markdown headings (#), no tables, no ** double asterisks. Keep it short.';
+    // Less rigid since 2026-11-03 (Jose: "it should just answer, like you would
+    // like an AI agent would"): a direct answer first, the layout only when it helps.
+    public const WHATSAPP_STYLE = 'FORMAT FOR WHATSAPP: answer like a helpful colleague texting back: the direct '
+        .'answer first, in plain words. For a list or several figures, one per line with a fitting emoji '
+        ."(for example \u{1F4B0} money, \u{1F4C5} dates, \u{1F527} jobs, \u{1F464} people, \u{1F4CD} places). "
+        .'Use *bold* for names and key numbers. No Markdown headings (#), no tables, no ** double asterisks. Keep it short.';
 
     /** A long call's speaker split can take minutes; 120 s timed out on prod. */
     private const TIMEOUT = 300;
@@ -43,6 +47,17 @@ final class GrokCli
     public static function since(): CarbonImmutable
     {
         return CarbonImmutable::parse((string) config('services.grok_cli.since', '2026-10-13'))->startOfDay();
+    }
+
+    /** What this org's business does, for a prompt (ai_assistance.trades); the default without one. */
+    public static function trades(?string $organizationId): string
+    {
+        $org = $organizationId === null ? null : Organization::find($organizationId);
+        $settings = app(SettingsResolver::class);
+
+        return $org === null
+            ? (string) app(SettingRegistry::class)->getOrFail('ai_assistance.trades')->default
+            : (string) app(TenantContext::class)->run($org, fn () => $settings->get('ai_assistance.trades', $org));
     }
 
     /** Some AI is set up (GrokCli::provider()). */
@@ -59,9 +74,9 @@ final class GrokCli
      *                          or answers without the structured output: loud,
      *                          never an empty answer
      */
-    public static function ask(string $prompt, array $schema, int $timeout = self::TIMEOUT, array $files = []): array
+    public static function ask(string $prompt, array $schema, int $timeout = self::TIMEOUT, array $files = [], ?AiProvider $provider = null): array
     {
-        $answer = self::askMany([$prompt], $schema, $timeout, $files)[0];
+        $answer = self::askMany([$prompt], $schema, $timeout, $files, $provider)[0];
 
         if ($answer instanceof RuntimeException) {
             throw $answer;
@@ -82,11 +97,12 @@ final class GrokCli
      * @param  list<string>  $prompts
      * @param  array<string, string>  $files  name => bytes put beside the question for it to read (a photo), read-only
      * @param  array<string, mixed>  $schema
+     * @param  AiProvider|null  $provider  one AI in particular (Reports' call labels ask each); null is provider()
      * @return list<array<string, mixed>|RuntimeException> in the prompts' order
      */
-    public static function askMany(array $prompts, array $schema, int $timeout = self::TIMEOUT, array $files = []): array
+    public static function askMany(array $prompts, array $schema, int $timeout = self::TIMEOUT, array $files = [], ?AiProvider $provider = null): array
     {
-        $provider = self::provider();
+        $provider ??= self::provider();
 
         // No AI configured for this install: every question gets the same calm
         // failure its caller already handles, never a crash (Jose, 2026-10-27:
@@ -97,6 +113,17 @@ final class GrokCli
 
         $started = microtime(true);
         $answers = $provider->askMany(array_values($prompts), $schema, $timeout, $files);
+
+        // An empty answer is asked once more (prod 2026-10-26..11-02: 13 of
+        // 17 failures in 11,746 calls were "without structured output" with
+        // empty text - a blip, not a refusal). Timeouts are not retried.
+        $empty = array_keys(array_filter($answers, fn ($a) => $a instanceof RuntimeException && str_contains($a->getMessage(), 'without structured output')));
+        if ($empty !== []) {
+            $again = $provider->askMany(array_values(array_intersect_key(array_values($prompts), array_flip($empty))), $schema, $timeout, $files);
+            foreach ($empty as $n => $i) {
+                $answers[$i] = $again[$n];
+            }
+        }
         $ms = (int) round((microtime(true) - $started) * 1000);
 
         foreach (array_values($prompts) as $i => $prompt) {

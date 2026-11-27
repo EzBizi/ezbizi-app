@@ -2,9 +2,9 @@
 Contributors: ezbizi
 Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
-Tested up to: 7.1
+Tested up to: 7.2
 Requires PHP: 7.4
-Stable tag: 1.26.23
+Stable tag: 1.26.37
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,48 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.37 =
+* Tested with WordPress 7.2 (RC1): admin screen, REST routes and shortcodes run with no notices.
+
+= 1.26.36 =
+* JSON-LD rating rewrite keeps the comma after a bare reviewCount (it made the block invalid JSON).
+
+= 1.26.35 =
+* [ezbizi_before_after] shows approved before/after pairs from Inspections.
+
+= 1.26.34 =
+* Hand-typed aggregateRating JSON-LD on a page follows the live review numbers, like the badge.
+
+= 1.26.33 =
+* NEW: [ezbizi_rating] prints the real review count and average from EzBizi, with schema.
+
+= 1.26.32 =
+* A site filter that patches EzBizi's stored values no longer makes every refresh purge the page cache.
+
+= 1.26.31 =
+* The page cache is no longer purged when only a signed link's expiry changes.
+
+= 1.26.30 =
+* CHANGE: The booking widget says confirmation is automatic, not a phone call, and asks for an optional email for the confirmation.
+
+= 1.26.29 =
+* NEW: The booking widget's last step has an unticked, optional box to agree to text messages, linking the site's privacy and terms pages.
+
+= 1.26.28 =
+* FIX: When EzBizi says "too many requests", the site waits 15 minutes instead of retrying every minute.
+
+= 1.26.27 =
+* CHANGE: A form button with no text of its own now says "Book a visit" (was "Get a free estimate").
+
+= 1.26.26 =
+* FIX: The booking card grows to fit each step, so Book appointment is never cut off on a phone.
+
+= 1.26.25 =
+* NEW: The review page shows the text-message consent line under the faces.
+
+= 1.26.24 =
+* FIX: A cached read whose expiry was lost no longer serves old values forever.
 
 = 1.26.23 =
 * NEW: Tells EzBizi whether any published page carries the booking widget.

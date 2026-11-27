@@ -29,6 +29,17 @@ void main() {
     );
   });
 
+  // UI queue 168: one line per module; its permissions open on a tap.
+  testWidgets('permissions are counted, and listed once opened', (tester) async {
+    await _pump(tester, <Uri>[]);
+    expect(find.text('2 permissions'), findsOneWidget);
+    expect(find.text('jobs.view'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('module-permissions-jobs')));
+    await tester.pumpAndSettle();
+    expect(find.text('jobs.view'), findsOneWidget);
+  });
+
   testWidgets('a search that matches nothing says so in one sentence', (
     tester,
   ) async {
@@ -58,7 +69,7 @@ const List<Map<String, Object?>> _rows = [
     'label': 'Jobs',
     'state': 'enabled',
     'is_default': true,
-    'permissions': <String>[],
+    'permissions': <String>['jobs.view', 'jobs.edit'],
   },
   {
     'key': 'fleet',

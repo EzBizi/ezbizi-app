@@ -28,6 +28,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ReviewReply extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A write here is its review's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['reviews', Review::class, 'review_id'];
+
     use HasUuids;
 
     public const STATUS_DRAFT     = 'draft';

@@ -129,93 +129,78 @@ class _AddLocationPaneState extends State<AddLocationPane> {
         (_companyId != null || _atOrganization) &&
         (_kind != 'van' || _vehicleId != null);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return formPane(
+      context,
+      'New location',
+      showBack: widget.showBack,
+      busy: _busy,
+      onCancel: widget.onCancel,
+      onSave: canSave ? _save : null,
       children: [
-        paneHeader(
-          context,
-          'New location',
-          showBack: widget.showBack,
-          onBack: _busy ? null : widget.onCancel,
+        InventoryPlaceFields(
+          me: _me,
+          companyId: _companyId,
+          franchiseId: _franchiseId,
+          enabled: !_busy,
+          onCompanyChanged: (v) => setState(() {
+            _companyId = v;
+            _franchiseId = null;
+          }),
+          onFranchiseChanged: (v) => setState(() => _franchiseId = v),
         ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                InventoryPlaceFields(
-                  me: _me,
-                  companyId: _companyId,
-                  franchiseId: _franchiseId,
-                  enabled: !_busy,
-                  onCompanyChanged: (v) => setState(() {
-                    _companyId = v;
-                    _franchiseId = null;
-                  }),
-                  onFranchiseChanged: (v) => setState(() => _franchiseId = v),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _name,
-                  enabled: !_busy,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final k in _kinds)
-                      ChoiceChip(
-                        label: Text(k.$2),
-                        selected: _kind == k.$1,
-                        onSelected: _busy
-                            ? null
-                            : (_) {
-                                setState(() {
-                                  _kind = k.$1;
-                                  if (_kind != 'van') _vehicleId = null;
-                                });
-                                if (k.$1 == 'van' && _vehicles.isEmpty) {
-                                  _loadVehicles();
-                                }
-                              },
-                      ),
-                  ],
-                ),
-                if (_kind == 'van') ...[
-                  const SizedBox(height: 12),
-                  if (_loadingVehicles)
-                    const LinearProgressIndicator()
-                  else
-                    SearchPickerField<String>(
-                      value: _vehicleId,
-                      label: 'Vehicle',
-                      options: [
-                        for (final v in _vehicles)
-                          SearchOption(value: v['id'] as String?, label: v['label'] as String? ??
-                                  v['number'] as String? ??
-                                  ''),
-                      ],
-                      onChanged: _busy
-                          ? null
-                          : (v) => setState(() => _vehicleId = v),
-                    ),
-                ],
-                if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  ErrorNote(_error!),
-                ],
+        const SizedBox(height: 12),
+        TextField(
+          controller: _name,
+          enabled: !_busy,
+          decoration: const InputDecoration(labelText: 'Name'),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final k in _kinds)
+              ChoiceChip(
+                label: Text(k.$2),
+                selected: _kind == k.$1,
+                onSelected: _busy
+                    ? null
+                    : (_) {
+                        setState(() {
+                          _kind = k.$1;
+                          if (_kind != 'van') _vehicleId = null;
+                        });
+                        if (k.$1 == 'van' && _vehicles.isEmpty) {
+                          _loadVehicles();
+                        }
+                      },
+              ),
+          ],
+        ),
+        if (_kind == 'van') ...[
+          const SizedBox(height: 12),
+          if (_loadingVehicles)
+            const LinearProgressIndicator()
+          else
+            SearchPickerField<String>(
+              value: _vehicleId,
+              label: 'Vehicle',
+              options: [
+                for (final v in _vehicles)
+                  SearchOption(value: v['id'] as String?, label: v['label'] as String? ??
+                          v['number'] as String? ??
+                          ''),
               ],
+              onChanged: _busy
+                  ? null
+                  : (v) => setState(() => _vehicleId = v),
             ),
-          ),
-        ),
-        paneFooter(
-          onCancel: _busy ? null : widget.onCancel,
-          onSave: canSave ? _save : null,
-        ),
+        ],
+        if (_error != null) ...[
+          const SizedBox(height: 14),
+          ErrorNote(_error!),
+        ],
       ],
     );
   }

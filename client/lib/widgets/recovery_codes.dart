@@ -18,7 +18,7 @@ class RecoveryCodesView extends StatelessWidget {
   Widget build(BuildContext context) {
     if (codes.isEmpty) {
       return Text(
-        'Confirmed, but the server returned no recovery codes. Re-enrol to get a '
+        'Confirmed, but the server returned no recovery codes. Re-enroll to get a '
         'set — an account with none has no way back from a lost phone.',
         style: Theme.of(context).textTheme.bodyMedium,
       );

@@ -14,6 +14,7 @@ use App\Support\Email\CannotReachHost;
 use App\Support\Email\GoogleWorkspace;
 use App\Support\Email\GoogleWorkspaceRefused;
 use App\Support\Email\MailboxAccess;
+use App\Support\Email\GmailMailboxReader;
 use App\Support\Email\MailboxProvider;
 use App\Support\Email\MailboxReaders;
 use App\Support\Email\ReadState;
@@ -154,8 +155,8 @@ class MailboxesController extends Controller
                  * needing a server address must want credentials typed in. That
                  * guess broke in the direction that costs most.
                  *
-                 * `imap` was removed from PHP core in 8.4 and this box runs
-                 * 8.4.24, so ImapMailboxReader cannot open a socket here at all.
+                 * (History: `imap` left PHP core in 8.4, so a reader built on it
+                 * could not run here; ImapMailboxReader now speaks IMAP itself.)
                  * But IMAP has `needs_host: true`, so it was given a live
                  * password form — asking somebody for the password to their real
                  * mailbox, and storing it, for a connection that could never be
@@ -174,8 +175,8 @@ class MailboxesController extends Controller
                     'label'    => $p->label(),
                     'needs_host' => $p->needsHost(),
                     'connects_by' => $p->connectsBy(),
-                    'usable'   => $this->readers->forProvider($p)->notReadyBecause() === null,
-                    'unusable_because' => $this->readers->forProvider($p)->notReadyBecause(),
+                    'usable'   => $this->notReady($p) === null,
+                    'unusable_because' => $this->notReady($p),
                     // The IMAP warning, published by the server so every client
                     // shows the same words. See MailboxProvider::caution.
                     'caution'  => $p->caution(),
@@ -289,6 +290,8 @@ class MailboxesController extends Controller
             'mail_server'  => ['sometimes', 'array'],
         ]);
 
+        // Retired 2026-11-03; see GmailMailboxReader::RETIRED.
+        abort_if($input['provider'] === MailboxProvider::GmailOAuth->value, 422, GmailMailboxReader::RETIRED);
         $scope = $this->resolveScope($input['scope_type'], $input['scope_id']);
 
         $this->assertReaches($user, $scope, $input['scope_type'], 'add a shared inbox here');
@@ -331,6 +334,8 @@ class MailboxesController extends Controller
         } catch (GoogleWorkspaceRefused $e) {
             return response()->json(['message' => $e->getMessage()], $e->status);
         }
+
+        $this->grantConnector($mailbox, $request->user());
 
         return response()->json(['data' => $this->row($mailbox, $request->user())], Response::HTTP_CREATED);
     }
@@ -415,12 +420,19 @@ class MailboxesController extends Controller
                 continue;
             }
 
+            // Filed where its siblings are (office@phl -> the PHL branch), when
+            // the person adding it reaches there; else where they are standing.
+            $place = $this->siblingScope($address);
+            [$type, $placeId] = $place !== null && $this->reachesScope($user, $place[0], $place[1])
+                ? $place
+                : [$input['scope_type'], $scope->getKey()];
+
             try {
-                $mailbox = DB::transaction(function () use ($one, $address, $input, $scope, $organizationId, $directory) {
+                $mailbox = DB::transaction(function () use ($one, $address, $input, $type, $placeId, $organizationId, $directory) {
                     $mailbox = Mailbox::create([
                         'organization_id' => $organizationId,
-                        'scope_type'      => $input['scope_type'],
-                        'scope_id'        => $scope->getKey(),
+                        'scope_type'      => $type,
+                        'scope_id'        => $placeId,
                         'address'         => $address,
                         'display_name'    => $one['display_name'],
                         'provider'        => MailboxProvider::GmailWorkspace->value,
@@ -444,6 +456,7 @@ class MailboxesController extends Controller
             }
 
             $existing[] = $address;   // the same address twice in one batch is added once
+            $this->grantConnector($mailbox, $user);
             $added[] = $this->row($mailbox, $user);
         }
 
@@ -733,8 +746,8 @@ class MailboxesController extends Controller
             return response()->json(['message' => 'That person is not an active member of this organization.'], 422);
         }
 
-        if (($why = $this->whyCannotBeGiven($person, $mailbox)) !== null) {
-            return response()->json(['message' => $why], 422);
+        if ($person->isAdministrator()) {
+            return response()->json(['message' => $person->name.' is an Administrator and already opens every inbox.'], 422);
         }
 
         if ($this->inboxes->givePerson($mailbox, $person)) {
@@ -745,6 +758,23 @@ class MailboxesController extends Controller
         }
 
         return response()->json(['data' => $this->peoplePayload($mailbox)]);
+    }
+
+    /**
+     * Whoever connects an inbox can read it (Jose 11-12). An Administrator
+     * already opens every inbox; anybody else is given it by name, the same
+     * grant the card's people list gives.
+     */
+    private function grantConnector(Mailbox $mailbox, User $user): void
+    {
+        if ($user->isAdministrator() || ! $this->inboxes->givePerson($mailbox, $user)) {
+            return;
+        }
+
+        $this->audit->log('mailbox.person_granted', $mailbox, [
+            'address' => $mailbox->address,
+            'person'  => $user->name,
+        ]);
     }
 
     /** DELETE /api/v1/email/mailboxes/{mailbox}/people/{user} */
@@ -799,6 +829,7 @@ class MailboxesController extends Controller
     {
         $user = $request->user();
 
+        abort_if($this->access->hidden($user, $mailbox), Response::HTTP_NOT_FOUND);
         $refusal = $this->access->manageRefusal($user, $mailbox, 'change who is notified about this inbox');
 
         if ($refusal !== null) {
@@ -837,6 +868,7 @@ class MailboxesController extends Controller
      */
     private function assertMayChoosePeople(User $user, Mailbox $mailbox): void
     {
+        abort_if($this->access->hidden($user, $mailbox), Response::HTTP_NOT_FOUND);
         $refusal = $this->access->manageRefusal($user, $mailbox, 'choose who can open this inbox');
 
         if ($refusal !== null) {
@@ -844,22 +876,20 @@ class MailboxesController extends Controller
         }
     }
 
-    /** Why adding this person would not let them open the inbox, or null if it would. */
-    private function whyCannotBeGiven(User $person, Mailbox $mailbox): ?string
+    /**
+     * Why this person would NOT open the inbox without being given it by name,
+     * or null when they would anyway. Shown beside them in the picker; it no
+     * longer stops anybody being added (Jose, 2026-11-09: "make it so we can
+     * assign whoever she wants").
+     */
+    private function onlyThroughThisGrant(User $person, Mailbox $mailbox): ?string
     {
-        if ($person->isAdministrator()) {
-            return $person->name.' is an Administrator and already opens every inbox.';
-        }
-
-        if (! $person->hasPermission(MailboxAccess::READ) || ! $person->hasPermission('email.inbox.view')) {
-            return $person->name.'\'s role does not include the Email Inbox tab, so adding them '
-                .'would not let them open it. Somebody who can edit roles can add the tab to '
-                .'their role first.';
+        if (! $person->roleAllows(MailboxAccess::READ) || ! $person->roleAllows('email.inbox.view')) {
+            return 'Gets Email through this grant: their role has no Email.';
         }
 
         if (! $this->access->reaches($person, $mailbox)) {
-            return $mailbox->address.' belongs to a part of the business '.$person->name
-                .' is not assigned to, so adding them would not let them open it.';
+            return 'Gets this inbox through this grant: it is outside their branch.';
         }
 
         return null;
@@ -871,13 +901,14 @@ class MailboxesController extends Controller
         $given = $this->inboxes->peopleOn($mailbox);
         $givenIds = $given->pluck('id')->all();
 
+        // Every active member but the Administrators, who open every inbox already.
         $candidates = User::query()
             ->where('organization_id', $mailbox->organization_id)
             ->where('is_active', true)
             ->whereNotIn('id', $givenIds)
             ->orderBy('name')
             ->get()
-            ->filter(fn (User $u) => $this->whyCannotBeGiven($u, $mailbox) === null)
+            ->reject(fn (User $u) => $u->isAdministrator())
             ->values();
 
         $person = fn (User $u) => ['id' => $u->getKey(), 'name' => $u->name, 'email' => $u->email];
@@ -886,7 +917,9 @@ class MailboxesController extends Controller
             'people'     => $given->map($person)->values()->all(),
             'roles'      => $this->inboxes->rolesOn($mailbox)
                 ->map(fn ($r) => ['id' => $r->getKey(), 'name' => $r->name])->values()->all(),
-            'candidates' => $candidates->map($person)->all(),
+            // Everyone can be given it (Eve, 2026-11-09: "I can't add anyone");
+            // `note` says when this grant is the only reason they would see it.
+            'candidates' => $candidates->map(fn (User $u) => [...$person($u), 'note' => $this->onlyThroughThisGrant($u, $mailbox)])->all(),
         ];
     }
 
@@ -973,6 +1006,11 @@ class MailboxesController extends Controller
             'status_reason' => $mailbox->status_reason,
             'last_reached_at' => $mailbox->last_reached_at?->toIso8601String(),
 
+            // "Can send", checked without sending (Jose 11-12). Null checked_at:
+            // not checked yet; a problem is the plain reason.
+            'send_checked_at' => $mailbox->send_checked_at?->toIso8601String(),
+            'send_problem'    => $mailbox->send_problem,
+
             /*
              * Whether this can actually be opened, asked of the READER.
              *
@@ -1027,6 +1065,55 @@ class MailboxesController extends Controller
         return $model;
     }
 
+    /**
+     * Where an inbox at this address belongs: the place another inbox at the
+     * same domain is filed (Jose 11-12: connecting files it itself). The
+     * domain after @ is the branch's own -- office@phl.a-1chimney.com and
+     * sales@phl.a-1chimney.com are one branch. Null when there is no sibling
+     * or every sibling is at the organization, which says nothing.
+     *
+     * ponytail: learnt from the inboxes already filed, because a branch has no
+     * code to match a subdomain against (phl is the NJ branch at A-1).
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    private function siblingScope(string $address): ?array
+    {
+        $domain = strtolower(substr($address, strrpos($address, '@') + 1));
+
+        $row = Mailbox::query()
+            ->where('address', 'like', '%@'.$domain)
+            ->where('scope_type', '!=', Mailbox::SCOPE_ORGANIZATION)
+            ->selectRaw('scope_type, scope_id, count(*) as n')
+            ->groupBy('scope_type', 'scope_id')
+            ->orderByDesc('n')
+            ->first();
+
+        return $row === null ? null : [(string) $row->scope_type, (string) $row->scope_id];
+    }
+
+    private function reachesScope(User $user, string $type, string $id): bool
+    {
+        try {
+            $this->assertReaches($user, $this->resolveScope($type, $id), $type, 'add a shared inbox here');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /** GET email/mailboxes/suggest-scope?address= -- the connect form's default. */
+    public function suggestScope(Request $request): JsonResponse
+    {
+        $address = (string) $request->validate(['address' => ['required', 'email:rfc', 'max:255']])['address'];
+        $place   = $this->siblingScope(strtolower($address));
+
+        return response()->json(['data' => $place === null || ! $this->reachesScope($request->user(), $place[0], $place[1])
+            ? null
+            : ['scope_type' => $place[0], 'scope_id' => $place[1]]]);
+    }
+
     private function organizationIdOf(Model $scope): string
     {
         return $scope instanceof \App\Models\Organization ? $scope->getKey() : $scope->organization_id;
@@ -1063,6 +1150,7 @@ class MailboxesController extends Controller
 
     private function assertMayManage(User $user, Mailbox $mailbox, string $act): void
     {
+        abort_if($this->access->hidden($user, $mailbox), Response::HTTP_NOT_FOUND);
         $refusal = $this->access->manageRefusal($user, $mailbox, $act);
 
         abort_if($refusal !== null, Response::HTTP_FORBIDDEN, $refusal);
@@ -1114,5 +1202,11 @@ class MailboxesController extends Controller
         }
 
         return $out;
+    }
+
+    private function notReady(MailboxProvider $p): ?string
+    {
+        return $p === MailboxProvider::GmailOAuth ? GmailMailboxReader::RETIRED
+            : $this->readers->forProvider($p)->notReadyBecause();
     }
 }

@@ -96,6 +96,46 @@ class WorkizWebhookTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    /** 11-21: a 02:11 rate-limit burst spent tries=3 on releases; 8 reads died as MaxAttemptsExceeded. */
+    public function test_a_read_that_keeps_meeting_the_rate_limit_is_retried_not_failed(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        config(['queue.default' => 'database']);
+        Http::fake(['api.workiz.com/crm/api/v2/jobs/*' => Http::sequence()
+            ->push(['message' => 'Rate limit exceeded'], 429)->push(['message' => 'Rate limit exceeded'], 429)
+            ->push(['message' => 'Rate limit exceeded'], 429)->push(['data' => [$this->job()]])]);
+        \App\Jobs\RereadWorkizRecord::dispatch($connection->getKey(), 'job', 'JOB-8ApvxXebm23oQV4E');
+
+        foreach (range(1, 4) as $pickup) {
+            $this->artisan('queue:work', ['--once' => true, '--tries' => 1])->assertSuccessful();
+            $this->travel(6)->minutes();
+        }
+
+        $this->assertSame(0, \DB::table('failed_jobs')->count());
+        $this->inTenant($tenant['org'], fn () => $this->assertSame(1, WorkizJob::query()->count()));
+    }
+
+    /** Desk 11-21: the 2h budget must not spend the key on a read that throws for real. */
+    public function test_a_read_that_throws_fails_after_three_exceptions(): void
+    {
+        [, $connection] = $this->branch();
+        config(['queue.default' => 'database']);
+        $calls = 0;
+        Http::fake(function () use (&$calls) {
+            $calls++;
+            throw new \RuntimeException('boom');
+        });
+        \App\Jobs\RereadWorkizRecord::dispatch($connection->getKey(), 'job', 'JOB-8ApvxXebm23oQV4E');
+
+        foreach (range(1, 5) as $pickup) {
+            $this->artisan('queue:work', ['--once' => true, '--tries' => 1]);
+            $this->travel(6)->minutes();
+        }
+
+        $this->assertSame(3, $calls);
+        $this->assertSame(1, \DB::table('failed_jobs')->count());
+    }
+
     /** A job Workiz no longer has is the sweeps' to retire, on two signals; a webhook does not delete. */
     public function test_a_record_workiz_no_longer_has_is_left_to_the_sweeps(): void
     {

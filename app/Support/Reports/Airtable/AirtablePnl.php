@@ -114,14 +114,43 @@ final class AirtablePnl
         $weeks = [];
 
         foreach ($rows as $row) {
-            $week = trim((string) ($row['Week'] ?? ''));
+            $week = self::text($row['Week'] ?? null);
 
             if ($week !== '' && ! in_array($week, $weeks, true)) {
                 $weeks[] = $week;
             }
         }
 
+        // Oldest first by start day: Airtable hands rows in its own order, and the
+        // screen opens on the last complete week (2026-11-02: it opened on 6 Jul).
+        usort($weeks, fn ($x, $y) => self::startOf($x) <=> self::startOf($y));
+
         return $weeks;
+    }
+
+    /**
+     * A cell as text, or '' when it is not text. Airtable sends a formula that
+     * failed as {"error": "#ERROR!"} (A-1's Invoices System › Weekly Data,
+     * 2026-11-16: the summary row), and a linked or lookup field as a list.
+     * Neither is a week or a label, and casting one threw for the whole request.
+     */
+    private static function text(mixed $cell): string
+    {
+        return is_scalar($cell) ? trim((string) $cell) : '';
+    }
+
+    /** "28 Sep - 4 Oct" as a sortable day; a start after next week is last year's. */
+    private static function startOf(string $week): string
+    {
+        $start = strtotime(trim(explode('-', $week)[0]));
+        if ($start === false) {
+            return '';
+        }
+        if ($start > strtotime('+7 days')) {
+            $start = strtotime('-1 year', $start);
+        }
+
+        return date('Y-m-d', $start);
     }
 
     /**
@@ -143,7 +172,7 @@ final class AirtablePnl
     {
         $inWeek = array_values(array_filter(
             $rows,
-            static fn (array $row): bool => trim((string) ($row['Week'] ?? '')) === $week,
+            static fn (array $row): bool => self::text($row['Week'] ?? null) === $week,
         ));
 
         $categories = [];
@@ -155,14 +184,14 @@ final class AirtablePnl
             $lines = 0;
 
             foreach ($inWeek as $row) {
-                $label = trim((string) ($row[$name] ?? ''));
+                $label = self::text($row[$name] ?? null);
                 $amount = $row[$name.' Amount'] ?? null;
 
                 if ($label === '' || ! is_numeric($amount)) {
                     continue;
                 }
 
-                if ($label === self::TOTAL) {
+                if (self::marker($label) === self::TOTAL) {
                     $stated = (float) $amount;
 
                     continue;
@@ -172,7 +201,7 @@ final class AirtablePnl
                 // is the whole week's answer sitting in income's column, and
                 // adding it to income would count the expenses twice, with the
                 // sign making the result look merely disappointing.
-                if ($label === self::NET) {
+                if (self::marker($label) === self::NET) {
                     continue;
                 }
 
@@ -253,6 +282,18 @@ final class AirtablePnl
         ];
     }
 
+    /** Which marker a label is, however the sheet typed it: any case or spacing, "tota" for Total (measured 2026-11-11). */
+    private static function marker(string $label): ?string
+    {
+        $label = strtolower((string) preg_replace('/\s+/', ' ', trim($label)));
+
+        return match (true) {
+            $label === strtolower(self::NET) => self::NET,
+            strlen($label) >= 4 && str_starts_with(strtolower(self::TOTAL), $label) => self::TOTAL,
+            default => null,
+        };
+    }
+
     /**
      * The week's own net-profit cell, for checking ours against.
      *
@@ -261,7 +302,7 @@ final class AirtablePnl
     private function statedNet(array $rows): ?float
     {
         foreach ($rows as $row) {
-            if (trim((string) ($row['Income'] ?? '')) === self::NET && is_numeric($row['Income Amount'] ?? null)) {
+            if (self::marker(self::text($row['Income'] ?? null)) === self::NET && is_numeric($row['Income Amount'] ?? null)) {
                 return (float) $row['Income Amount'];
             }
         }

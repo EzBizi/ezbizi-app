@@ -1,5 +1,14 @@
 # Business Profile
 
+> **Superseded 2026-11-13 — access works.** Measured on prod: 44
+> `google_business_profile` connections (A-1 Chimney's org, connected
+> 2026-10-29 → 11-05), all on EzBizi's own OAuth client (no `interim` A1 Leads
+> grant left), all reached 2026-11-13; Google reviews import daily and AI
+> replies publish. [EZBIZI-TODO](EZBIZI-TODO.md) row 30 records Basic Access
+> granted 2026-10-28 on case `3-3702000041562` (300 QPM). Everything below
+> about zero quota, case `6-2027000041783` and A1Leads GBP (module retired
+> `2026_10_20_171508`) is history.
+
 **Google Business Profile API — application filed 3 September 2026, case
 `6-2027000041783`. Quota stays zero until Google approves it.**
 

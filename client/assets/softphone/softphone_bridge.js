@@ -15,6 +15,7 @@
  *   {type:'setup',   token}     register with Twilio
  *   {type:'connect', to, callerId}
  *   {type:'hangup'}
+ *   {type:'digits',  digits}   keys pressed on the live call (DTMF)
  *   {type:'accept'}             answer the ringing call
  *   {type:'decline'}
  *
@@ -267,8 +268,17 @@
     switch (message.type) {
       case 'setup':
         return setup(message.token);
+      case 'token':
+        // A renewal: swap the token on the live device; a call in progress
+        // keeps going (setup() would destroy it).
+        if (device) device.updateToken(message.token);
+        else setup(message.token);
+        return;
       case 'connect':
         return connect(message.to, message.callerId);
+      case 'digits':
+        if (activeCall) activeCall.sendDigits(String(message.digits));
+        return;
       case 'hangup':
         if (activeCall) activeCall.disconnect();
         if (device) device.disconnectAll();

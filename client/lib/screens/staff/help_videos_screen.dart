@@ -1,7 +1,9 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/staff_session.dart';
 import '../../core/tab_tours.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
@@ -19,10 +21,6 @@ class HelpVideosScreen extends StatefulWidget {
   @override
   State<HelpVideosScreen> createState() => _HelpVideosScreenState();
 }
-
-/// `m:ss`, the way a video player writes a time.
-String _clock(int seconds) =>
-    '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
 
 /// `2:40`, `0:42` or `160` as seconds; null when it is neither.
 int? _seconds(String text) {
@@ -116,16 +114,9 @@ class _HelpVideosScreenState extends State<HelpVideosScreen> {
               // Standard field height, as tall as Leads search (Jose, 2026-10-27).
               SizedBox(
                 width: 240,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('help-videos-search'),
-                  textAlignVertical: TextAlignVertical.center,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIconConstraints: BoxConstraints(minWidth: 36),
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Find a tab',
-                    border: OutlineInputBorder(),
-                  ),
+                  hint: 'Find a tab',
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),
@@ -174,7 +165,7 @@ class _HelpVideosScreenState extends State<HelpVideosScreen> {
                             video == null
                                 ? 'No video yet: ▶ hidden'
                                 : '${video['url']}'
-                                      '${seconds == null ? '' : ' · ${_clock(seconds)}'}',
+                                      '${seconds == null ? '' : ' · ${formatClock(Duration(seconds: seconds))}'}',
                             if (tour != null)
                               'Walkthrough v${tour.version} · '
                                   '${tour.steps.length} steps',
@@ -212,7 +203,9 @@ class _EditPanelState extends State<_EditPanel> {
   late final _length = TextEditingController(
     text: _video?['duration_seconds'] == null
         ? ''
-        : _clock((_video!['duration_seconds'] as num).toInt()),
+        : formatClock(
+            Duration(seconds: (_video!['duration_seconds'] as num).toInt()),
+          ),
   );
   late final _captions = TextEditingController(
     text: _video?['captions_url'] as String?,
@@ -220,7 +213,7 @@ class _EditPanelState extends State<_EditPanel> {
   late final _chapters = TextEditingController(
     text: [
       for (final c in (_video?['chapters'] as List? ?? const []).cast<Map>())
-        '${_clock((c['at'] as num).toInt())} ${c['label']}',
+        '${formatClock(Duration(seconds: (c['at'] as num).toInt()))} ${c['label']}',
     ].join('\n'),
   );
   String? _problem;

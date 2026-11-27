@@ -232,14 +232,15 @@ class SyncWorkizJobs extends Command
     private function reconcile(WorkizJobs $workiz, SocialConnection $connection, CarbonInterface $runStarted, ?string $listedSince, AuditLogger $audit): array
     {
         $budget = max(0, (int) $this->option('reconcile'));
+        $closed = self::closed($connection);
 
         $stale = $budget === 0 ? collect() : WorkizJob::query()
             ->where('franchise_id', $connection->scope_id)
             ->where('synced_at', '<', $runStarted)
             ->where(fn ($q) => $q
-                ->whereNotIn('status', self::CLOSED)
+                ->whereNotIn('status', $closed)
                 ->orWhere('scheduled_for', '>=', now()->subDays(30)))
-            ->orderByRaw("CASE WHEN status IN ('Done', 'Canceled') THEN 1 ELSE 0 END")
+            ->orderByRaw($closed === [] ? '0' : 'CASE WHEN status IN ('.implode(',', array_fill(0, count($closed), '?')).') THEN 1 ELSE 0 END', $closed)
             ->orderBy('synced_at')
             ->limit($budget)
             ->get();
@@ -291,7 +292,7 @@ class SyncWorkizJobs extends Command
                 // of the queue rather than asked about again next minute.
                 // Held while services.workiz.retire_deleted is off: a deleted job
                 // can still be holding a seat its replacement has not taken yet.
-                if (config('services.workiz.retire_deleted') && $listedSince !== null && ! in_array($row->status, self::CLOSED, true)
+                if (config('services.workiz.retire_deleted') && $listedSince !== null && ! in_array($row->status, $closed, true)
                     && $row->scheduled_for !== null && $row->scheduled_for->gte($listedSince)) {
                     $gone[] = $row;
                 } elseif (config('services.workiz.retire_deleted') && WorkizV2::uses($connection) && self::searchFindsNone($connection, $row)) {
@@ -405,11 +406,21 @@ class SyncWorkizJobs extends Command
     }
 
     /**
-     * Workiz's own words for a job that has finished, one way or the other.
-     * Everything else — including "done pending approval", which still becomes
-     * Done — is open and worth re-reading.
+     * The branch's statuses for a job that has finished, one way or the other:
+     * its earned and cancelled statuses (settings, Jose 2026-11-04: no business
+     * value in code). Everything else, including "done pending approval", is
+     * open and worth re-reading. None set: every job stays open.
+     *
+     * @return list<string>
      */
-    private const CLOSED = ['Done', 'Canceled'];
+    private static function closed(SocialConnection $connection): array
+    {
+        $branch = \App\Models\Franchise::query()->find($connection->scope_id);
+        $settings = app(\App\Support\Settings\SettingsResolver::class);
+
+        return $branch === null ? [] : array_values(array_unique(array_merge(
+            (array) $settings->get('jobs.earned_statuses', $branch), (array) $settings->get('jobs.cancelled_statuses', $branch))));
+    }
 
     /** v2's search answers for this job's number with no job of that number. A refusal is not an answer. */
     private static function searchFindsNone(SocialConnection $connection, WorkizJob $row): bool

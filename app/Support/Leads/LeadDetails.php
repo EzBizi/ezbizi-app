@@ -9,7 +9,7 @@ namespace App\Support\Leads;
  * may be something we can automate without needing ai?".
  *
  * Plain patterns over the customer's own messages, newest first, so a
- * correction ("sorry, it's 215 Lakeview") wins over the first attempt. Each
+ * correction ("sorry, it's 215 Sampleview") wins over the first attempt. Each
  * is a best guess the screen labels as read from the conversation; nothing
  * here is written back to the lead.
  */
@@ -26,6 +26,13 @@ final class LeadDetails
         $name = $address = $zip = null;
 
         foreach (array_reverse($texts) as $text) {
+            // Our booking widget's "Name: / Address: / ZIP:" lines are read by their labels.
+            if (preg_match_all('/^(Name|Address|ZIP):[ \t]*(\S.*?)\s*$/mi', $text, $m, PREG_SET_ORDER) >= 2) {
+                $form = array_column(array_map(fn ($r) => [strtolower($r[1]), $r[2]], $m), 1, 0);
+                $name ??= $form['name'] ?? null;
+                $address ??= $form['address'] ?? null;
+                $zip ??= preg_match('/^\d{5}$/', $form['zip'] ?? '') ? $form['zip'] : null;
+            }
             $text = trim(preg_replace('/\s+/', ' ', $text) ?? '');
 
             $address ??= self::address($text);
@@ -36,12 +43,36 @@ final class LeadDetails
         return ['name' => $name, 'address' => $address, 'zip' => $zip];
     }
 
-    /** "215 Lakeview Dr Michigan City Indiana" -> "215 Lakeview Dr Michigan City Indiana". */
+    /**
+     * The phone and email the customer wrote, newest first: how a Messenger
+     * or Instagram lead, which arrives with neither, is told apart as an
+     * existing customer (Jose, 2026-11-06).
+     *
+     * @param  list<string>  $texts  the customer's messages, oldest first
+     * @return array{phone: ?string, email: ?string} phone as digits, email lower-cased
+     */
+    public static function contacts(array $texts): array
+    {
+        $phone = $email = null;
+
+        foreach (array_reverse($texts) as $text) {
+            if ($email === null && preg_match('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', $text, $m)) {
+                $email = strtolower($m[0]);
+            }
+            if ($phone === null && preg_match('/(?<!\d)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)/', $text, $m)) {
+                $phone = preg_replace('/\D/', '', $m[0]);
+            }
+        }
+
+        return ['phone' => $phone, 'email' => $email];
+    }
+
+    /** "215 Sampleview Dr Michigan City Indiana" -> "215 Sampleview Dr Michigan City Indiana". */
     public static function address(string $text): ?string
     {
         $street = '/\b(\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Za-z0-9\'.-]+\s+){0,4}(?:'.self::STREET.')\b\.?'
             // The rest of the line up to a sentence end: city, state, ZIP.
-            .'(?:[ ,]+[A-Za-z][A-Za-z .\'-]*?)?(?:,?\s*\b[A-Z]{2}\b)?(?:\s*\d{5}(?:-\d{4})?)?)(?=[.!?]|\s{2}|$|,?\s+(?:in|on|near|by|and|but|friday|saturday|monday|tuesday|wednesday|thursday|sunday)\b)/i';
+            .'(?:[ ,]+[A-Za-z][A-Za-z .\'-]*?)?(?:,?\s*\b[A-Z]{2}\b)?(?:\s*\d{5}(?:-\d{4})?)?)(?=[.!?]|\s{2}|$|,?\s+(?:in|on|near|by|and|but|i|i\'m|i am|we|we\'re|available|friday|saturday|monday|tuesday|wednesday|thursday|sunday)\b)/i';
 
         return preg_match($street, $text, $m) ? rtrim(trim($m[1]), ',.') : null;
     }
@@ -62,7 +93,7 @@ final class LeadDetails
         return null;
     }
 
-    /** "my name is Jacob Garcia" / "this is Dave Malkowski" / "Dave Malkowski 2196692720". */
+    /** "my name is Jacob Garcia" / "this is Dave Mapleford" / "Dave Mapleford 2195550100". */
     public static function name(string $text): ?string
     {
         $word = "[A-Z][a-z'-]+";

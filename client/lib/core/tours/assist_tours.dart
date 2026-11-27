@@ -256,14 +256,18 @@ const Map<String, Tour> assistTours = {
     ],
   ),
   'email/Settings': Tour(
-    version: 1,
+    // 2: personal Google sign-in retired (2026-11-03).
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-email-add-inbox',
         title: 'Add an inbox',
         body:
             'It belongs to the company you are looking at when you add it. '
+            'A company Google address connects through Google Workspace; a '
+            'personal @gmail.com through IMAP with a Google app password. '
             'Each role is then given the ones it should read.',
+        since: 2,
       ),
       TourStep(
         anchor: 'email-settings-list',
@@ -339,8 +343,13 @@ const Map<String, Tour> assistTours = {
     ],
   ),
   'training/Dashboard': Tour(
-    version: 1,
+    version: 2,
     steps: [
+      TourStep(
+        anchor: 'training-dashboard-list-search',
+        title: 'Find a guide or test',
+        body: 'Narrows the rows below as you type.',
+      ),
       TourStep(
         anchor: 'inventory-list',
         title: 'Guides and tests',
@@ -540,6 +549,33 @@ const Map<String, Tour> assistTours = {
             'Their shifts, a bar of the day over the schedule (dashed), the '
             'total against the schedule, and Late or Early. Adjust changes a '
             'time with a reason and keeps the original; it does not approve.',
+      ),
+    ],
+  ),
+  'work_hours/Payroll': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-work_hours-payroll',
+        title: 'Payroll',
+        body:
+            'One week of pay for the people in your view: hours, rate, bonus, '
+            'deductions and tech expenses make the weekly pay.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-payroll-summary',
+        title: 'The week at a glance',
+        body:
+            'People, hours, pay, who is still waiting for approval, and who '
+            'has a warning such as no pay rate or a shift still open.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-payroll-rows',
+        title: 'Each person',
+        body:
+            'Bonus and deductions save when you leave the field; changing '
+            'them takes the approval back off. Hours over 40 show as OT and '
+            'are not paid. Open Tech expenses to see each part paid for.',
       ),
     ],
   ),

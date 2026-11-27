@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\JobNote;
 use App\Models\Lead;
 use App\Models\Organization;
 use App\Models\SchedulingRescheduleOffer;
@@ -34,15 +35,22 @@ final class RescheduleOffers
 {
     public const MESSAGE = 'scheduling.offer_message';
 
+    /** Overbooking's own wording (Jose, 2026-11-09). */
+    public const OVER_MESSAGE = 'scheduling.overbooked_offer_message';
+
+    public const UNDERBOOKED = 'underbooked';
+
+    public const OVERBOOKED = 'overbooked';
+
     public const MIN_DAYS_OUT = 'scheduling.offer_min_days_out';
 
     public const MAX_SENDS = 'scheduling.offer_max_sends';
 
     public const HOURS = 'scheduling.offer_hours';
 
-    private const HORIZON_DAYS = 21;
+    public const HORIZON = 'scheduling.offer_horizon_days';
 
-    private const NOT_AGAIN_DAYS = 30;
+    public const NOT_AGAIN = 'scheduling.offer_not_again_days';
 
     public function __construct(
         private readonly Openings $openings,
@@ -56,20 +64,26 @@ final class RescheduleOffers
      *
      * @return array{open: list<array{start_time: string, end_time: string, remaining: int}>, candidates: list<array<string, mixed>>, max_sends: int, message: string}
      */
-    public function preview(ServiceArea $area, CarbonImmutable $date): array
+    public function preview(ServiceArea $area, CarbonImmutable $date, string $kind = self::UNDERBOOKED): array
     {
         $franchise = Franchise::findOrFail($area->franchise_id);
-        $open = collect($this->openings->days($area, $date, 1)[0]['windows'])
+        // Overbooked: the customers on $date are offered the next day with room.
+        $offerDay = $kind === self::OVERBOOKED ? $this->nextWithRoom($area, $date, $franchise) : $date;
+        $open = $offerDay === null ? [] : collect($this->openings->days($area, $offerDay, 1)[0]['windows'])
             ->filter(fn ($w) => $w['remaining'] > 0)
             ->map(fn ($w) => ['start_time' => $w['start_time'], 'end_time' => $w['end_time'], 'remaining' => $w['remaining']])
             ->values()->all();
         $max = (int) $this->setting(self::MAX_SENDS, $franchise);
+        $candidates = $open === [] ? collect() : ($kind === self::OVERBOOKED
+            ? $this->bookedOn($area, $date)
+            : $this->candidates($area, $date, $franchise));
 
         return [
             'open' => $open,
-            'candidates' => $open === [] ? [] : $this->candidates($area, $date, $franchise)->take($max)->values()->all(),
+            'offer_date' => $offerDay?->toDateString(),
+            'candidates' => $candidates->take($max)->values()->all(),
             'max_sends' => $max,
-            'message' => (string) $this->setting(self::MESSAGE, $franchise),
+            'message' => (string) $this->setting($kind === self::OVERBOOKED ? self::OVER_MESSAGE : self::MESSAGE, $franchise),
         ];
     }
 
@@ -79,12 +93,16 @@ final class RescheduleOffers
      * @param  list<string>  $jobIds
      * @return array{sent: list<string>, failed: list<array{job_id: string, reason: string}>}
      */
-    public function send(ServiceArea $area, CarbonImmutable $date, array $jobIds, User $by): array
+    public function send(ServiceArea $area, CarbonImmutable $date, array $jobIds, User $by, string $kind = self::UNDERBOOKED): array
     {
         $franchise = Franchise::findOrFail($area->franchise_id);
         $this->assertInHours($franchise);
-        $plan = $this->preview($area, $date);
-        abort_if($plan['open'] === [], 422, 'That day has no open spot left to offer.');
+        $plan = $this->preview($area, $date, $kind);
+        abort_if($plan['open'] === [], 422, $kind === self::OVERBOOKED
+            ? 'No day in the next weeks has a spot to move to.'
+            : 'That day has no open spot left to offer.');
+        $from = $date;
+        $date = CarbonImmutable::parse($plan['offer_date']);
 
         $chosen = collect($plan['candidates'])->whereIn('job_id', $jobIds);
         $company = Company::find($franchise->company_id);
@@ -96,8 +114,9 @@ final class RescheduleOffers
             $body = strtr($plan['message'], [
                 '{name}' => trim(explode(' ', (string) $c['customer_name'])[0]) ?: 'there',
                 '{company}' => (string) ($company?->name ?? ''),
-                '{date}' => $date->format('l, M j'),
-                '{window}' => self::time($window['start_time']).'–'.self::time($window['end_time']),
+                '{date}' => $date->format('D M j'),
+                '{booked}' => $from->format('D M j'),
+                '{window}' => self::window($window['start_time'], $window['end_time']),
             ]);
             $lead = Lead::create([
                 'company_id' => $franchise->company_id,
@@ -109,6 +128,8 @@ final class RescheduleOffers
                 'phone' => $c['phone'],
                 'phone_digits' => Lead::digits($c['phone']),
                 'lead_type' => 'Reschedule',
+                // Leads › Recovery holds it (Jose, 2026-11-16).
+                'recovery_at' => now(),
                 'summary' => 'Offered '.$date->format('D M j').' instead of '.CarbonImmutable::parse($c['scheduled_for'])->format('D M j'),
                 'status' => Lead::STATUS_NEW,
                 'received_at' => now(),
@@ -145,6 +166,8 @@ final class RescheduleOffers
     public function move(SchedulingRescheduleOffer $offer): Job
     {
         abort_if($offer->moved_at !== null, 409, 'This appointment was already moved.');
+        abort_if($offer->declined_at !== null, 409, 'The customer replied NO to this move.');
+        abort_if($offer->open_date->isBefore(today()), 409, 'That opening has passed. Pick another time on the board.');
         $job = Job::query()->findOrFail($offer->job_id);
         $area = ServiceArea::query()->findOrFail($offer->service_area_id);
         $date = CarbonImmutable::parse($offer->open_date);
@@ -161,14 +184,45 @@ final class RescheduleOffers
         return $job;
     }
 
+    /** The first day after $date, within the horizon, with a spot left. */
+    private function nextWithRoom(ServiceArea $area, CarbonImmutable $date, Franchise $franchise): ?CarbonImmutable
+    {
+        $day = collect($this->openings->days($area, $date->addDay(), (int) $this->setting(self::HORIZON, $franchise)))
+            ->first(fn ($d) => collect($d['windows'])->contains(fn ($w) => $w['remaining'] > 0));
+
+        return $day === null ? null : CarbonImmutable::parse($day['date']);
+    }
+
+    /**
+     * Customers booked on an overbooked day, not offered lately, with a phone.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function bookedOn(ServiceArea $area, CarbonImmutable $date): Collection
+    {
+        return $this->reachable($area, $this->openings->jobsOn($area, $date)
+            ->filter(fn ($j) => $j->kind === 'job' && $j->customer_id !== null));
+    }
+
     /** @return Collection<int, array<string, mixed>> */
     private function candidates(ServiceArea $area, CarbonImmutable $date, Franchise $franchise): Collection
     {
         $from = $date->addDays((int) $this->setting(self::MIN_DAYS_OUT, $franchise));
-        $jobs = $this->openings->jobsBetween($area, $from, $date->addDays(self::HORIZON_DAYS + 1))
+        $jobs = $this->openings->jobsBetween($area, $from, $date->addDays((int) $this->settings->get(self::HORIZON, $area->franchise) + 1))
             ->filter(fn ($j) => $j->kind === 'job' && $j->customer_id !== null);
+
+        return $this->reachable($area, $jobs);
+    }
+
+    /**
+     * Jobs not offered in the not-again window, with a textable customer, soonest first.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function reachable(ServiceArea $area, Collection $jobs): Collection
+    {
         $offered = SchedulingRescheduleOffer::query()->whereIn('job_id', $jobs->pluck('job_id'))
-            ->where('created_at', '>=', now()->subDays(self::NOT_AGAIN_DAYS))->pluck('job_id')->flip();
+            ->where('created_at', '>=', now()->subDays((int) $this->settings->get(self::NOT_AGAIN, $area->franchise)))->pluck('job_id')->flip();
         $customers = Customer::query()->whereIn('id', $jobs->pluck('customer_id'))->get(['id', 'name', 'phone'])->keyBy('id');
 
         return $jobs->reject(fn ($j) => isset($offered[$j->job_id]))
@@ -196,8 +250,45 @@ final class RescheduleOffers
         return $this->settings->get($key, $franchise);
     }
 
-    private static function time(string $hhmm): string
+    /**
+     * "8-11 AM", "11 AM-2 PM", "2:30-5 PM": ASCII only, so the text stays GSM-7
+     * (an en dash sends the whole text as UCS-2, 70 characters a part).
+     */
+    public static function window(string $start, string $end): string
     {
-        return CarbonImmutable::createFromFormat('H:i', substr($hhmm, 0, 5))->format('g:i A');
+        $t = fn (string $hhmm) => CarbonImmutable::createFromFormat('H:i', substr($hhmm, 0, 5));
+        $h = fn (CarbonImmutable $c) => $c->minute === 0 ? $c->format('g') : $c->format('g:i');
+        [$s, $e] = [$t($start), $t($end)];
+
+        return $s->format('A') === $e->format('A')
+            ? $h($s).'-'.$h($e).' '.$e->format('A')
+            : $h($s).' '.$s->format('A').'-'.$h($e).' '.$e->format('A');
+    }
+
+    /**
+     * A NO to an open offer keeps the customer's time: noted on the job, the
+     * offer closed (desk, 2026-11-12, as Project Management's texts do). Not
+     * consumed: the reply still lands on the lead's thread.
+     */
+    public function absorbNo(string $from, string $body): void
+    {
+        $digits = Lead::digits($from);
+        if ($digits === '' || ! preg_match('/^\s*(n|no|nope|nah)\b/iu', $body)) {
+            return;
+        }
+        $offer = SchedulingRescheduleOffer::query()
+            ->whereNull('moved_at')->whereNull('declined_at')
+            ->where('open_date', '>=', today()->toDateString())
+            ->whereIn('lead_id', Lead::query()->where('phone_digits', $digits)->select('id'))
+            ->latest()->first();
+        if ($offer === null) {
+            return;
+        }
+        $offer->forceFill(['declined_at' => now()])->save();
+        $job = Job::query()->find($offer->job_id);
+        if ($job !== null) {
+            JobNote::query()->create(['organization_id' => $job->organization_id, 'job_id' => $job->id,
+                'body' => 'Customer replied NO to moving to '.$offer->open_date->format('D M j').': keeps '.$offer->booked_for->format('D M j').'. Reply: '.trim($body)]);
+        }
     }
 }

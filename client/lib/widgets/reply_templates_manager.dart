@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -365,14 +366,10 @@ class _ManagerState extends State<ReplyTemplatesManager> {
         if (_companies.length > 8)
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-            child: TextField(
+            child: ListSearch(
               key: const ValueKey('templates-company-search'),
+              hint: 'Find a company',
               onChanged: (v) => setState(() => _query = v),
-              decoration: const InputDecoration(
-                hintText: 'Find a company',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-              ),
             ),
           ),
         Expanded(

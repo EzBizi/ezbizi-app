@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\AuditEvent;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
+use App\Models\CallReportLabel;
 use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
 use App\Models\Company;
@@ -11,6 +13,8 @@ use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Models\WorkizCall;
 use App\Models\WorkizJob;
+use App\Support\Reports\ReportView;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -28,10 +32,42 @@ use Tests\TestCase;
  */
 class ExperimentalCallReportApiTest extends TestCase
 {
-    use BuildsTenants;
+    use BuildsTenants {
+        provisionTenant as private tenantWithoutQueues;
+    }
     use RefreshDatabase;
 
+    /** A tenant with A-1's two queue names set, as Settings holds them (no names in code). */
+    protected function provisionTenant(string $name = 'Alpha', ?string $email = null): array
+    {
+        $t = $this->tenantWithoutQueues($name, $email);
+        $this->inTenant($t['org'], function () use ($t) {
+            app(SettingsResolver::class)->set('leads.new_client_queue', $t['org'], 'A1 - New Client');
+            app(SettingsResolver::class)->set('leads.existing_client_queue', $t['org'], 'A1 - Existing Client');
+        });
+
+        return $t;
+    }
+
     // ── the gate ─────────────────────────────────────────────────
+
+    /**
+     * A report's days are the organization's own (Jose, 2026-11-04: on UTC,
+     * "Yesterday" held the evening before and lost its own evening).
+     */
+    public function test_a_reports_day_is_cut_in_the_organizations_time_zone(): void
+    {
+        config(['app.timezone' => 'UTC']);
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('timezone', $t['org'], 'America/New_York'));
+
+        $this->actingAs($t['admin']);
+        // A request has resolved its organization by the time a report asks.
+        $this->inTenant($t['org'], fn () => $this->assertSame('America/New_York', ReportView::zone()));
+
+        auth()->forgetGuards();
+        $this->assertSame('UTC', ReportView::zone(), 'nobody signed in');
+    }
 
     /** Running saved reports is a weaker right and must not open this. */
     public function test_reports_view_alone_cannot_read_it(): void
@@ -294,7 +330,7 @@ class ExperimentalCallReportApiTest extends TestCase
         $this->assertCount(1, $calls);
         $this->assertSame('Trey Brannan', $calls[0]['answered_by']);
         $this->assertSame('rec-9', $calls[0]['recording_id']);
-        $this->assertSame('PERRON,NICOLE', $calls[0]['caller_label']);
+        $this->assertSame('PARKER,NICOLE', $calls[0]['caller_label']);
 
         // The names in the drill-down are canonicalised the same way the
         // columns are. Left raw, a call would sit under a row labelled with a
@@ -502,6 +538,131 @@ class ExperimentalCallReportApiTest extends TestCase
         $this->assertSame($tenant['admin']->name, $after['conversions'][0]['converted_by']);
     }
 
+    /**
+     * Jose, 2026-11-03, for Trey: a call's client and booking set by hand,
+     * both ways, with who; the counts follow, and deleting reverts.
+     */
+    public function test_a_call_s_client_and_booking_are_set_by_hand_and_revert(): void
+    {
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
+        $this->connected($tenant);
+        $as = $this->signedInAs($tenant['admin']);
+        $day = fn () => $this->signedInAs($tenant['admin'])->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')->json();
+        $queue = $day()['calls'][0]['queue'];
+
+        $as->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'booking', 'value' => 'booked'])
+            ->assertOk()->assertJsonPath('data.set_by', $tenant['admin']->name);
+        $after = $day();
+        $this->assertTrue($after['calls'][0]['booked']);
+        $this->assertSame(0, $after['totals']['not_booked']);
+        $this->assertSame($tenant['admin']->name, $after['calls'][0]['set_by']['booking']);
+
+        $flip = $queue === 'A1 - New Client' ? 'existing' : 'new';
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'client', 'value' => $flip])->assertOk();
+        $this->assertNotSame($queue, $day()['calls'][0]['queue']);
+        $this->assertSame($queue, $day()['calls'][0]['reclassified']['pressed']);
+
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'booking', 'value' => 'shipped'])->assertStatus(422);
+        $this->signedInAs($tenant['admin'])->deleteJson('/api/v1/reports/experimental/calls/1/override?field=client')->assertOk();
+        $this->signedInAs($tenant['admin'])->deleteJson('/api/v1/reports/experimental/calls/1/override?field=booking')->assertOk();
+        $back = $day();
+        $this->assertSame($queue, $back['calls'][0]['queue']);
+        $this->assertFalse($back['calls'][0]['booked']);
+        $this->assertNull($back['calls'][0]['set_by']);
+    }
+
+    /**
+     * Trey, 2026-11-04 ("sometimes we get spam calls", "not a cx since we dont
+     * do home inspections"): a marked call leaves the booking rate and Not
+     * booked, stays listed with its mark, and says who marked it.
+     */
+    public function test_a_call_marked_not_a_customer_leaves_the_booking_rate_and_stays_listed(): void
+    {
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
+        $this->connected($tenant);
+        $day = fn () => $this->signedInAs($tenant['admin'])->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')->json();
+        $before = $day();
+        $person = fn (array $report) => collect($report['people'])->firstWhere('person', $before['calls'][0]['answered_by']);
+        $this->assertSame(1, $before['totals']['not_booked']);
+        $this->assertSame(1, $person($before)['new_client']);
+
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'mark', 'value' => 'not_a_customer'])
+            ->assertOk()->assertJsonPath('data.set_by', $tenant['admin']->name);
+        $after = $day();
+        $this->assertSame(0, $after['totals']['not_booked']);
+        $this->assertSame(0, $person($after)['new_client']);
+        $this->assertSame('not_a_customer', $after['calls'][0]['mark']);
+        $this->assertSame($tenant['admin']->name, $after['calls'][0]['set_by']['mark']);
+        $this->assertSame(1, AuditEvent::query()->withoutGlobalScopes()->where('action', 'call_report.overridden')
+            ->where('actor_id', $tenant['admin']->id)->where('metadata->value', 'not_a_customer')->count());
+
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'mark', 'value' => 'rude'])->assertStatus(422);
+        $this->signedInAs($tenant['admin'])->deleteJson('/api/v1/reports/experimental/calls/1/override?field=mark')->assertOk();
+        $back = $day();
+        $this->assertSame(1, $back['totals']['not_booked']);
+        $this->assertNull($back['calls'][0]['mark']);
+    }
+
+    /**
+     * Jose, 2026-11-12 ("make a new filter for the AI heard a booking, no job
+     * yet, call it Needs Attention"): neither booked nor not booked until a
+     * job matches, and then it leaves on its own.
+     */
+    public function test_a_call_the_ai_heard_book_with_no_job_needs_attention_until_one_matches(): void
+    {
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
+        $this->connected($tenant);
+        $day = fn () => $this->signedInAs($tenant['admin'])->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')->assertOk()->json();
+        $this->inTenant($tenant['org'], fn () => CallReportLabel::query()->create(['call_id' => '1', 'provider' => 'grok', 'label' => 'booked']));
+
+        $open = $day();
+        $person = fn (array $report) => collect($report['people'])->firstWhere('person', $open['calls'][0]['answered_by']);
+        $this->assertTrue($open['calls'][0]['needs_attention']);
+        $this->assertSame(0, $open['totals']['not_booked']);
+        $this->assertSame(1, $open['totals']['needs_attention']);
+        $this->assertSame(1, $person($open)['needs_attention']);
+
+        // The job is booked in Workiz for the caller's number.
+        $nationwide = $this->inTenant($tenant['org'], fn () => (string) SocialConnection::query()->where('display_name', 'Nationwide')->value('id'));
+        $this->syncedJob($tenant, $nationwide, '7575550100', 'Trey Brannan', '2026-09-14 10:00:00');
+        $done = $day();
+        $this->assertFalse($done['calls'][0]['needs_attention']);
+        $this->assertTrue($done['calls'][0]['booked']);
+        $this->assertSame(0, $done['totals']['needs_attention']);
+        $this->assertSame(1, $person($done)['booked_new']);
+    }
+
+    /**
+     * Trey, 2026-11-13 ("jobs that are existing, booked and show ai heard a
+     * booking no job yet are also jobs i manually have to double check"): an
+     * existing client's job for the number is the one they already had, so it
+     * cannot show the call booked. Needs Attention until somebody sets it.
+     */
+    public function test_an_existing_client_the_ai_heard_book_needs_attention_even_with_a_job_for_the_number(): void
+    {
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
+        $this->connected($tenant);
+        $day = fn () => $this->signedInAs($tenant['admin'])->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')->assertOk()->json();
+        $this->inTenant($tenant['org'], fn () => CallReportLabel::query()->create(['call_id' => '1', 'provider' => 'grok', 'label' => 'booked']));
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'client', 'value' => 'existing'])->assertOk();
+        $nationwide = $this->inTenant($tenant['org'], fn () => (string) SocialConnection::query()->where('display_name', 'Nationwide')->value('id'));
+        $this->syncedJob($tenant, $nationwide, '7575550100', 'Trey Brannan', '2026-09-14 10:00:00');
+
+        $open = $day();
+        $person = fn (array $report) => collect($report['people'])->firstWhere('person', $open['calls'][0]['answered_by']);
+        $this->assertTrue($open['calls'][0]['needs_attention']);
+        $this->assertFalse($open['calls'][0]['booked']);
+        // Existing clients were never in the booking rate, so its base is untouched.
+        $this->assertSame(0, $open['totals']['needs_attention']);
+        $this->assertSame(0, $person($open)['needs_attention']);
+        $this->assertSame(0, $person($open)['new_client']);
+
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'booking', 'value' => 'booked'])->assertOk();
+        $checked = $day();
+        $this->assertFalse($checked['calls'][0]['needs_attention']);
+        $this->assertTrue($checked['calls'][0]['booked']);
+    }
+
     /** Both writes sit behind the pane's own gate. */
     public function test_tag_and_convert_need_the_experimental_tab(): void
     {
@@ -514,6 +675,10 @@ class ExperimentalCallReportApiTest extends TestCase
 
         $this->signedInAs($builder)
             ->postJson('/api/v1/reports/experimental/calls/1/convert')
+            ->assertForbidden();
+
+        $this->signedInAs($builder)
+            ->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'booking', 'value' => 'booked'])
             ->assertForbidden();
 
         $this->assertSame(0, CallReportConversion::withoutGlobalScopes()->count());
@@ -551,7 +716,7 @@ class ExperimentalCallReportApiTest extends TestCase
                     'direction' => 'Inbound',
                     'result' => 'Accepted',
                     'startTime' => '2026-09-14T13:21:11.795Z',
-                    'from' => ['phoneNumber' => '+17579553189', 'name' => 'PERRON,NICOLE'],
+                    'from' => ['phoneNumber' => '+17575550100', 'name' => 'PARKER,NICOLE'],
                     'to' => ['phoneNumber' => '+18888602433', 'name' => 'Main - IVR'],
                     // Present on 175 of 250 real inbound calls, measured
                     // 2026-09-17. Its ABSENCE is equally ordinary, which is why

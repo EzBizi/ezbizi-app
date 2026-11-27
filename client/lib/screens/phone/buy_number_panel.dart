@@ -5,6 +5,7 @@ import '../../core/api_client.dart';
 import '../../core/us_states.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Phone › Settings › Numbers › Buy a new line.
 ///
@@ -730,7 +731,7 @@ class _BuyNumberPanelState extends State<BuyNumberPanel> {
               const SizedBox(height: 12),
               TextField(
                 controller: _label,
-                autofocus: true,
+                autofocus: autofocusOnOpen,
                 decoration: const InputDecoration(
                   labelText: 'Call it',
                   helperText: 'What this line is for — Office, Dispatch, Sales.',

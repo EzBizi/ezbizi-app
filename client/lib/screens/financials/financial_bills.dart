@@ -3,16 +3,16 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/branch_options.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
-import 'financial_cells.dart';
-
-String _money(int cents) =>
-    formatCell(const {'type': 'currency', 'options': {}}, cents / 100);
+import 'invoice_common.dart';
 
 /// Financials → Bills: a place's bills for a period, read from a photo and
 /// saved once the lines add up to the photo's total, to the cent.
@@ -42,10 +42,17 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
   void initState() {
     super.initState();
     _load();
+    // A bill read or saved elsewhere: the list re-reads quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'financial_bills'}, (_) {
+      return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -80,12 +87,13 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
     ];
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the bills on screen.
+  Future<void> _load({bool quiet = false}) async {
     final r = await widget.api.get(
       '/financials/bills',
       _q.isEmpty ? null : {'q': _q},
     );
-    if (!mounted) return;
+    if (!mounted || (quiet && !r.ok)) return;
     setState(() {
       _bills = r.ok ? (r.body['data'] as List).cast<Map>() : null;
       _error = r.ok ? null : r.message;
@@ -139,57 +147,77 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
       key: const ValueKey('tour-financials-bills'),
       padding: const EdgeInsets.all(16),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Bills',
-                style: Theme.of(context).textTheme.titleMedium,
+        // Below 600 the title gets its own line and the controls wrap under
+        // it: in one row they squeezed it to "Bill / s" (phone review
+        // 2026-11-13, item 5).
+        if (MediaQuery.sizeOf(context).width < 600) ...[
+          Text('Bills', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ListSearch(
+                key: const Key('financials-bills-search'),
+                controller: _search,
+                onChanged: _searched,
+                hint: 'Place, period or line',
               ),
-            ),
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 240),
-                child: TextField(
+              if (_canEdit) ...[
+                OutlinedButton(
+                  onPressed: () => _open(),
+                  child: const Text('Type one in'),
+                ),
+                FilledButton.icon(
+                  icon: _reading
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.photo_camera_outlined),
+                  label: const Text('Read a photo'),
+                  onPressed: _reading ? null : _read,
+                ),
+              ],
+            ],
+          ),
+        ] else
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Bills',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              Flexible(
+                child: ListSearch(
                   key: const Key('financials-bills-search'),
                   controller: _search,
                   onChanged: _searched,
-                  // bodyMedium for the text and the hint, as the dense pickers draw:
-                  // 53 points tall, as they are; the theme's 16-point hint makes 56.
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                    hintText: 'Place, period or line',
-                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(
-                        context,
-                      ).inputDecorationTheme.hintStyle?.color,
-                    ),
-                  ),
+                  hint: 'Place, period or line',
                 ),
               ),
-            ),
-            if (_canEdit) ...[
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: () => _open(),
-                child: const Text('Type one in'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                icon: _reading
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.photo_camera_outlined),
-                label: const Text('Read a photo'),
-                onPressed: _reading ? null : _read,
-              ),
+              if (_canEdit) ...[
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: () => _open(),
+                  child: const Text('Type one in'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  icon: _reading
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.photo_camera_outlined),
+                  label: const Text('Read a photo'),
+                  onPressed: _reading ? null : _read,
+                ),
+              ],
             ],
-          ],
-        ),
+          ),
         const SizedBox(height: 4),
         const Text(
           "A photo of a period's bills is read into lines; it is saved once they add up to its total.",
@@ -220,7 +248,7 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
             subtitle: Text(
               '${(b['lines'] as List).length} lines${b['source'] == 'whatsapp' ? ' · from WhatsApp' : ''}',
             ),
-            trailing: Text(_money(b['total_cents'] as int)),
+            trailing: Text(invoiceMoney(b['total_cents'] as int)),
             onTap: () => _show(b),
           ),
       ],
@@ -423,7 +451,7 @@ class _BillPanelState extends State<_BillPanel> {
           Text(
             addsUp
                 ? 'The lines add up to the total.'
-                : 'Lines add up to ${_money(_sum)}; they must equal the total.',
+                : 'Lines add up to ${invoiceMoney(_sum)}; they must equal the total.',
             style: TextStyle(
               color: addsUp
                   ? theme.colorScheme.primary
@@ -501,7 +529,7 @@ class _BillViewState extends State<_BillView> {
               child: Row(
                 children: [
                   Expanded(child: Text('${l['name']}')),
-                  Text(_money(l['cents'] as int)),
+                  Text(invoiceMoney(l['cents'] as int)),
                 ],
               ),
             ),
@@ -509,7 +537,7 @@ class _BillViewState extends State<_BillView> {
           Row(
             children: [
               const Expanded(child: Text('Total')),
-              Text(_money(b['total_cents'] as int)),
+              Text(invoiceMoney(b['total_cents'] as int)),
             ],
           ),
           if (_image != null)

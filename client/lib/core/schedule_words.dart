@@ -30,20 +30,10 @@ String? scheduleWords(Object? schedule, DisplayFormats formats) {
   return when == null ? null : '$when $clock';
 }
 
-const _weekdays = [
-  'monday',
-  'tuesday',
-  'wednesday',
-  'thursday',
-  'friday',
-  'saturday',
-  'sunday',
-];
-
 /// "Sundays", "Mondays and Thursdays", "Mon, Wed, Fri", "Every day".
 String? _days(List<String> days) {
   final known = [
-    for (final d in _weekdays)
+    for (final d in weekdayKeys)
       if (days.contains(d)) d,
   ];
   if (known.isEmpty) return null;

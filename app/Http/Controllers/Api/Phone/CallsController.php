@@ -101,7 +101,7 @@ class CallsController extends Controller
 
         // SHAPE only, and it is worth being clear what that does not cover.
         //
-        // `+3057242199` — the number every outbound call went to for weeks —
+        // `+3055550107` — the number every outbound call went to for weeks —
         // passes this, because it IS structurally valid E.164. What was wrong
         // with it is that +305 is not a country, and seeing that needs a table
         // of real country codes rather than a pattern. The country code is
@@ -178,7 +178,9 @@ class CallsController extends Controller
         // ask about. Only THIS person's calls: two people hang up at once and
         // otherwise each could be handed the other's.
         if ($request->boolean('untagged')) {
-            $query->whereNull('tag_id')->where('user_id', $request->user()->id);
+            $me = $request->user()->id;
+            // Placed by me, or an inbound call I answered.
+            $query->whereNull('tag_id')->where(fn ($q) => $q->where('user_id', $me)->orWhere('answered_by', $me));
         }
 
         // Voicemails for one box.

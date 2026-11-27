@@ -64,18 +64,18 @@ return [
         // blaming the certificate rather than the configuration.
         'host' => env('EZBIZI_TLS_HOST')
             ?: (parse_url($hosts['customer'], PHP_URL_HOST) ?: $hosts['customer']),
-        'port' => (int) env('EZBIZI_TLS_PORT', 443),
+        'port' => 443,
 
         // Short on purpose: this runs inside a staff page request, and a health
         // screen that hangs waiting for a socket is reporting nothing while
         // looking like it is reporting something.
-        'timeout' => (int) env('EZBIZI_TLS_TIMEOUT_SECONDS', 5),
+        'timeout' => 5,
 
         // certbot starts renewing at 30 days out and retries twice a day, so a
         // healthy installation never gets near this. Below it means either the
         // renewal or the nginx reload after it has been failing for over a week,
         // which is still a fortnight of warning before anything breaks.
-        'min_days' => (int) env('EZBIZI_TLS_MIN_DAYS', 21),
+        'min_days' => 21,
     ],
 
     /*
@@ -92,7 +92,7 @@ return [
     'attachments' => [
         // 20MB. Big enough for a scanned multi-page contract or a photograph
         // straight off a phone, small enough that one upload is not an outage.
-        'max_kilobytes' => (int) env('EZBIZI_ATTACHMENT_MAX_KB', 20480),
+        'max_kilobytes' => 20480,
 
         /*
          * Extensions, checked against the DETECTED content type by the `mimes`
@@ -118,13 +118,24 @@ return [
      * inside the product. The lesson that produced this: for seven hours every
      * check I ran was a status code, and not one of them touched a row.
      */
+    // The scheduler's slow lane (routes/console.php, TWO LANES). Off: the fast
+    // slots run everything, as before. On: the five slow commands run only in
+    // deploy/ezbizi-scheduler-slow.service. Flipped on the box AFTER its units
+    // are installed, so a deploy in either order never strands a command.
+    'scheduler' => [
+        'slow_lane' => env('EZBIZI_SLOW_LANE') === 'on',
+        // Its own lane for `ezbizi:sync-leads --messages` (deploy/ezbizi-scheduler-leads.*),
+        // on after those units are installed; off, it runs in the slow lane.
+        'leads_lane' => env('EZBIZI_LEADS_LANE') === 'on',
+    ],
+
     'backups' => [
         'status_file' => env('EZBIZI_BACKUP_STATUS', storage_path('app/backup-status.json')),
 
         // Older than this and the backup is treated as failed, whatever the file
         // says. A job that stops running writes nothing at all, so "the last
         // result was a success" is exactly what a broken timer looks like.
-        'max_age_hours' => (int) env('EZBIZI_BACKUP_MAX_AGE_HOURS', 30),
+        'max_age_hours' => 30,
 
         // Who hears about it. Empty means nobody is emailed and the alert lives
         // only in the audit log and the Development screen — which is better
@@ -144,10 +155,22 @@ return [
      * Production sets `EZBIZI_PEER_URL=https://panel.triplexhost.net`. An unset
      * value is reported as missing, the same way MailStatus names an empty key.
      */
+    /*
+     * Where scripts/lib/release-status.sh appends a release's progress, one
+     * JSON line per stage boundary, over the deploy's own ssh. Outside storage/
+     * because the deploy user writes it and www-data owns storage. Read by the
+     * Development tab's Releases screen (StaffReleaseStatusController).
+     */
+    'release_status_file' => env('EZBIZI_RELEASE_STATUS_FILE', '/var/www/ezbizi/release-status.jsonl'),
+
+    // Where deploy.sh's server gate writes its log ({sha}-{time}-{pid}.log);
+    // the Releases screen shows its tail (staff only).
+    'gate_runs_dir' => env('EZBIZI_GATE_RUNS_DIR', '/opt/ezbizi-test/.gate-runs'),
+
     'peer' => [
         'status_file' => env('EZBIZI_PEER_STATUS', storage_path('app/peer-status.json')),
         'url' => env('EZBIZI_PEER_URL'),
-        'max_age_minutes' => (int) env('EZBIZI_PEER_MAX_AGE_MINUTES', 15),
+        'max_age_minutes' => 15,
     ],
 
     /*
@@ -217,7 +240,7 @@ return [
          * asking means a public webhook endpoint and a subscription that expires
          * and has to be renewed, which is infrastructure rather than a setting.
          */
-        'interval_seconds' => (int) env('EZBIZI_MAIL_WATCH_INTERVAL', 300),
+        'interval_seconds' => 300,
 
         /*
          * How many mailboxes one sweep will take, and for how long.
@@ -234,9 +257,9 @@ return [
          * which is inside one cadence — so a hundred is comfortably within what
          * this configuration serves without any mailbox slipping behind.
          */
-        'per_sweep' => (int) env('EZBIZI_MAIL_WATCH_PER_SWEEP', 25),
+        'per_sweep' => 25,
 
-        'sweep_seconds' => (int) env('EZBIZI_MAIL_WATCH_SWEEP_SECONDS', 45),
+        'sweep_seconds' => 45,
 
         /*
          * How many arrivals one poll of one mailbox will announce.
@@ -250,7 +273,7 @@ return [
          * Gmail honours this loosely — its position can only be taken where its
          * history paging stops, and App\Support\Email\GmailMailboxReader says why.
          */
-        'per_poll' => (int) env('EZBIZI_MAIL_WATCH_PER_POLL', 50),
+        'per_poll' => 50,
 
         /*
          * How long a position may go unconfirmed before it is abandoned.
@@ -267,7 +290,7 @@ return [
          * thing that happens on the first sight of a mailbox, for the same
          * reason. It is stated in the log so a gap is never invisible.
          */
-        'stale_after_seconds' => (int) env('EZBIZI_MAIL_WATCH_STALE_AFTER', 86400),
+        'stale_after_seconds' => 86400,
 
         /*
          * The longest the backoff will wait after repeated failures.
@@ -279,7 +302,7 @@ return [
          * out of the sweep entirely and raises `email.mailbox_broken`, which is
          * the path that reaches somebody.
          */
-        'max_backoff_seconds' => (int) env('EZBIZI_MAIL_WATCH_MAX_BACKOFF', 21600),
+        'max_backoff_seconds' => 21600,
     ],
 
     /*
@@ -321,4 +344,10 @@ return [
             'a1-kitchens.com', 'achdutisraeldallas.org', 'leshemshamayim.org', 'americanfriendsofleshemshamaim.org',
         ]],
     ],
+
+    // Who public lookup services (OpenStreetMap, Census) can contact about our traffic.
+    'contact_email' => env('EZBIZI_CONTACT_EMAIL', 'development@ezbizi.com'),
+
+    // Task Board rules move a misfiled item to its group (Jose 11-17); false only flags.
+    'task_board_moves' => (bool) env('TASK_BOARD_MOVES', true),
 ];

@@ -110,7 +110,7 @@ class FilesController extends Controller
     private const UNSTATABLE_MODIFIED = '1970-01-01T00:00:00.000Z';
 
     /** The SECURITY exemption's refusal sentence — the same wording every screen-reaching guard uses. */
-    private const EXEMPT_REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
+    private const EXEMPT_REFUSAL = ScreenMonitoringExemption::REFUSAL;
 
     /**
      * How long one authenticator code keeps Files open for a manager — sliding:

@@ -98,6 +98,9 @@ class CustomersController extends Controller
             // everything here is already readable. A filter that looked like a
             // permission would be the more dangerous kind of confusion.
             ->when($request->query('franchise_id'), fn ($q, $id) => $q->where('owning_franchise_id', $id))
+            // One tag, any spelling of its case (Jose, 2026-11-03).
+            ->when($request->query('tag'), fn ($q, $tag) => $q->whereRaw(
+                "JSON_SEARCH(LOWER(customers.tags), 'one', ?) IS NOT NULL", [addcslashes(mb_strtolower(trim((string) $tag)), '%_\\')]))
             ->when($request->query('search'), function ($q, $term) {
                 $q->where(function ($inner) use ($term) {
                     $inner->where('name', 'like', "%{$term}%")
@@ -159,6 +162,28 @@ class CustomersController extends Controller
                 ? \App\Support\Leads\LeadSearch::forUser($request->user(), (string) $request->query('search'))
                 : [],
         ]);
+    }
+
+    /**
+     * GET /api/v1/customers/tags -- every tag in use, with how many customers
+     * carry it, most used first: the suggestions and the filter picker
+     * (design 174). Organization-wide, as customers are (§5.2).
+     */
+    public function tags(): JsonResponse
+    {
+        $this->authorize('viewAny', Customer::class);
+
+        $tags = [];
+        Customer::query()->whereNotNull('tags')->select('tags')->each(function (Customer $c) use (&$tags) {
+            foreach ($c->tags ?? [] as $tag) {
+                $key = mb_strtolower($tag);
+                $tags[$key] ??= ['tag' => $tag, 'customers' => 0];
+                $tags[$key]['customers']++;
+            }
+        });
+
+        // ponytail: reads every tagged row; a JSON_TABLE GROUP BY when tags reach tens of thousands.
+        return response()->json(['data' => collect($tags)->sortByDesc('customers')->values()]);
     }
 
     /** GET /api/v1/customers/{customer}?today=Y-m-d */
@@ -403,6 +428,12 @@ class CustomersController extends Controller
                 'name', 'email', 'phone', 'owning_franchise_id', 'is_active',
             ])]);
 
+            if (($customer->tags ?? []) !== []) {
+                $this->events->emit('customer.tagged', $customer, [
+                    'before' => ['tags' => []], 'after' => ['tags' => $customer->tags],
+                ]);
+            }
+
             return $customer;
         });
 
@@ -422,13 +453,23 @@ class CustomersController extends Controller
         // owning_franchise_id is absent on purpose. Reassignment is a separate,
         // separately authorised act (§5.2) — allowing it here would let a
         // routine edit move accountability as a side effect.
-        $input = $request->validate($this->rules(forUpdate: true));
+        $input = $request->validate($this->rules(forUpdate: true) + [
+            // "No marketing email": newsletters skip a customer who has it
+            // (SendNewsletter::people). Stamped when, never a bare flag.
+            'email_opt_out' => ['sometimes', 'boolean'],
+        ]);
 
         DB::transaction(function () use ($customer, $input) {
+            $optOut = $input['email_opt_out'] ?? null;
+            unset($input['email_opt_out']);
             $customer->fill($input);
+            if ($optOut !== null && $optOut !== ($customer->email_opt_out_at !== null)) {
+                $customer->forceFill(['email_opt_out_at' => $optOut ? now() : null]);
+            }
 
             $changed = $customer->getDirty();
             $before  = array_intersect_key($customer->getOriginal(), $changed);
+            $tagsBefore = $customer->getOriginal('tags') ?? [];
 
             $this->audit->logChange('customer.updated', $customer);
 
@@ -437,6 +478,16 @@ class CustomersController extends Controller
             if ($changed !== []) {
                 $this->events->emit('customer.updated', $customer, [
                     'before' => $before, 'after' => $changed,
+                ]);
+            }
+
+            // Its own trigger (Automations 4ece166b6): "tagged VIP" is a rule
+            // people build, and a field-change on a JSON column is not one
+            // anybody can write. Only this person-made edit raises it; imports
+            // and bulk writes do not come through here.
+            if ($tagsBefore !== ($customer->tags ?? [])) {
+                $this->events->emit('customer.tagged', $customer, [
+                    'before' => ['tags' => $tagsBefore], 'after' => ['tags' => $customer->tags ?? []],
                 ]);
             }
         });
@@ -524,6 +575,9 @@ class CustomersController extends Controller
             'postal_code'   => ['nullable', 'string', 'max:12'],
             'notes'         => ['nullable', 'string', 'max:5000'],
             'is_active'     => ['boolean'],
+            // Newsletters and automations pick people by these (Jose, 2026-11-03).
+            'tags'          => ['nullable', 'array', 'max:20'],
+            'tags.*'        => ['nullable', 'string', 'max:40'],
         ];
     }
 
@@ -572,6 +626,7 @@ class CustomersController extends Controller
             // 2026-09-23, the day of the import. Named for what it is so the
             // column heading cannot claim more than the value knows.
             'created_at' => $customer->created_at?->toIso8601String(),
+            'tags' => $customer->tags ?? [],
         ];
 
         if (! $detailed) {
@@ -587,6 +642,7 @@ class CustomersController extends Controller
                 'postal_code' => $customer->postal_code,
             ],
             'notes' => $customer->notes,
+            'email_opt_out' => $customer->email_opt_out_at !== null,
             // Derived from jobs, never stored (§5.2).
             'served_by_franchise_ids' => $customer->servedByFranchiseIds(),
             'shared_in_practice'      => $customer->isSharedInPractice(),
@@ -638,15 +694,18 @@ class CustomersController extends Controller
                 Franchise::select('name')->whereColumn('franchises.id', 'customers.owning_franchise_id'),
                 $direction,
             );
+        } elseif (($sort === 'name' || ! isset(self::SORTS[$sort])) && $query->getConnection()->getDriverName() === 'mysql') {
+            // By the name's first letter or digit (desktop review 2026-11-13):
+            // "'Bob" and "-- Ann" sorted ahead of every A, and the list opened
+            // on junk. The stored name is untouched; only the order skips them.
+            $query->orderByRaw("REGEXP_REPLACE(customers.name, '^[^[:alnum:]]+', '') {$direction}");
         } else {
             $query->orderBy(self::SORTS[$sort] ?? 'name', $direction);
         }
 
         // Name second, so equal cities or job counts still read alphabetically,
         // then id, so the order is total and a page cannot repeat or drop a row.
-        if ($sort !== 'name') {
-            $query->orderBy('name');
-        }
+        $query->orderBy('name');
 
         $query->orderBy('customers.id');
     }

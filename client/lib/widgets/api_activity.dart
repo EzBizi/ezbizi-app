@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+
+import 'list_search.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
@@ -244,21 +246,11 @@ class _ApiActivityState extends State<ApiActivity> {
       children: [
         SizedBox(
           width: 240,
-          child: TextField(
+          child: ListSearch(
             key: const Key('api-activity-search'),
             controller: _search,
+            hint: 'Path, person or key',
             onChanged: _searched,
-            // bodyMedium for the text and the hint, as the dense pickers draw:
-            // 53 points tall, as they are; the theme's 16-point hint makes 56.
-            style: Theme.of(context).textTheme.bodyMedium,
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: 'Path, person or key',
-              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
-              ),
-            ),
           ),
         ),
         if (widget.everyone)
@@ -368,21 +360,24 @@ class _ApiActivityState extends State<ApiActivity> {
         tile('keys', 'keys used · 24 h', summary['keys']),
         tile(
           'calls',
-          'calls',
+          'calls · 24 h',
           summary['calls'],
           on: !_changesOnly && !_refusedOnly,
           onTap: () => show(changes: false, refused: false),
         ),
         tile(
           'changes',
-          'changes',
+          // Every tile counts the last day, not the list below it: "0 changes"
+          // over a list of last week's changes read as a wrong count (UI
+          // audit, 2026-11-04). The list's own window is the whole history.
+          'changes · 24 h',
           summary['changes'],
           on: _changesOnly && !_refusedOnly,
           onTap: () => show(changes: true, refused: false),
         ),
         tile(
           'refused',
-          'refused',
+          'refused · 24 h',
           summary['refused'],
           warn: true,
           on: _refusedOnly,

@@ -255,7 +255,12 @@ class _BusinessProfilePerformanceState
       onChanged: (v) {
         if (v == null) return;
         if (v == 'custom') {
-          setState(() => _picking = true);
+          // A phone: the dates on a page of their own, as Reports opens them.
+          if (narrow) {
+            _pickOnPage(formats);
+          } else {
+            setState(() => _picking = true);
+          }
           return;
         }
         setState(() {
@@ -324,6 +329,22 @@ class _BusinessProfilePerformanceState
         ?fresh,
       ],
     );
+  }
+
+  Future<void> _pickOnPage(DisplayFormats formats) async {
+    final span = await pickDateSpan(
+      context,
+      initial: _span,
+      today: _yesterday,
+      formats: formats,
+    );
+    if (!mounted || span == null) return;
+    setState(() {
+      _custom = span;
+      _preset = 'custom';
+      _picking = false;
+    });
+    _load();
   }
 
   Widget _panel(BuildContext context, bool narrow) {
@@ -581,7 +602,7 @@ class _BusinessProfilePerformanceState
       !d.isAfter(last);
       d = DateTime(d.year, d.month, d.day + 1)
     ) {
-      bars.add((d, _tileValue(byDate[dayKey(d)], _metric)));
+      bars.add((d, _tileValue(byDate[formatCalendarDay(d)], _metric)));
     }
     final label = _tiles.firstWhere((t) => t.$1 == _metric).$2;
 

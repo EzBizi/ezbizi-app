@@ -82,6 +82,23 @@ class HtmlEmailSanitiserTest extends TestCase
         $this->assertStringNotContainsString('evil.example', $out);
     }
 
+    /**
+     * The desktop and phone apps draw this page in a WebView rather than a
+     * sandboxed iframe (Jose 11-12), so the page itself forbids scripts and
+     * any load but pictures, styles and fonts.
+     */
+    public function test_the_page_forbids_scripts_and_loads_only_pictures_styles_and_fonts(): void
+    {
+        $out = $this->sanitiser->wrap('<p>Hi</p>');
+
+        $this->assertMatchesRegularExpression(
+            '/<meta http-equiv="Content-Security-Policy" content="default-src \'none\';[^"]*img-src data: https: http:;/',
+            $out,
+        );
+        $this->assertStringNotContainsString('script-src', $out);
+        $this->assertLessThan(strpos($out, '<body'), strpos($out, 'Content-Security-Policy'));
+    }
+
     public function test_the_wrapped_document_is_a_white_page_like_gmail(): void
     {
         $out = $this->sanitiser->wrap('<p>Hi</p>');

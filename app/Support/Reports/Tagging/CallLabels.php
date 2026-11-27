@@ -2,15 +2,33 @@
 
 namespace App\Support\Reports\Tagging;
 
+use App\Support\Ai\GrokCli;
 use App\Support\Reports\Experimental\RingCentralCallLog;
+use App\Support\Settings\Lists\BusinessLists;
+use App\Support\Tenancy\TenantContext;
 
 /**
  * The questions and labels Jose listed for the Performance report
  * (2026-10-05): why an existing client called, and why a new client did not
  * book. One place, so the two taggers ask exactly the same thing.
+ *
+ * The labels are the business's own lists (Settings › Lists, Jose 2026-11-04:
+ * every business value editable); EXISTING and NOT_BOOKED are what a list
+ * holds until it is edited.
  */
 final class CallLabels
 {
+    public const LISTS = ['existing' => 'reports.call_labels.existing', 'not_booked' => 'reports.call_labels.not_booked'];
+
+    /** The report's words for each default label; the AI is given the meanings. */
+    public const NAMES = [
+        'complaint' => 'Complaint', 'reschedule' => 'Reschedule', 'cancel' => 'Cancel', 'eta' => 'ETA',
+        'billing' => 'Billing', 'estimate_question' => 'Estimate question', 'job_status' => 'Job status',
+        'confirmation' => 'Confirmation', 'not_a_customer' => 'Not a customer', 'no_conversation' => 'No conversation',
+        'other' => 'Other', 'price' => 'Price', 'availability' => 'Availability', 'service_question' => 'Service question',
+        'booked' => 'AI heard a booking, no job yet',
+    ];
+
     public const EXISTING = [
         'complaint' => 'Unhappy with work already done, a technician, or the service.',
         'reschedule' => 'Wants to move or change an appointment.',
@@ -63,17 +81,52 @@ final class CallLabels
      */
     public static function for(?string $queue): ?array
     {
-        return match ($queue) {
-            RingCentralCallLog::EXISTING_CLIENT_QUEUE => [
-                'question' => 'This is a call from an existing customer of a chimney service company. Why did they call?',
-                'labels' => self::EXISTING,
+        // What the business does is its own setting (ai_assistance.trades).
+        $trades = GrokCli::trades(app(TenantContext::class)->get()?->id);
+
+        $ask = match (RingCentralCallLog::clientOf($queue)) {
+            'existing' => [
+                'question' => 'This is a call from an existing customer of a home-services business ('.$trades.'). Why did they call?',
+                'labels' => self::labels('existing'),
             ],
-            RingCentralCallLog::NEW_CLIENT_QUEUE => [
-                'question' => 'This is a call from a new customer to a chimney service company. Did they book, and if not, why not?',
-                'labels' => self::NOT_BOOKED,
+            'new' => [
+                'question' => 'This is a call from a new customer to a home-services business ('.$trades.'). Did they book, and if not, why not?',
+                'labels' => self::labels('not_booked'),
             ],
             default => null,
         };
+
+        // A list emptied on the screen asks nothing rather than an empty choice.
+        return $ask === null || $ask['labels'] === [] ? null : $ask;
+    }
+
+    /** @return array<string, string> label => what it means, as the business's list has it */
+    public static function labels(string $which): array
+    {
+        $out = [];
+        foreach (app(BusinessLists::class)->rows(self::LISTS[$which]) as $row) {
+            $out[(string) ($row['value']['label'] ?? $row['key'])] = (string) ($row['value']['meaning'] ?? '');
+        }
+
+        return $out;
+    }
+
+    /** @return array{existing: array<string, string>, not_booked: array<string, string>} label => the name shown */
+    public static function names(): array
+    {
+        return array_map(fn (string $list) => collect(app(BusinessLists::class)->rows($list))->mapWithKeys(function (array $row) {
+            $label = (string) ($row['value']['label'] ?? $row['key']);
+
+            return [$label => (string) (($row['value']['name'] ?? '') ?: $label)];
+        })->all(), self::LISTS);
+    }
+
+    /** A constant as the list's default rows. */
+    public static function defaults(array $labels): array
+    {
+        return array_map(fn (string $label) => ['key' => $label, 'value' => [
+            'label' => $label, 'name' => self::NAMES[$label] ?? $label, 'meaning' => $labels[$label],
+        ]], array_keys($labels));
     }
 
     /** The instruction both taggers send, built from the labels so they never drift. */

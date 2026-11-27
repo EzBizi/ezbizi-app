@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lead header</title>
+<style>
+:root{--bg:#f6f8f9;--paper:#fff;--ink:#14191c;--muted:#5d6970;--line:#dde3e6;--pri:#00739a;--pric:#dff1f8;--offc:#eceff1;
+--okf:#e1f3e6;--oki:#1d6b36;--orf:#fde9d6;--ori:#94450c;--cauf:#fdf1cf;--caui:#7a5600;--thr:#eef2f4}
+.dark{--bg:#0c1014;--paper:#151b20;--ink:#e8eef1;--muted:#93a1a8;--line:#26313a;--pri:#5fc8ea;--pric:#0f3443;--offc:#222b32;
+--okf:#143222;--oki:#8fd9a6;--orf:#3a2412;--ori:#f2b27a;--cauf:#33290c;--caui:#ecc767;--thr:#10161b}
+body{margin:0;font:14px/1.4 Inter,Segoe UI,Roboto,sans-serif;background:#e9edef;color:#14191c}
+.wrap{max-width:1240px;margin:0 auto;padding:24px 16px}h1{margin:0 0 4px}h2{margin:36px 0 6px;font-size:18px}.cap{color:#4c575d;margin:0 0 12px;max-width:880px}
+.rec{background:#00739a;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:8px}
+.trio{display:grid;grid-template-columns:2fr 1fr;gap:12px}@media(max-width:900px){.trio{grid-template-columns:1fr}}
+.frame{background:var(--bg);color:var(--ink);border-radius:10px;padding:0;border:1px solid #cfd6da;overflow:hidden}.frame.phone{max-width:390px}
+.lbl{font-size:11px;color:#4c575d;margin:0 0 4px;font-weight:600}
+/* gallery-local: lh- */
+.lh-hdr{padding:10px 14px 10px;background:var(--bg)}
+.lh-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.lh-sp{flex:1}
+.lh-av{width:30px;height:30px;border-radius:50%;background:var(--pric);color:var(--pri);display:grid;place-items:center;font-weight:700;font-size:12px;flex:none}
+.lh-nm{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+.lh-cp{color:var(--muted);font-size:13px;cursor:default;padding:0 2px}
+.lh-co{border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap}
+.lh-st{background:var(--pric);color:var(--pri);border-radius:99px;padding:1px 9px;font-size:12px;font-weight:700}
+.lh-star{color:var(--muted);font-size:15px}
+.lh-ch{background:var(--offc);color:var(--muted);border-radius:99px;padding:1px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+.lh-src{background:var(--pric);color:var(--pri);border-radius:99px;padding:1px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+.lh-acct{background:var(--orf);color:var(--ori);border-radius:99px;padding:1px 8px;font-size:11px;font-weight:600;white-space:nowrap}
+.lh-okp{background:var(--okf);color:var(--oki);border-radius:99px;padding:1px 8px;font-size:11px;font-weight:600;white-space:nowrap}
+.lh-btn{border:1px solid var(--line);border-radius:18px;padding:4px 12px;font-size:13px;font-weight:600;color:var(--pri);background:transparent;white-space:nowrap}
+.lh-bf{background:var(--pri);color:var(--paper);border-radius:18px;padding:4px 14px;font-size:13px;font-weight:600;white-space:nowrap}
+.lh-dots{color:var(--muted);font-weight:700;padding:0 4px}
+.lh-seg{display:inline-flex;border:1px solid var(--line);border-radius:18px;overflow:hidden;font-size:12px;font-weight:600}
+.lh-seg span{padding:4px 10px;border-right:1px solid var(--line);color:var(--ink);white-space:nowrap}.lh-seg span:last-child{border-right:0}
+.lh-seg .on{background:var(--pric);color:var(--pri)}
+.lh-pick{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:3px 8px;font-size:12px;font-weight:600;white-space:nowrap}
+.lh-two{display:flex;gap:16px;margin-top:8px;align-items:flex-start}
+.lh-left{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.lh-right{width:310px;flex:none}
+.lh-grid{display:grid;grid-template-columns:62px 1fr;gap:5px 8px;font-size:12.5px;align-items:start}
+.lh-grid .k{font-size:11px;font-weight:700;color:var(--muted);padding-top:1px}
+.lh-grid .v{min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.lh-grid .v .x{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.lh-box{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.lh-ask .h{font-size:11px;font-weight:700;color:var(--muted);display:flex;gap:6px;align-items:center}
+.lh-ask .ai{color:var(--pri);font-size:11px}
+.lh-ask .b{font-size:13px;margin-top:3px}
+.lh-ask .w{font-size:12px;color:var(--muted);margin-top:4px}
+.lh-cust{background:var(--okf);color:var(--oki);border-radius:10px;padding:5px 10px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px}
+.lh-cust .o{margin-left:auto;font-weight:700;white-space:nowrap}
+.lh-link{color:var(--pri);font-weight:600;font-size:12px;white-space:nowrap}
+.lh-sug{border:1px solid var(--line);border-radius:8px;padding:0 6px;font-size:11px;font-weight:600;white-space:nowrap}
+.lh-ok{color:var(--pri);font-size:12px}
+.lh-thread{background:var(--thr);border-top:1px solid var(--line);padding:12px 14px;min-height:90px}
+.lh-bub{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:6px 10px;font-size:12.5px;max-width:70%;margin-bottom:6px}
+.lh-bub.me{margin-left:auto;background:var(--pric)}
+.lh-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 14px;font-size:12.5px;margin-top:8px}
+.lh-tiles .k{font-size:11px;font-weight:700;color:var(--muted);display:block}
+.lh-tiles>div{min-width:0}.lh-tiles .x{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.lh-rail{display:flex}.lh-rail .main{flex:1;min-width:0}.lh-rail .side{width:280px;flex:none;border-left:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
+.lh-sec{font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px}
+.lh-today{padding:10px 14px;font-size:12.5px}
+.lh-today p{margin:6px 0}
+.lh-mut{color:var(--muted)}
+.lh-panel{border-left:3px solid var(--pri)}
+</style></head><body><div class="wrap">
+<h1>Lead header</h1>
+<p class="cap">Jose 11-16: "lots of wasted space and things all around". Today the header is seven loose full-width lines; the company, branch and source appear three times and the AI summary repeats the customer. Every option keeps every control: copy name, company tag, status, star, viewers, note, Call / Edit / Book / ⋯, the six moves, Check availability, the address suggestion, the existing-customer link.</p>
+
+<h2>Today</h2>
+<p class="cap">For comparison.</p>
+<div class="frame" style="max-width:820px"><div class="lh-today">
+<div class="lh-row"><span class="lh-av">DW</span><span class="lh-nm">Dana Whitfield</span><span class="lh-cp">⧉</span><span class="lh-co">A-1 Chimney</span><span class="lh-st">New</span><span class="lh-star">☆</span><span class="lh-ch">👁 Gino Russo-F…</span><span class="lh-ch">✎ Add a note</span><span class="lh-sp"></span><span class="lh-btn">Call</span><span class="lh-btn">Edit</span><span class="lh-bf">Book</span></div>
+<div style="margin-top:8px"><span class="lh-seg"><span>Archive</span><span>Not a lead</span><span class="on">Lead</span><span>Follow Up</span><span>Completed</span><span>Lost</span></span></div>
+<p>Phone (215) 555-0143 ⧉ · Email dana.w@example.com ⧉ · Address 14 Orchard Ln, Doylestown PA ✓ ⧉ <span class="lh-link">Check availability for 18901</span> · Job Fireplace chimney ⧉</p>
+<p>Customer said: smoky fireplace, wants it swept and checked before the holidays · weekday mornings · before Dec 20 &nbsp; <span class="lh-sug">✦ Use 18902?</span></p>
+<p><span class="lh-acct">A1 Chimney - Bucks County</span> <span class="lh-okp">Google: Active</span> <span class="lh-mut">Fireplace chimney · Google Ads · Bucks County</span></p>
+<p class="lh-mut"><i>Looks like a real lead · Smoky fireplace; wants it swept and checked before the holidays.</i></p>
+<div class="lh-cust"><span style="font-weight:700">●</span> Existing customer · Dana Whitfield · C-03394 · 1 job · last Mon 24 Nov <span class="o">Open customer</span></div>
+</div></div>
+
+<!-- ============ shared bits ============ -->
+<template id="name-row">
+<div class="lh-row"><span class="lh-av">DW</span><span class="lh-nm">Dana Whitfield</span><span class="lh-cp">⧉</span><span class="lh-co">A-1 Chimney</span><span class="lh-st">New</span><span class="lh-star">☆</span><span class="lh-ch">👁 Gino R.</span><span class="lh-ch">✎ Add a note</span><span class="lh-sp"></span><span class="lh-btn">Call</span><span class="lh-btn">Edit</span><span class="lh-bf">Book</span><span class="lh-dots">⋯</span></div>
+</template>
+<template id="seg"><div><span class="lh-seg"><span>Archive</span><span>Not a lead</span><span class="on">Lead</span><span>Follow Up</span><span>Completed</span><span>Lost</span></span></div></template>
+<template id="ask">
+<div class="lh-box lh-ask"><div class="h">What they asked <span class="ai">✦ Looks like a real lead</span></div>
+<div class="b">Smoky fireplace; wants it swept and checked before the holidays.</div>
+<div class="w">When: weekday mornings · By: before Dec 20</div></div>
+</template>
+<template id="cust"><div class="lh-cust"><span style="font-weight:700">●</span> Existing customer · C-03394 · 1 job · last Mon 24 Nov ⧉ <span class="o">Open</span></div></template>
+<template id="grid">
+<div class="lh-grid">
+<span class="k">Phone</span><span class="v"><span class="x">(215) 555-0143</span><span class="lh-cp">⧉</span></span>
+<span class="k">Email</span><span class="v"><span class="x">dana.whitfield@example.com</span><span class="lh-cp">⧉</span></span>
+<span class="k">Address</span><span class="v"><span class="lh-ok">✓</span><span class="x">14 Orchard Ln, Doylestown PA 18901</span><span class="lh-cp">⧉</span><span class="lh-sug">✦ Use 18902?</span><span class="lh-link">Check availability</span></span>
+<span class="k">Job</span><span class="v"><span class="x">Fireplace chimney</span><span class="lh-cp">⧉</span></span>
+<span class="k">Branch</span><span class="v"><span class="x">Bucks County</span></span>
+<span class="k">Source</span><span class="v"><span class="lh-src">Google Ads</span><span class="lh-acct">A1 Chimney - Bucks County</span><span class="lh-okp">Active</span></span>
+</div>
+</template>
+<template id="thread"><div class="lh-thread"><div class="lh-bub">Hi, our fireplace smokes into the room. Can someone sweep and check it before the holidays? Weekday mornings are best.</div><div class="lh-bub me">Hi Dana, we can help. Does Thursday 9–11 work?</div></div></template>
+<template id="pbar">
+<div class="lh-row" style="flex-wrap:nowrap"><span class="lh-dots">←</span><span class="lh-av">DW</span><span class="lh-nm" style="flex:1;max-width:none">Dana Whitfield</span><span class="lh-pick">Lead ▾</span><span class="lh-bf">📅</span><span class="lh-dots">⋯</span></div>
+</template>
+<template id="pchips"><div class="lh-row" style="margin-top:8px"><span class="lh-cp">⧉ name</span><span class="lh-co">A-1 Chimney</span><span class="lh-st">New</span><span class="lh-star">☆</span><span class="lh-ch">👁 Gino R.</span><span class="lh-ch">✎ Add a note</span></div></template>
+
+<!-- ============ A ============ -->
+<template id="a-d"><div class="lh-hdr">
+<slot data-t="name-row"></slot>
+<div class="lh-two"><div class="lh-left"><slot data-t="seg"></slot><slot data-t="ask"></slot><slot data-t="cust"></slot></div>
+<div class="lh-right"><slot data-t="grid"></slot></div></div>
+</div><slot data-t="thread"></slot></template>
+<template id="a-p"><div class="lh-hdr"><slot data-t="pbar"></slot><slot data-t="pchips"></slot>
+<div style="margin-top:8px"><slot data-t="ask"></slot></div>
+<div style="margin-top:8px"><slot data-t="grid"></slot></div>
+<div style="margin-top:8px"><slot data-t="cust"></slot></div>
+</div><slot data-t="thread"></slot></template>
+
+<!-- ============ B ============ -->
+<template id="b-d"><div class="lh-hdr">
+<slot data-t="name-row"></slot>
+<div style="margin-top:8px"><slot data-t="seg"></slot></div>
+<div class="lh-tiles">
+<div><span class="k">Phone</span><span class="x">(215) 555-0143 <span class="lh-cp">⧉</span></span></div>
+<div><span class="k">Email</span><span class="x">dana.whitfield@example.com <span class="lh-cp">⧉</span></span></div>
+<div><span class="k">Address</span><span class="x"><span class="lh-ok">✓</span> 14 Orchard Ln, Doylestown PA 18901 <span class="lh-cp">⧉</span></span><span class="lh-sug">✦ Use 18902?</span> <span class="lh-link">Check availability</span></div>
+<div><span class="k">Job</span><span class="x">Fireplace chimney <span class="lh-cp">⧉</span></span></div>
+<div><span class="k">Branch</span><span class="x">Bucks County</span></div>
+<div><span class="k">Source</span><span class="lh-src">Google Ads</span> <span class="lh-okp">Active</span></div>
+</div>
+<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px"><slot data-t="ask"></slot><slot data-t="cust"></slot></div>
+</div><slot data-t="thread"></slot></template>
+<template id="b-p"><div class="lh-hdr"><slot data-t="pbar"></slot><slot data-t="pchips"></slot>
+<div class="lh-tiles" style="grid-template-columns:1fr 1fr">
+<div><span class="k">Phone</span><span class="x">(215) 555-0143 ⧉</span></div>
+<div><span class="k">Job</span><span class="x">Fireplace chimney ⧉</span></div>
+<div><span class="k">Email</span><span class="x">dana.whitfield@example.com ⧉</span></div>
+<div><span class="k">Branch</span><span class="x">Bucks County</span></div>
+<div style="grid-column:1/3"><span class="k">Address</span><span class="x">✓ 14 Orchard Ln, Doylestown PA 18901 ⧉</span><span class="lh-sug">✦ Use 18902?</span> <span class="lh-link">Check availability</span></div>
+<div style="grid-column:1/3"><span class="k">Source</span><span class="lh-src">Google Ads</span> <span class="lh-acct">A1 Chimney - Bucks County</span> <span class="lh-okp">Active</span></div>
+</div>
+<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px"><slot data-t="ask"></slot><slot data-t="cust"></slot></div>
+</div><slot data-t="thread"></slot></template>
+
+<!-- ============ C ============ -->
+<template id="c-d"><div class="lh-rail"><div class="main"><div class="lh-hdr">
+<div class="lh-row"><span class="lh-av">DW</span><span class="lh-nm">Dana Whitfield</span><span class="lh-cp">⧉</span><span class="lh-co">A-1 Chimney</span><span class="lh-st">New</span><span class="lh-star">☆</span><span class="lh-ch">👁 Gino R.</span><span class="lh-sp"></span><span class="lh-pick">Lead ▾</span><span class="lh-bf">Book</span><span class="lh-dots">⋯</span></div>
+</div><slot data-t="thread"></slot><div class="lh-thread" style="border:0;min-height:60px"></div></div>
+<div class="side"><div class="lh-row"><span class="lh-btn">Call</span><span class="lh-btn">Edit</span><span class="lh-ch">✎ Add a note</span></div>
+<div><div class="lh-sec">Contact</div><slot data-t="grid"></slot></div><slot data-t="ask"></slot><slot data-t="cust"></slot></div></div></template>
+<template id="c-p"><div class="lh-hdr"><slot data-t="pbar"></slot></div><slot data-t="thread"></slot>
+<div class="lh-hdr lh-panel"><div class="lh-sec">⋯ opens Details as a side panel</div><slot data-t="pchips"></slot><div style="margin-top:8px"><slot data-t="grid"></slot></div><div style="margin-top:8px"><slot data-t="ask"></slot></div></div></template>
+
+<!-- ============ A variants ============ -->
+<template id="a1-d"><slot data-t="a-d"></slot></template>
+<template id="a1-p"><slot data-t="a-p"></slot></template>
+
+<template id="a2-d"><div class="lh-hdr">
+<slot data-t="name-row"></slot>
+<div class="lh-two"><div class="lh-left"><slot data-t="seg"></slot><slot data-t="ask"></slot></div>
+<div class="lh-right"><div class="lh-box"><div class="lh-cust" style="margin:-2px -4px 8px"><span style="font-weight:700">●</span> Customer C-03394 · 1 job <span class="o">Open</span></div><slot data-t="grid"></slot></div></div></div>
+</div><slot data-t="thread"></slot></template>
+<template id="a2-p"><div class="lh-hdr"><slot data-t="pbar"></slot><slot data-t="pchips"></slot>
+<div style="margin-top:8px" class="lh-box"><div class="lh-cust" style="margin:-2px -4px 8px"><span style="font-weight:700">●</span> Customer C-03394 · 1 job <span class="o">Open</span></div><slot data-t="grid"></slot></div>
+<div style="margin-top:8px"><slot data-t="ask"></slot></div>
+</div><slot data-t="thread"></slot></template>
+
+<template id="a3-d"><div class="lh-hdr">
+<div class="lh-row"><span class="lh-av">DW</span><span class="lh-nm">Dana Whitfield</span><span class="lh-cp">⧉</span><span class="lh-co">A-1 Chimney</span><span class="lh-pick">Lead ▾</span><span class="lh-star">☆</span><span class="lh-ch">👁 Gino R.</span><span class="lh-ch">✎ Add a note</span><span class="lh-sp"></span><span class="lh-btn">Call</span><span class="lh-btn">Edit</span><span class="lh-bf">Book</span><span class="lh-dots">⋯</span></div>
+<div class="lh-two"><div class="lh-left"><slot data-t="ask"></slot><slot data-t="cust"></slot></div>
+<div class="lh-right"><slot data-t="grid"></slot></div></div>
+</div><slot data-t="thread"></slot></template>
+<template id="a3-p"><div class="lh-hdr"><slot data-t="pbar"></slot><slot data-t="pchips"></slot>
+<div style="margin-top:8px"><slot data-t="grid"></slot></div>
+<div style="margin-top:8px"><slot data-t="ask"></slot></div><div style="margin-top:8px"><slot data-t="cust"></slot></div>
+</div><slot data-t="thread"></slot></template>
+
+<h2>A · Two columns: who and what on the left, facts grid on the right <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Row 1 is the name with every chip (company once, status, star, viewers, note) and Call / Edit / Book / ⋯. Under it, left: the six moves, one "What they asked" card (the AI's one line plus when and by-when; the customer's own words are the thread itself), the existing-customer link. Right: Phone, Email, Address, Job, Branch, Source as a grid, each with its copy button; the address suggestion and Check availability sit on the Address row. Source says Google Ads, the account and its status once. The right side is no longer empty. Phone: one bar, ⋯ opens the same pieces stacked.</p><div data-o="a"></div>
+
+<h2>B · Stacked bands</h2>
+<p class="cap">One column: name row, moves, the facts as three tiles across, then the card and the customer. Uses the width, but the header is taller and pushes the thread down.</p><div data-o="b"></div>
+
+<h2>C · Details rail beside the thread</h2>
+<p class="cap">The header is one row (status as a picker); the facts, the card and the customer live in a 280 px rail to the right of the thread, full height. The thread loses 280 px on every lead; on a phone the rail is a side panel behind ⋯.</p><div data-o="c"></div>
+
+<h2>A1 · A as drawn: grid without a frame <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Lightest: the grid reads as part of the header, the only boxes are the card and the green customer bar.</p><div data-o="a1"></div>
+
+<h2>A2 · Facts in a card, customer on its first row</h2>
+<p class="cap">The grid sits in a bordered card headed by the customer link; the left column is the moves and the card. More boxes.</p><div data-o="a2"></div>
+
+<h2>A3 · Status as a picker in the name row</h2>
+<p class="cap">One row shorter: "Lead ▾" replaces the New pill and the six-segment bar. Moving a lead is two taps instead of one.</p><div data-o="a3"></div>
+</div>
+<script>
+function fill(root){
+  for(let i=0;i<8;i++){const s=root.querySelectorAll('slot[data-t]');if(!s.length)break;
+    s.forEach(x=>{const t=document.getElementById(x.dataset.t);const d=document.createElement('div');d.innerHTML=t.innerHTML;x.replaceWith(...d.childNodes)})}
+  return root;
+}
+function frame(id,cls){const f=document.createElement('div');f.className='frame '+cls;f.innerHTML=document.getElementById(id).innerHTML;fill(f);return f}
+document.querySelectorAll('[data-o]').forEach(h=>{const o=h.dataset.o;
+  const trio=document.createElement('div');trio.className='trio';
+  const l=document.createElement('div');const r=document.createElement('div');
+  const p=t=>{const e=document.createElement('p');e.className='lbl';e.textContent=t;return e};
+  l.append(p('Desktop · light'),frame(o+'-d',''),p('Desktop · dark'),frame(o+'-d','dark'));
+  l.children[2].style.marginTop='10px';
+  r.append(p('Phone · light (390)'),frame(o+'-p','phone'));
+  trio.append(l,r);h.append(trio);
+  h.dataset.built=String(h.querySelectorAll('.frame').length);
+});
+</script></body></html>

@@ -107,50 +107,9 @@ final class ImapReplySender
             );
         }
 
-        $socket = ImapSocket::open($approved, $encryption);
+        $socket = $this->signIn($approved, $encryption, $username, $password);
 
         try {
-            $this->expect($socket, 220, 'greeting us');
-
-            $capabilities = $this->hello($socket, $approved->host);
-
-            if (! $socket->isEncrypted()) {
-                if (! $this->offersStartTls($capabilities)) {
-                    throw ImapFailure::unreachable(
-                        'That sending server does not offer an encrypted connection on this port, '
-                        .'so EzBizi stopped rather than send the password as readable text. Try '
-                        .'port 465, or ask whoever runs the server to turn on STARTTLS.'
-                    );
-                }
-
-                $this->say($socket, 'STARTTLS');
-                $this->expect($socket, 220, 'agreeing to encrypt');
-
-                $socket->secure();
-
-                // Said again, because everything the server claimed before this
-                // point was claimed in the clear. Same rule as IMAP's
-                // post-STARTTLS CAPABILITY, and the same downgrade if skipped.
-                $this->hello($socket, $approved->host);
-            }
-
-            /*
-             * A redundant lock, and deliberately kept as one.
-             *
-             * Nothing can reach here unencrypted today: the branch above either
-             * refuses a server that will not offer STARTTLS or calls
-             * {@see ImapSocket::secure}, which throws rather than returning
-             * without encryption. A mutation run confirmed it — deleting this
-             * line failed no test, because the refusal above always fires first.
-             *
-             * It stays because it is the assertion that survives an edit to that
-             * branch. What must never happen is a password crossing the network
-             * in the clear, and the cheapest way to keep that true through
-             * changes nobody has thought of yet is to state it here as well.
-             */
-            $socket->assertEncrypted();
-
-            $this->authenticate($socket, $username, $password);
 
             $this->say($socket, 'MAIL FROM:<'.$this->addressOnly($from).'>');
             $this->expect($socket, 250, 'accepting the sender');
@@ -182,6 +141,80 @@ final class ImapReplySender
             // far end until their timeout, and a busy server counts those.
             $socket->close();
         }
+    }
+
+    /**
+     * Greeting, encryption and sign-in, then QUIT: the send check (Jose
+     * 11-12, "can send" on the card). It is the same opening as {@see send},
+     * so a pass means the real send gets as far as MAIL FROM.
+     *
+     * @throws ImapFailure
+     */
+    public function handshake(ApprovedHost $approved, string $encryption, string $username, string $password): void
+    {
+        $socket = $this->signIn($approved, $encryption, $username, $password);
+
+        try {
+            $this->say($socket, 'QUIT');
+        } finally {
+            $socket->close();
+        }
+    }
+
+    /** @throws ImapFailure */
+    private function signIn(ApprovedHost $approved, string $encryption, string $username, string $password): ImapSocket
+    {
+        $socket = ImapSocket::open($approved, $encryption);
+
+        try {
+        $this->expect($socket, 220, 'greeting us');
+
+        $capabilities = $this->hello($socket, $approved->host);
+
+        if (! $socket->isEncrypted()) {
+            if (! $this->offersStartTls($capabilities)) {
+                throw ImapFailure::unreachable(
+                    'That sending server does not offer an encrypted connection on this port, '
+                    .'so EzBizi stopped rather than send the password as readable text. Try '
+                    .'port 465, or ask whoever runs the server to turn on STARTTLS.'
+                );
+            }
+
+            $this->say($socket, 'STARTTLS');
+            $this->expect($socket, 220, 'agreeing to encrypt');
+
+            $socket->secure();
+
+            // Said again, because everything the server claimed before this
+            // point was claimed in the clear. Same rule as IMAP's
+            // post-STARTTLS CAPABILITY, and the same downgrade if skipped.
+            $this->hello($socket, $approved->host);
+        }
+
+        /*
+         * A redundant lock, and deliberately kept as one.
+         *
+         * Nothing can reach here unencrypted today: the branch above either
+         * refuses a server that will not offer STARTTLS or calls
+         * {@see ImapSocket::secure}, which throws rather than returning
+         * without encryption. A mutation run confirmed it — deleting this
+         * line failed no test, because the refusal above always fires first.
+         *
+         * It stays because it is the assertion that survives an edit to that
+         * branch. What must never happen is a password crossing the network
+         * in the clear, and the cheapest way to keep that true through
+         * changes nobody has thought of yet is to state it here as well.
+         */
+        $socket->assertEncrypted();
+
+        $this->authenticate($socket, $username, $password);
+        } catch (\Throwable $e) {
+            $socket->close();
+
+            throw $e;
+        }
+
+        return $socket;
     }
 
     /**

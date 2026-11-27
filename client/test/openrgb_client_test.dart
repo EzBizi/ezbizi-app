@@ -69,4 +69,30 @@ void main() {
     addTearDown(c.close);
     expect(await c.controllers(), isEmpty);
   });
+
+  test(
+    'a second request while one is in flight fails fast, the first still gets its answer',
+    () async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(server.close);
+      server.listen((s) {
+        var answered = false;
+        s.listen((bytes) async {
+          if (answered) return;
+          answered = true;
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+          final h = ByteData(16)
+            ..setUint32(0, 0x4247524F, Endian.little)
+            ..setUint32(12, 4, Endian.little);
+          s.add([...h.buffer.asUint8List(), 0, 0, 0, 0]);
+        });
+      });
+
+      final c = await OpenRgbClient.connect(port: server.port);
+      addTearDown(c.close);
+      final first = c.controllers();
+      await expectLater(c.controllers(), throwsStateError);
+      expect(await first, isEmpty);
+    },
+  );
 }

@@ -151,6 +151,22 @@ class PreferencesTest extends TestCase
         $this->assertSame('board', $data['marketing.social.posts_view']);
     }
 
+    /** Jose 2026-11-16: report headings pinned unless this person unpins them, and it lasts. */
+    public function test_report_headings_start_pinned_and_an_unpin_comes_back_on_me(): void
+    {
+        $before = $this->as()->getJson('/api/v1/me/preferences')->assertOk()->json('data');
+        $this->assertTrue($before['reports.pin_headings']);
+
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['reports.pin_headings' => false],
+        ])->assertOk();
+
+        $this->app['auth']->forgetGuards();
+
+        $me = $this->as()->getJson('/api/v1/me')->assertOk()->json('data');
+        $this->assertFalse($me['preferences']['reports.pin_headings']);
+    }
+
     /** Jose 2026-10-26: Compose's listings stay expanded or collapsed per person. */
     public function test_the_compose_listings_expansion_is_remembered(): void
     {
@@ -301,6 +317,17 @@ class PreferencesTest extends TestCase
         $this->assertSame(['--', 'dashboard', '--', '--'], $this->savedOrder());
     }
 
+    public function test_section_headings_are_kept_trimmed_and_blank_ones_dropped(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => [
+                'navigation.order' => ['#  Dispatch ', 'customers', '#', '#'.str_repeat('x', 41), '#Office', 'dashboard'],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(['#Dispatch', 'customers', '#Office', 'dashboard'], $this->savedOrder());
+    }
+
     public function test_something_that_is_not_a_list_saves_as_no_order_at_all(): void
     {
         $this->as()->patchJson('/api/v1/me/preferences', [
@@ -362,5 +389,27 @@ class PreferencesTest extends TestCase
 
         $this->assertSame(45, $stored['leads.list_percent']);
         $this->assertSame(900, $stored['hr.records.list_width'], 'Wider than any list needs is clamped.');
+    }
+
+    public function test_list_column_widths_keep_slug_keys_and_drop_the_rest(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['lists.column_widths' => ['jobs.projects:2' => 5000, 'Bad Key' => 100, 'x:abc' => 90]],
+        ])->assertOk();
+
+        $stored = User::withoutGlobalScopes()->find($this->alpha['admin']->id)->preferences;
+
+        $this->assertSame(['jobs.projects:2' => 800], $stored['lists.column_widths']);
+    }
+
+    public function test_dismissed_callouts_keep_slugs_once_and_drop_the_rest(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['callouts.seen' => ['list_toolbar', 'Bad Key', 'list_toolbar', 7, 'quick.search']],
+        ])->assertOk();
+
+        $stored = User::withoutGlobalScopes()->find($this->alpha['admin']->id)->preferences;
+
+        $this->assertSame(['list_toolbar', 'quick.search'], $stored['callouts.seen']);
     }
 }

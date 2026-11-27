@@ -1,39 +1,94 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import '../widgets/formatted_notes.dart';
+import '../widgets/cell_tap.dart';
+import '../core/deep_links.dart';
+import '../widgets/lazy_menu_anchor.dart';
+import '../widgets/people_search_list.dart';
+import '../widgets/panel_field.dart';
+import '../widgets/range_calendar.dart';
+import 'package:flutter/services.dart';
+
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
+import '../core/theme.dart';
 import '../core/timestamps.dart';
-import '../widgets/calendar_day_field.dart';
 import '../widgets/colour_field.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/user_avatar.dart';
+import 'task_board_person_card.dart';
+import '../core/soft_keyboard.dart';
 
 /// A board's own columns (UI queue 84; Jose: "i should be able to make custom
 /// columns ... with options wether they are text based, numerical, status,
 /// etc."). Seven types: text, number, status, date, person, dropdown and
 /// checkbox. A task's values are `{column_id: value}`; a status or dropdown
 /// value is the option's id.
-typedef ColumnOption = ({String id, String label, Color? colour});
+/// [retired]: kept on the tasks that have it, out of every picker (monday's
+/// deactivated label, Jose 2026-11-09).
+typedef ColumnOption = ({String id, String label, Color? colour, bool retired});
 
 typedef BoardColumn = ({
   String id,
   String name,
   String type,
   String? unit,
+
+  /// Rating: how many stars (settings.max, default 5).
+  int? max,
   List<ColumnOption> options,
+
+  /// Number and formula (design 178): plain, currency or percent.
+  String format,
+
+  /// Number and formula: what a group's footer shows, sum, average or none.
+  String footer,
+
+  /// A formula's expression with each [Column] as {column id}, formulas
+  /// it names written out in place; null on any other type.
+  String? formula,
 });
 
+/// [expr] with each [Name] as {id}: a number column by its id, a formula by
+/// its own expression in brackets, at most five deep; anything else 0.
+String _compile(String expr, Map<String, Map> byName, [int depth = 0]) =>
+    expr.replaceAllMapped(RegExp(r'\[([^\[\]]+)\]'), (m) {
+      final c = byName[m[1]!.trim().toLowerCase()];
+      if (c == null || depth > 4) return '0';
+      if (c['type'] == 'formula') {
+        final inner = '${(c['settings'] as Map?)?['expression'] ?? '0'}';
+        return '(${_compile(inner, byName, depth + 1)})';
+      }
+      return '{${c['id']}}';
+    });
+
 /// The columns a board shows, in its order. Hidden ones are left out.
+/// Parsed once per columns list: every cell of every row asks (freeze
+/// 11-16). A board's columns are replaced, never edited in place.
+final _columnMemo = Expando<List<BoardColumn>>('boardColumns');
+
 List<BoardColumn> boardColumns(Map<String, dynamic>? board) {
+  final raw = board?['columns'];
+  if (raw is! List) return _parseColumns(const []);
+  return _columnMemo[raw] ??= List.unmodifiable(_parseColumns(raw));
+}
+
+List<BoardColumn> _parseColumns(List columns) {
   final rows =
-      (board?['columns'] as List? ?? const [])
-          .whereType<Map>()
-          .where((c) => c['hidden'] != true)
-          .toList()
-        ..sort(
-          (a, b) => ((a['position'] as num?) ?? 0).compareTo(
-            (b['position'] as num?) ?? 0,
-          ),
-        );
+      columns.whereType<Map>().where((c) => c['hidden'] != true).toList()..sort(
+        (a, b) => ((a['position'] as num?) ?? 0).compareTo(
+          (b['position'] as num?) ?? 0,
+        ),
+      );
+  final byName = {
+    for (final c in columns.whereType<Map>())
+      '${c['name'] ?? ''}'.trim().toLowerCase(): c,
+  };
   return [
     for (final c in rows)
       (
@@ -41,6 +96,17 @@ List<BoardColumn> boardColumns(Map<String, dynamic>? board) {
         name: '${c['name'] ?? ''}',
         type: '${c['type'] ?? 'text'}',
         unit: (c['settings'] as Map?)?['unit'] as String?,
+        max: ((c['settings'] as Map?)?['max'] as num?)?.toInt(),
+        format: c['type'] == 'currency'
+            ? 'currency'
+            : '${(c['settings'] as Map?)?['format'] ?? 'plain'}',
+        footer: '${(c['settings'] as Map?)?['footer'] ?? 'none'}',
+        formula: c['type'] == 'formula'
+            ? _compile(
+                '${(c['settings'] as Map?)?['expression'] ?? ''}',
+                byName,
+              )
+            : null,
         options: [
           for (final o
               in ((c['settings'] as Map?)?['options'] as List? ?? const [])
@@ -51,15 +117,307 @@ List<BoardColumn> boardColumns(Map<String, dynamic>? board) {
               colour: o['colour'] is String
                   ? ColourField.parse(o['colour'] as String)
                   : null,
+              retired: o['retired'] == true,
             ),
         ],
       ),
   ];
 }
 
-/// A task's value for one column.
+/// A task's value for one column; a formula's is worked out here.
 Object? columnValue(Map<String, dynamic> task, BoardColumn c) =>
-    (task['values'] as Map?)?[c.id];
+    switch (c.type) {
+      'last_updated' => {'at': task['updated_at'] ?? task['created_at']},
+      'creation_log' => {
+        'at': task['created_at'],
+        'by': (task['created_by'] as Map?)?['type'] == 'automation'
+            ? 'EzBizi'
+            : (task['created_by'] as Map?)?['label'],
+      },
+      _ when c.formula != null => evalFormula(
+        c.formula!,
+        (task['values'] as Map?) ?? const {},
+      ),
+      _ => (task['values'] as Map?)?[c.id],
+    };
+
+/// Works out a compiled formula over a task's values, Monday's way:
+/// + - * / & and brackets; = <> < > <= >= ; "text", TRUE, FALSE; and
+/// IF, AND, OR, NOT, VALUE, CONCATENATE, FLOOR, CEILING, ROUND, MOD, ABS,
+/// MIN, MAX, SUM, AVERAGE, LEN, UPPER, LOWER, LEFT, RIGHT. An empty value
+/// counts 0 in sums and "" in text. Null when it does not parse, divides by
+/// 0 or names an unknown function.
+final _formulaToken = RegExp(
+  r'\s+|\{[^}]+\}|"(?:[^"]|"")*"|\d+(?:\.\d+)?|[A-Za-z_][A-Za-z_0-9]*|<=|>=|<>|[-+*/()&=<>,]',
+);
+
+/// Tokens per formula, so a cell does not re-lex it on every build.
+final _formulaTokens = <String, List<String>?>{};
+
+List<String>? _tokensOf(String compiled) =>
+    _formulaTokens.putIfAbsent(compiled, () {
+      final all = _formulaToken.allMatches(compiled).map((m) => m[0]!).toList();
+      if (all.join() != compiled) return null;
+      final tokens = List<String>.unmodifiable(
+        all.where((t) => t.trim().isNotEmpty),
+      );
+      return tokens.isEmpty ? null : tokens;
+    });
+
+Object? evalFormula(String compiled, Map values) {
+  final tokens = _tokensOf(compiled);
+  if (tokens == null) return null;
+  var i = 0;
+  var bad = false;
+
+  num n(Object? v) => switch (v) {
+    null => 0,
+    num x => x,
+    bool b => b ? 1 : 0,
+    _ => num.tryParse('$v'.replaceAll(RegExp(r'[,$\s]'), '')) ?? 0,
+  };
+  String text(Object? v) => switch (v) {
+    null => '',
+    double d when d == d.roundToDouble() => '${d.toInt()}',
+    _ => '$v',
+  };
+  bool truth(Object? v) => switch (v) {
+    null => false,
+    bool b => b,
+    num x => x != 0,
+    String t => t.isNotEmpty && t.toLowerCase() != 'false',
+    _ => true,
+  };
+  num tidy(num x) =>
+      x is double && x == x.roundToDouble() && x.abs() < 1e15 ? x.toInt() : x;
+
+  late Object? Function() compare;
+  List<Object?> args() {
+    final out = <Object?>[];
+    if (i < tokens.length && tokens[i] == ')') {
+      i++;
+      return out;
+    }
+    while (true) {
+      out.add(compare());
+      if (i >= tokens.length) {
+        bad = true;
+        return out;
+      }
+      final t = tokens[i++];
+      if (t == ')') return out;
+      if (t != ',') {
+        bad = true;
+        return out;
+      }
+    }
+  }
+
+  Object? call(String name, List<Object?> a) {
+    num at(int k) => n(k < a.length ? a[k] : null);
+    final nums = [for (final x in a) n(x)];
+    switch (name.toUpperCase()) {
+      case 'IF':
+        return truth(a.isNotEmpty ? a[0] : null)
+            ? (a.length > 1 ? a[1] : null)
+            : (a.length > 2 ? a[2] : null);
+      case 'AND':
+        return a.every(truth);
+      case 'OR':
+        return a.any(truth);
+      case 'NOT':
+        return !truth(a.isNotEmpty ? a[0] : null);
+      case 'VALUE':
+        return n(a.isNotEmpty ? a[0] : null);
+      case 'CONCATENATE':
+        return a.map(text).join();
+      case 'FLOOR':
+        return at(0).floor();
+      case 'CEILING':
+        return at(0).ceil();
+      case 'ROUND':
+        final f = math.pow(10, at(1).toInt());
+        return tidy((at(0) * f).round() / f);
+      case 'MOD':
+        if (at(1) == 0) {
+          bad = true;
+          return null;
+        }
+        return tidy(at(0) % at(1));
+      case 'ABS':
+        return at(0).abs();
+      case 'MIN':
+        return nums.isEmpty ? 0 : nums.reduce(math.min);
+      case 'MAX':
+        return nums.isEmpty ? 0 : nums.reduce(math.max);
+      case 'SUM':
+        return tidy(nums.fold<num>(0, (x, y) => x + y));
+      case 'AVERAGE':
+        return nums.isEmpty
+            ? 0
+            : tidy(nums.fold<num>(0, (x, y) => x + y) / nums.length);
+      case 'LEN':
+        return text(a.isNotEmpty ? a[0] : null).length;
+      case 'UPPER':
+        return text(a.isNotEmpty ? a[0] : null).toUpperCase();
+      case 'LOWER':
+        return text(a.isNotEmpty ? a[0] : null).toLowerCase();
+      case 'LEFT' || 'RIGHT':
+        final t = text(a.isNotEmpty ? a[0] : null);
+        final k = (a.length > 1 ? at(1).toInt() : 1).clamp(0, t.length);
+        return name.toUpperCase() == 'LEFT'
+            ? t.substring(0, k)
+            : t.substring(t.length - k);
+    }
+    bad = true;
+    return null;
+  }
+
+  Object? factor() {
+    if (i >= tokens.length) {
+      bad = true;
+      return null;
+    }
+    final t = tokens[i++];
+    if (t == '-') return -n(factor());
+    if (t == '+') return n(factor());
+    if (t == '(') {
+      final e = compare();
+      if (i >= tokens.length || tokens[i++] != ')') bad = true;
+      return e;
+    }
+    if (t.startsWith('{')) {
+      final v = values[t.substring(1, t.length - 1)];
+      return v is String ? (num.tryParse(v) ?? v) : v;
+    }
+    if (t.startsWith('"')) {
+      return t.substring(1, t.length - 1).replaceAll('""', '"');
+    }
+    final number = num.tryParse(t);
+    if (number != null) return number;
+    if (t.toUpperCase() == 'TRUE') return true;
+    if (t.toUpperCase() == 'FALSE') return false;
+    if (i < tokens.length && tokens[i] == '(') {
+      i++;
+      return call(t, args());
+    }
+    bad = true;
+    return null;
+  }
+
+  Object? term() {
+    var left = factor();
+    while (!bad &&
+        i < tokens.length &&
+        (tokens[i] == '*' || tokens[i] == '/')) {
+      final op = tokens[i++];
+      final right = n(factor());
+      if (op == '/' && right == 0) {
+        bad = true;
+        return null;
+      }
+      left = tidy(op == '*' ? n(left) * right : n(left) / right);
+    }
+    return left;
+  }
+
+  Object? sum() {
+    var left = term();
+    while (!bad &&
+        i < tokens.length &&
+        const {'+', '-', '&'}.contains(tokens[i])) {
+      final op = tokens[i++];
+      final right = term();
+      left = op == '&'
+          ? text(left) + text(right)
+          : tidy(op == '+' ? n(left) + n(right) : n(left) - n(right));
+    }
+    return left;
+  }
+
+  compare = () {
+    final left = sum();
+    if (bad || i >= tokens.length) return left;
+    final op = tokens[i];
+    if (!const {'=', '<>', '<', '>', '<=', '>='}.contains(op)) return left;
+    i++;
+    final right = sum();
+    if (op == '=' || op == '<>') {
+      final same = (left is num || right is num)
+          ? n(left) == n(right)
+          : text(left) == text(right);
+      return op == '=' ? same : !same;
+    }
+    final c = n(left).compareTo(n(right));
+    return switch (op) {
+      '<' => c < 0,
+      '>' => c > 0,
+      '<=' => c <= 0,
+      _ => c >= 0,
+    };
+  };
+
+  final out = compare();
+  if (bad || i != tokens.length) return null;
+  return out ?? 0;
+}
+
+/// A number as its column shows it: currency with two decimals, a
+/// percentage, or plain with the column's unit.
+/// An empty cell shows what it takes (Jose 11-24): a muted icon, never "—".
+class EmptyCellIcon extends StatelessWidget {
+  const EmptyCellIcon(this.icon, {super.key});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Icon(icon, size: 16, color: Theme.of(context).colorScheme.outline),
+  );
+}
+
+/// The first web address in a cell's value (a link's url, or one inside text).
+String? cellUrl(Object? v) {
+  if (v is Map && v['url'] is String && '${v['url']}'.isNotEmpty) {
+    return '${v['url']}';
+  }
+  if (v is! String) return null;
+  return RegExp(r'https?://[^\s<>"]+').firstMatch(v)?.group(0);
+}
+
+/// An EzBizi address opens in place (web, desktop, phone); any other in a
+/// browser tab (Jose 11-24).
+void openCellUrl(String url, {Future<bool> Function(Uri)? launch}) {
+  final path = DeepLinks.appPath(url);
+  if (path != null) return DeepLinks.openPath(path);
+  final uri = Uri.tryParse(url);
+  if (uri != null) (launch ?? launchUrl)(uri);
+}
+
+String formatColumnNumber(Object? v, BoardColumn c) {
+  final n = v is num ? v : num.tryParse('${v ?? ''}');
+  if (n == null) return v == null ? '' : '$v';
+  return switch (c.format) {
+    'currency' => () {
+      final fixed = n.abs().toStringAsFixed(2).split('.');
+      return '${n < 0 ? '-' : ''}\$${formatCellNumber(int.parse(fixed[0]), null)}.${fixed[1]}';
+    }(),
+    'percent' =>
+      '${formatCellNumber(n == n.roundToDouble() ? n.toInt() : double.parse(n.toStringAsFixed(1)), null)}%',
+    _ => formatCellNumber(n, c.unit),
+  };
+}
+
+/// "Nov 9 – Nov 17" for a Timeline value; null when it is not one.
+String? timelineLabel(Object? v, DisplayFormats formats) {
+  if (v is! Map) return null;
+  final from = DateTime.tryParse('${v['from']}');
+  final to = DateTime.tryParse('${v['to']}');
+  if (from == null || to == null) return null;
+  return from == to
+      ? formats.formatDate(from)
+      : '${formats.formatDate(from)} – ${formats.formatDate(to)}';
+}
 
 ColumnOption? _option(BoardColumn c, Object? value) {
   for (final o in c.options) {
@@ -128,6 +486,141 @@ String formatCellPhone(String raw) {
 
 /// One cell of the table, in its column's own shape. A checkbox, a status
 /// and a dropdown change in place; the rest are changed in the task's panel.
+
+/// The inline "+ Add tag" row of a label or tags menu: typing a new one
+/// adds it to the column and picks it (Jose, 2026-11-09).
+class _AddOption extends StatefulWidget {
+  const _AddOption({
+    required this.columnId,
+    required this.onAdd,
+    this.noun = 'tag',
+  });
+
+  final String columnId;
+
+  /// "tag" under Tags, "label" under a label column (QA 11-16: a label
+  /// menu said "+ Add tag" over "Edit labels…").
+  final String noun;
+  final Future<void> Function(String label) onAdd;
+
+  @override
+  State<_AddOption> createState() => _AddOptionState();
+}
+
+class _AddOptionState extends State<_AddOption> {
+  final _text = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final label = _text.text.trim();
+    if (label.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    await widget.onAdd(label);
+    if (!mounted) return;
+    _text.clear();
+    setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+    child: SizedBox(
+      width: 200,
+      child: TextField(
+        key: ValueKey('column-option-new-${widget.columnId}'),
+        controller: _text,
+        enabled: !_busy,
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: '+ Add ${widget.noun}',
+          border: const OutlineInputBorder(),
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+    ),
+  );
+}
+
+/// Several options as chips, for a tags column.
+class _TagChips extends StatelessWidget {
+  const _TagChips({required this.column, required this.ids});
+
+  final BoardColumn column;
+  final List<String> ids;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final picked = [for (final id in ids) ?_option(column, id)];
+    if (picked.isEmpty) {
+      return Text(
+        '—',
+        style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+      );
+    }
+    return ClipRect(
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        clipBehavior: Clip.hardEdge,
+        children: [
+          for (final o in picked)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: (o.colour ?? theme.colorScheme.outline).withValues(
+                  alpha: 0.22,
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                o.label,
+                maxLines: 1,
+                // Chaim 11-24: Monday's regular weight on every label.
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Nov 9, 2:30 PM" for a date-and-time value.
+String? dateTimeLabel(Object? v, DisplayFormats formats) {
+  final at = v is String ? DateTime.tryParse(v.replaceFirst(' ', 'T')) : null;
+  if (at == null) return null;
+  final h = at.hour % 12 == 0 ? 12 : at.hour % 12;
+  final m = at.minute.toString().padLeft(2, '0');
+  return '${formats.formatDate(at)}, $h:$m ${at.hour < 12 ? 'AM' : 'PM'}';
+}
+
+/// tel:, mailto: or the page itself, for a phone, email or url value.
+Uri? contactUri(String type, String value) => switch (type) {
+  'phone' => Uri(scheme: 'tel', path: value.replaceAll(RegExp(r'[^\d+]'), '')),
+  'email' => Uri(scheme: 'mailto', path: value),
+  'url' => Uri.tryParse(value),
+  _ => null,
+};
+
+/// What a phone, email or url field must look like before it is sent.
+bool validColumnText(String type, String v) => switch (type) {
+  'phone' =>
+    RegExp(r'^[\d\s()+.\-]+$').hasMatch(v) &&
+        v.replaceAll(RegExp(r'\D'), '').length >= 7 &&
+        v.replaceAll(RegExp(r'\D'), '').length <= 15,
+  'email' => RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v),
+  'url' => RegExp(r'^https?://\S+\.\S+', caseSensitive: false).hasMatch(v),
+  'datetime' => RegExp(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$').hasMatch(v),
+  _ => true,
+};
+
 class ColumnCell extends StatelessWidget {
   const ColumnCell({
     super.key,
@@ -136,7 +629,51 @@ class ColumnCell extends StatelessWidget {
     required this.people,
     required this.formats,
     this.onChanged,
+    this.onAddOption,
+    this.onEditOptions,
+    this.onMenu,
+    this.onAutoAssign,
+    this.api,
+    this.boardId,
+    this.onFilter,
+    this.tasks,
+    this.onAddFile,
+    this.taskDone = false,
   });
+
+  /// The task's status is a done one: its timeline is never overdue.
+  final bool taskDone;
+
+  /// Searches customers and jobs for a link column's card.
+  final ApiClient? api;
+
+  /// Asks the AI for this task's label in this column (null: none fits).
+  final Future<String?> Function()? onAutoAssign;
+
+  /// With [api], a People cell's faces open Monday's person card on hover.
+  final String? boardId;
+
+  /// "Filter by this value" on the cell's right-click menu.
+  final VoidCallback? onFilter;
+
+  /// The tasks a Connect or Dependency cell can pick from, (id, title).
+  final List<(String, String)>? tasks;
+
+  /// A Files cell's "+": picks a file and adds it to the task.
+  final VoidCallback? onAddFile;
+
+  /// Whether the cell is edited in place, with its own right-click menu.
+  static bool editsInPlace(BoardColumn c, {required bool editable}) =>
+      editable && !_ownControl.contains(c.type);
+
+  /// Told when a status column's menu opens and closes, to dim the board.
+  final ValueChanged<bool>? onMenu;
+
+  /// Adds a label or tag to the column and returns its id (null: refused).
+  final Future<String?> Function(String label)? onAddOption;
+
+  /// Opens the column's panel to rename, recolour or delete its options.
+  final VoidCallback? onEditOptions;
 
   final BoardColumn column;
   final Object? value;
@@ -146,11 +683,100 @@ class ColumnCell extends StatelessWidget {
   /// Null where the board is view-only.
   final ValueChanged<Object?>? onChanged;
 
+  /// Types with their own control in the cell (a tick, a label menu), and
+  /// those a cell cannot edit (a link searches; a formula is worked out).
+  static const _ownControl = {
+    'checkbox',
+    'status',
+    'dropdown',
+    'tags',
+    'people',
+    'formula',
+    'rating',
+    'files',
+    'connect',
+    'dependency',
+    'mirror',
+    'last_updated',
+    'creation_log',
+  };
+
+  /// A click edits the value where it is (Jose, 2026-11-12: the sidebar is
+  /// for Updates and the task, not for typing one field).
   @override
   Widget build(BuildContext context) {
+    final shown = _display(context);
+    if ((column.type == 'connect' || column.type == 'dependency') &&
+        onChanged != null &&
+        tasks != null) {
+      return TaskPickCell(
+        column: column,
+        value: value,
+        tasks: tasks!,
+        onChanged: onChanged!,
+        child: shown,
+      );
+    }
+    if (column.type == 'files' && onAddFile != null) {
+      return Row(
+        children: [
+          Expanded(child: shown),
+          IconButton(
+            key: ValueKey('column-file-add-${column.id}'),
+            tooltip: 'Add a file',
+            visualDensity: VisualDensity.compact,
+            iconSize: 18,
+            icon: const Icon(Icons.attach_file),
+            onPressed: onAddFile,
+          ),
+        ],
+      );
+    }
+    if (onChanged == null || _ownControl.contains(column.type)) return shown;
+    return InlineCellEditor(
+      api: api,
+      column: column,
+      value: value,
+      people: people,
+      formats: formats,
+      onChanged: onChanged!,
+      onFilter: onFilter,
+      child: shown,
+    );
+  }
+
+  Widget _display(BuildContext context) {
     final theme = Theme.of(context);
     final muted = TextStyle(color: theme.colorScheme.onSurfaceVariant);
     final v = value;
+    // Jose 11-24: an address in any text or link cell is a link; an EzBizi one
+    // opens here, any other in the browser.
+    if (const {'text', 'long_text', 'link', 'url'}.contains(column.type)) {
+      final url = cellUrl(v);
+      if (url != null) {
+        final label = v is Map
+            ? '${v['label'] ?? url}'
+            : '$v'.split('\n').first;
+        // Only the words open it; the rest of the cell still edits.
+        return Align(
+          alignment: Alignment.centerLeft,
+          widthFactor: 1,
+          child: InkWell(
+            key: ValueKey('column-url-${column.id}'),
+            onTap: () => openCellUrl(url),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: theme.colorScheme.primary,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        );
+      }
+    }
 
     switch (column.type) {
       case 'checkbox':
@@ -160,78 +786,227 @@ class ColumnCell extends StatelessWidget {
           onChanged: onChanged == null ? null : (b) => onChanged!(b ?? false),
         );
       case 'status':
+        final picked = _option(column, v);
+        final fill = picked?.colour ?? blankLabel(theme);
+        return LazyMenuAnchor(
+          menuChildren: [
+            Builder(
+              builder: (context) => LabelBlocks(
+                keyPrefix: 'column-option-${column.id}',
+                labels: [
+                  for (final o in column.options)
+                    if (!o.retired || o.id == v)
+                      (id: o.id, label: o.label, colour: o.colour),
+                  (id: null, label: '', colour: null),
+                ],
+                current: picked?.id,
+                onPick: (id) {
+                  MenuController.maybeOf(context)?.close();
+                  onChanged?.call(id);
+                },
+                onEdit: onEditOptions == null
+                    ? null
+                    : () {
+                        MenuController.maybeOf(context)?.close();
+                        onEditOptions!();
+                      },
+                onAutoAssign: onAutoAssign == null
+                    ? null
+                    : () async {
+                        MenuController.maybeOf(context)?.close();
+                        final id = await onAutoAssign!();
+                        if (id != null) onChanged?.call(id);
+                      },
+              ),
+            ),
+          ],
+          onOpen: () => onMenu?.call(true),
+          onClose: () => onMenu?.call(false),
+          builder: (context, menu, _) => Padding(
+            padding: labelInset,
+            child: ColoredBox(
+              color: fill,
+              child: CellTap(
+                key: ValueKey('column-cell-${column.id}'),
+                onTap: onChanged == null
+                    ? null
+                    : () => menu.isOpen ? menu.close() : menu.open(),
+                child: Center(
+                  child: Text(
+                    picked?.label ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 14, color: labelInk(fill)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
       case 'dropdown':
         final picked = _option(column, v);
         final fill = picked?.colour;
-        final label = Text(
-          picked?.label ?? '—',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 12,
-            color: fill == null
-                ? theme.colorScheme.onSurfaceVariant
-                : (ThemeData.estimateBrightnessForColor(fill) == Brightness.dark
-                      ? theme.colorScheme.surface
-                      : theme.colorScheme.onSurface),
-          ),
-        );
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             for (final o in column.options)
-              MenuItemButton(
-                key: ValueKey('column-option-${column.id}-${o.id}'),
-                onPressed: () => onChanged?.call(o.id),
-                child: Text(o.label),
-              ),
+              if (!o.retired || o.id == v)
+                MenuItemButton(
+                  key: ValueKey('column-option-${column.id}-${o.id}'),
+                  leadingIcon: _dot(o.colour, theme),
+                  onPressed: () => onChanged?.call(o.id),
+                  child: Text(o.label),
+                ),
             if (v != null)
               MenuItemButton(
                 onPressed: () => onChanged?.call(null),
                 child: const Text('Clear'),
               ),
+            ..._optionTools(theme, (id) => onChanged?.call(id)),
           ],
-          builder: (context, menu, _) => Material(
-            color: column.type == 'status'
-                ? (fill ?? theme.colorScheme.surfaceContainerHighest)
-                : Colors.transparent,
-            child: InkWell(
-              key: ValueKey('column-cell-${column.id}'),
-              onTap: onChanged == null
-                  ? null
-                  : () => menu.isOpen ? menu.close() : menu.open(),
-              child: Center(
-                child: column.type == 'status'
-                    ? label
-                    : Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: (fill ?? theme.colorScheme.outline).withValues(
-                            alpha: 0.18,
-                          ),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          picked?.label ?? '—',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
+          builder: (context, menu, _) => CellTap(
+            key: ValueKey('column-cell-${column.id}'),
+            onTap: onChanged == null
+                ? null
+                : () => menu.isOpen ? menu.close() : menu.open(),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: (fill ?? theme.colorScheme.outline).withValues(
+                    alpha: 0.18,
+                  ),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  picked?.label ?? '—',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
               ),
             ),
           ),
         );
+      case 'people':
+        final ids = [for (final id in (v as List?) ?? const []) '$id'];
+        return LazyMenuAnchor(
+          menuChildren: [
+            PeopleSearchList(
+              people: people,
+              picked: ids,
+              multi: true,
+              keyPrefix: 'column-person-${column.id}',
+              onPick: (id) {
+                final next = [
+                  for (final x in ids)
+                    if (x != id) x,
+                  if (!ids.contains(id)) ?id,
+                ];
+                onChanged?.call(next.isEmpty ? null : next);
+              },
+            ),
+          ],
+          builder: (context, menu, _) => CellTap(
+            key: ValueKey('column-cell-${column.id}'),
+            onTap: onChanged == null
+                ? null
+                : () => menu.isOpen ? menu.close() : menu.open(),
+            child: Center(
+              child: PeopleAvatars(
+                names: [for (final id in ids) people[id] ?? '?'],
+                ids: ids,
+                api: api,
+                boardId: boardId,
+              ),
+            ),
+          ),
+        );
+      case 'tags':
+        final ids = [for (final id in (v as List?) ?? const []) '$id'];
+        return LazyMenuAnchor(
+          menuChildren: [
+            for (final o in column.options)
+              if (!o.retired || ids.contains(o.id))
+                CheckboxMenuButton(
+                  key: ValueKey('column-option-${column.id}-${o.id}'),
+                  value: ids.contains(o.id),
+                  closeOnActivate: false,
+                  onChanged: (on) {
+                    final next = [
+                      for (final id in ids)
+                        if (id != o.id) id,
+                      if (on == true) o.id,
+                    ];
+                    onChanged?.call(next.isEmpty ? null : next);
+                  },
+                  child: Text(o.label),
+                ),
+            ..._optionTools(theme, (id) => onChanged?.call([...ids, ?id])),
+          ],
+          builder: (context, menu, _) => CellTap(
+            key: ValueKey('column-cell-${column.id}'),
+            onTap: onChanged == null
+                ? null
+                : () => menu.isOpen ? menu.close() : menu.open(),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _TagChips(column: column, ids: ids),
+            ),
+          ),
+        );
+      case 'phone':
+      case 'email':
+      case 'url':
+        if (v is! String || v.isEmpty) {
+          return switch (column.type) {
+            'url' => const EmptyCellIcon(Icons.link),
+            'phone' => const EmptyCellIcon(Icons.phone_outlined),
+            _ => const EmptyCellIcon(Icons.alternate_email),
+          };
+        }
+        final uri = contactUri(column.type, v);
+        return InkWell(
+          onTap: uri == null ? null : () => launchUrl(uri),
+          child: Text(
+            column.type == 'phone' ? formatCellPhone(v) : v,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: theme.colorScheme.primary,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        );
+      case 'datetime':
+        final label = dateTimeLabel(v, formats);
+        if (label == null) return const EmptyCellIcon(Icons.event_outlined);
+        return Text(label, maxLines: 1);
+      case 'link':
+        final label = (v as Map?)?['label'] as String?;
+        if (label == null) return const EmptyCellIcon(Icons.link);
+        return Text(label, maxLines: 1, overflow: TextOverflow.ellipsis);
+      case 'long_text':
+        final text = v is String
+            ? NotesMarkup.parse(v).$1.split('\n').first
+            : null;
+        return Text(
+          text == null || text.isEmpty ? '—' : text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: text == null || text.isEmpty ? muted : null,
+        );
+      case 'timeline':
+        return TimelinePill(value: v, formats: formats, done: taskDone);
       case 'number':
+      case 'currency':
+      case 'formula':
+        // widthFactor 1: a cell's tight width still right-aligns it; a card's
+        // loose one no longer pushes "0.5" 100 px from its label (QA 11-16).
         return Align(
           alignment: Alignment.centerRight,
+          widthFactor: 1,
           child: Text(
-            v == null ? '—' : formatCellNumber(v, column.unit),
+            v == null ? '—' : formatColumnNumber(v, column),
             textAlign: TextAlign.right,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -242,17 +1017,79 @@ class ColumnCell extends StatelessWidget {
         );
       case 'date':
         final day = v is String ? DateTime.tryParse(v) : null;
-        return Text(
-          day == null ? '—' : formats.formatDate(day),
-          style: day == null ? muted : null,
+        if (day == null) {
+          return const EmptyCellIcon(Icons.calendar_today_outlined);
+        }
+        return Text(formats.formatDate(day));
+      case 'rating':
+        // settings.max stars (default 5), more if a value is higher.
+        final n = v is num ? v.toInt() : 0;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 1; i <= math.max(column.max ?? 5, n); i++)
+              InkWell(
+                key: ValueKey('column-rating-${column.id}-$i'),
+                onTap: onChanged == null
+                    ? null
+                    : () => onChanged!(i == n ? i - 1 : i),
+                child: Icon(
+                  i <= n ? Icons.star : Icons.star_border,
+                  size: 16,
+                  color: i <= n
+                      ? theme.colorScheme.tertiary
+                      : theme.colorScheme.outline,
+                ),
+              ),
+          ],
         );
-      case 'person':
-        final name = people['$v'];
+      case 'location':
+        final address = v is Map ? '${v['address'] ?? ''}' : '';
         return Text(
-          name == null ? '—' : name.split(' ').first,
+          address.isEmpty ? '—' : address,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: name == null ? muted : null,
+          style: address.isEmpty ? muted : null,
+        );
+      case 'files' || 'connect' || 'dependency':
+        final count = v is List ? v.length : 0;
+        final noun = column.type == 'files' ? 'file' : 'task';
+        return Text(
+          count == 0 ? '—' : '$count $noun${count == 1 ? '' : 's'}',
+          style: count == 0 ? muted : null,
+        );
+      case 'mirror':
+        final items = v is List ? v.map((x) => '$x').join(', ') : '';
+        return Text(
+          items.isEmpty ? '—' : items,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: items.isEmpty ? muted : null,
+        );
+      case 'last_updated' || 'creation_log':
+        final at = v is Map ? DateTime.tryParse('${v['at']}')?.toLocal() : null;
+        return Text(
+          at == null
+              ? '—'
+              : [
+                  if (v is Map && v['by'] != null) '${v['by']}',
+                  formats.formatDate(at),
+                ].join(' · '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: at == null ? muted : null,
+        );
+      case 'person':
+        // A face, not a name (Jose 11-16: "just use the icon ... like
+        // monday does"); the hover card says who.
+        final name = people['$v'];
+        return Center(
+          child: PeopleAvatars(
+            names: [?name],
+            ids: [if (name != null) '$v'],
+            api: api,
+            boardId: boardId,
+          ),
         );
       default:
         return Text(
@@ -267,6 +1104,37 @@ class ColumnCell extends StatelessWidget {
         );
     }
   }
+
+  Widget _dot(Color? colour, ThemeData theme) => Container(
+    width: 12,
+    height: 12,
+    decoration: BoxDecoration(
+      color: colour ?? theme.colorScheme.outline,
+      borderRadius: BorderRadius.circular(3),
+    ),
+  );
+
+  /// "+ Add tag" and "Edit labels…", under a label or tags menu.
+  List<Widget> _optionTools(ThemeData theme, ValueChanged<String?> picked) => [
+    if (onAddOption != null) ...[
+      const Divider(height: 8),
+      _AddOption(
+        columnId: column.id,
+        noun: column.type == 'tags' ? 'tag' : 'label',
+        onAdd: (label) async {
+          final id = await onAddOption!(label);
+          if (id != null) picked(id);
+        },
+      ),
+    ],
+    if (onEditOptions != null)
+      MenuItemButton(
+        key: ValueKey('column-options-edit-${column.id}'),
+        leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+        onPressed: onEditOptions,
+        child: Text(column.type == 'tags' ? 'Edit tags…' : 'Edit labels…'),
+      ),
+  ];
 }
 
 /// The same value, as a field in the task's panel, for every type.
@@ -278,7 +1146,27 @@ class ColumnEditor extends StatefulWidget {
     required this.people,
     required this.formats,
     this.onChanged,
+    this.api,
+    this.onDone,
+    this.autofocus = false,
+    this.framed = false,
+    this.flush,
   });
+
+  /// Drawn as a record panel's field (Jose, 2026-11-16): one 44-high box
+  /// for every type, a timeline or a day in a popover, and typing saved
+  /// after a pause, on leaving the box and when [flush] runs.
+  final bool framed;
+
+  /// The panel's unsaved-typing register, flushed when it closes.
+  final PanelFlush? flush;
+
+  /// For a customer / job column's search; without it the field is read-only.
+  final ApiClient? api;
+
+  /// A typed value was accepted (Enter or leaving the box), changed or not.
+  final VoidCallback? onDone;
+  final bool autofocus;
 
   final BoardColumn column;
   final Object? value;
@@ -291,29 +1179,173 @@ class ColumnEditor extends StatefulWidget {
 }
 
 class _ColumnEditorState extends State<ColumnEditor> {
-  late final TextEditingController _text = TextEditingController(
-    text: switch (widget.column.type) {
-      'number' => widget.value == null ? '' : _number(widget.value, null),
-      _ => widget.value == null ? '' : '${widget.value}',
-    },
-  );
+  // Notes take bold, italic and underline (Jose 11-25), saved as <b>/<i>/<u>.
+  late final TextEditingController _text = widget.column.type == 'long_text'
+      ? FormattedNotesController(
+          markup: widget.value == null ? '' : '${widget.value}',
+        )
+      : TextEditingController(
+          text: switch (widget.column.type) {
+            'number' || 'currency' =>
+              widget.value == null ? '' : _number(widget.value, null),
+            'location' => '${(widget.value as Map?)?['address'] ?? ''}',
+            // Read as the table reads it, "(440) 555-0100" (hands-on QA 11-16).
+            'phone' =>
+              widget.value == null ? '' : formatCellPhone('${widget.value}'),
+            _ => widget.value == null ? '' : '${widget.value}',
+          },
+        );
+
+  /// What the box holds as saved: a note's markup, else its text.
+  String get _typedText => switch (_text) {
+    final FormattedNotesController n => n.markup,
+    _ => _text.text,
+  };
+
+  String _lastMarkup = '';
+
+  final _focus = FocusNode();
+
+  /// Typing in a panel box saves after this pause.
+  Timer? _pause;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.framed) {
+      _focus.addListener(() {
+        if (!_focus.hasFocus) _commitText();
+      });
+      widget.flush?.add(this, _flushNow);
+    }
+    if (_text case final FormattedNotesController n) {
+      _lastMarkup = n.markup;
+      // A style toggled with no typing is a change too: it waits the same pause.
+      if (widget.framed) {
+        n.addListener(() {
+          if (n.markup != _lastMarkup) {
+            _lastMarkup = n.markup;
+            _typed('');
+          }
+        });
+      }
+    }
+  }
+
+  /// What this box last sent while its saved value has not come back: the
+  /// panel closing and the box losing focus are one change, sent once.
+  Object? _sent;
+  bool _hasSent = false;
+
+  void _send(Object? v) {
+    if (_hasSent && jsonEncode(v) == jsonEncode(_sent)) return;
+    if (widget.framed) {
+      _sent = v;
+      _hasSent = true;
+    }
+    widget.onChanged?.call(v);
+  }
+
+  /// Saves what is still waiting on the typing pause, if anything.
+  void _flushNow() {
+    if (_pause == null) return;
+    _commitText();
+  }
+
+  @override
+  void didUpdateWidget(ColumnEditor old) {
+    super.didUpdateWidget(old);
+    // A saved value comes back: show it, unless somebody is typing here.
+    if (widget.framed && old.value != widget.value) _hasSent = false;
+    if (widget.framed &&
+        old.value != widget.value &&
+        !_focus.hasFocus &&
+        _text is! FormattedNotesController) {
+      final shown = _shownText();
+      if (_text.text != shown) _text.text = shown;
+    }
+  }
+
+  String _shownText() => switch (widget.column.type) {
+    'number' ||
+    'currency' => widget.value == null ? '' : _number(widget.value, null),
+    'location' => '${(widget.value as Map?)?['address'] ?? ''}',
+    'phone' => widget.value == null ? '' : formatCellPhone('${widget.value}'),
+    _ => widget.value == null ? '' : '${widget.value}',
+  };
 
   @override
   void dispose() {
+    // Whatever is still typed goes with the panel.
+    _closing = true;
+    if (widget.framed) {
+      _flushNow();
+      widget.flush?.remove(this);
+    }
+    _pause?.cancel();
+    _focus.dispose();
     _text.dispose();
     super.dispose();
   }
 
-  void _commitText() {
-    final typed = _text.text.trim();
-    if (widget.column.type == 'number') {
+  String? _invalid;
+
+  /// Torn down: a last flush may send, but not redraw.
+  bool _closing = false;
+
+  void _typed(String _) {
+    _pause?.cancel();
+    _pause = Timer(panelTypingPause, () => _commitText(quiet: true));
+  }
+
+  /// [quiet]: a pause in typing, which saves what is valid and says nothing
+  /// yet of what is not (half an email address).
+  void _commitText({bool quiet = false}) {
+    _pause?.cancel();
+    _pause = null;
+    final typed = _typedText.trim();
+    final bad = typed.isNotEmpty && !validColumnText(widget.column.type, typed);
+    if (quiet && bad) return;
+    if (bad != (_invalid != null) && mounted && !_closing) {
+      setState(
+        () => _invalid = bad
+            ? switch (widget.column.type) {
+                'phone' => 'A phone number, 7 to 15 digits.',
+                'email' => 'An email address.',
+                'url' => 'Starts with http:// or https://',
+                _ => 'YYYY-MM-DD HH:MM',
+              }
+            : null,
+      );
+    }
+    if (bad) return;
+    if (widget.column.type == 'number' || widget.column.type == 'currency') {
       final n = typed.isEmpty ? null : num.tryParse(typed);
       if (typed.isNotEmpty && n == null) return;
-      if (n != widget.value) widget.onChanged?.call(n);
+      if (n != widget.value) _send(n);
+      widget.onDone?.call();
+      return;
+    }
+    if (widget.column.type == 'location') {
+      // Typed: an address; lat and lng come from an import or a map pick.
+      final was = (widget.value as Map?)?['address'];
+      if (typed != (was ?? '')) {
+        _send(
+          typed.isEmpty ? null : {'address': typed, 'lat': null, 'lng': null},
+        );
+      }
+      widget.onDone?.call();
       return;
     }
     final next = typed.isEmpty ? null : typed;
-    if (next != widget.value) widget.onChanged?.call(next);
+    // The box shows a phone formatted; left as shown, it is not a change.
+    final same =
+        next == widget.value ||
+        (widget.column.type == 'phone' &&
+            widget.value is String &&
+            next == formatCellPhone(widget.value as String));
+    if (!same) _send(next);
+    widget.onDone?.call();
   }
 
   @override
@@ -323,13 +1355,42 @@ class _ColumnEditorState extends State<ColumnEditor> {
     final key = ValueKey('column-editor-${c.id}');
 
     switch (c.type) {
+      case 'checkbox' when widget.framed:
+        return PanelFieldBox(
+          key: key,
+          icon: null,
+          readOnly: !editable,
+          onTap: editable
+              ? () => widget.onChanged!(widget.value != true)
+              : null,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: Checkbox(
+                  value: widget.value == true,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  onChanged: editable
+                      ? (b) => widget.onChanged!(b ?? false)
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(widget.value == true ? 'Yes' : 'No'),
+            ],
+          ),
+        );
       case 'checkbox':
+        // The table's and the card's Checkbox, not a Switch (hands-on QA
+        // 11-16: one value, two controls).
         return Align(
           alignment: Alignment.centerLeft,
-          child: Switch(
+          child: Checkbox(
             key: key,
             value: widget.value == true,
-            onChanged: editable ? (b) => widget.onChanged!(b) : null,
+            onChanged: editable ? (b) => widget.onChanged!(b ?? false) : null,
           ),
         );
       case 'status':
@@ -342,16 +1403,178 @@ class _ColumnEditorState extends State<ColumnEditor> {
               ]
             : [
                 for (final o in c.options)
-                  SearchOption<String>(value: o.id, label: o.label),
+                  if (!o.retired || o.id == widget.value)
+                    SearchOption<String>(value: o.id, label: o.label),
               ];
         return SearchPickerField<String>(
           key: key,
           value: widget.value?.toString(),
           isDense: true,
+          contentPadding: widget.framed ? panelFieldPadding : null,
           hint: 'Not set',
           allowClear: true,
           options: options,
           onChanged: editable ? (v) => widget.onChanged!(v) : null,
+        );
+      case 'people' when widget.framed:
+        return MultiPickField(
+          key: key,
+          options: [for (final p in widget.people.entries) (p.key, p.value)],
+          selected: [
+            for (final id in (widget.value as List?) ?? const []) '$id',
+          ],
+          itemKey: (id) => ValueKey('column-editor-${c.id}-$id'),
+          onChanged: editable
+              ? (next) => widget.onChanged!(next.isEmpty ? null : next)
+              : null,
+        );
+      case 'tags' when widget.framed:
+        final ids = [
+          for (final id in (widget.value as List?) ?? const []) '$id',
+        ];
+        return MultiPickField(
+          key: key,
+          options: [
+            for (final o in c.options)
+              if (!o.retired || ids.contains(o.id)) (o.id, o.label),
+          ],
+          selected: ids,
+          itemKey: (id) => ValueKey('column-editor-${c.id}-$id'),
+          onChanged: editable
+              ? (next) => widget.onChanged!(next.isEmpty ? null : next)
+              : null,
+        );
+      case 'people':
+        final ids = [
+          for (final id in (widget.value as List?) ?? const []) '$id',
+        ];
+        return Wrap(
+          key: key,
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final p in widget.people.entries)
+              FilterChip(
+                key: ValueKey('column-editor-${c.id}-${p.key}'),
+                label: Text(p.value),
+                selected: ids.contains(p.key),
+                onSelected: editable
+                    ? (on) {
+                        final next = [
+                          for (final id in ids)
+                            if (id != p.key) id,
+                          if (on) p.key,
+                        ];
+                        widget.onChanged!(next.isEmpty ? null : next);
+                      }
+                    : null,
+              ),
+          ],
+        );
+      case 'tags':
+        final ids = [
+          for (final id in (widget.value as List?) ?? const []) '$id',
+        ];
+        return Wrap(
+          key: key,
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final o in c.options)
+              if (!o.retired || ids.contains(o.id))
+                FilterChip(
+                  key: ValueKey('column-editor-${c.id}-${o.id}'),
+                  label: Text(o.label),
+                  selected: ids.contains(o.id),
+                  onSelected: editable
+                      ? (on) {
+                          final next = [
+                            for (final id in ids)
+                              if (id != o.id) id,
+                            if (on) o.id,
+                          ];
+                          widget.onChanged!(next.isEmpty ? null : next);
+                        }
+                      : null,
+                ),
+          ],
+        );
+      case 'link':
+        final api = widget.api;
+        final label = (widget.value as Map?)?['label'] as String?;
+        if (api == null || !editable) return Text(label ?? '—', key: key);
+        return Autocomplete<(String, String)>(
+          key: key,
+          initialValue: TextEditingValue(text: label ?? ''),
+          displayStringForOption: (o) => o.$2,
+          optionsBuilder: (typed) async {
+            final term = typed.text.trim();
+            if (term.length < 2) return const [];
+            final (customers, jobs) = await (
+              api.get('/customers', {'search': term, 'per_page': '8'}),
+              api.get('/jobs', {'search': term, 'per_page': '8'}),
+            ).wait;
+            List rows(ApiResponse r) =>
+                r.ok && r.data is List ? r.data as List : const [];
+            return [
+              for (final c in rows(customers))
+                ('customer:${c['id']}', 'Customer · ${c['name'] ?? ''}'),
+              for (final j in rows(jobs))
+                (
+                  'job:${j['id']}',
+                  'Job ${j['number'] ?? ''} · ${(j['customer'] as Map?)?['name'] ?? ''}',
+                ),
+            ];
+          },
+          onSelected: (o) => widget.onChanged!(o.$1),
+          fieldViewBuilder: (context, controller, focus, submit) => TextField(
+            controller: controller,
+            focusNode: focus,
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: widget.framed ? panelFieldPadding : null,
+              border: const OutlineInputBorder(),
+              hintText: 'Search customers and jobs',
+              suffixIcon: label == null
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () {
+                        controller.clear();
+                        widget.onChanged!(null);
+                      },
+                    ),
+            ),
+          ),
+        );
+      case 'date' when widget.framed:
+        return DayPopoverField(
+          key: key,
+          value: widget.value as String?,
+          formats: widget.formats,
+          onChanged: editable ? (d) => widget.onChanged!(d) : null,
+        );
+      case 'formula' when widget.framed:
+        return PanelFieldBox(
+          key: key,
+          icon: null,
+          readOnly: true,
+          child: Text(
+            widget.value == null ? '—' : formatColumnNumber(widget.value, c),
+          ),
+        );
+      case 'timeline' when widget.framed:
+        final range = widget.value is Map ? widget.value as Map : const {};
+        return RangePopoverField(
+          key: key,
+          from: range['from'] as String?,
+          to: range['to'] as String?,
+          onChanged: editable
+              ? (from, to) => widget.onChanged?.call(
+                  from == null ? null : {'from': from, 'to': to},
+                )
+              : null,
         );
       case 'date':
         return _DateEditor(
@@ -360,21 +1583,128 @@ class _ColumnEditorState extends State<ColumnEditor> {
           formats: widget.formats,
           onChanged: widget.onChanged,
         );
+      case 'formula':
+        return Text(
+          widget.value == null ? '—' : formatColumnNumber(widget.value, c),
+          key: key,
+        );
+      case 'timeline':
+        final range = widget.value is Map ? widget.value as Map : const {};
+        // One calendar: first click starts, second ends (Jose, 2026-11-16).
+        return RangeCalendar(
+          key: key,
+          from: range['from'] as String?,
+          to: range['to'] as String?,
+          onChanged: editable
+              ? (from, to) => widget.onChanged?.call(
+                  from == null ? null : {'from': from, 'to': to},
+                )
+              : null,
+        );
       default:
-        return TextField(
+        if (_text case final FormattedNotesController notes) {
+          final field = Focus(
+            focusNode: _focus,
+            child: FormattedNotesField(
+              controller: notes,
+              fieldKey: key,
+              label: c.name,
+              minLines: widget.framed ? 2 : 5,
+            ),
+          );
+          if (widget.framed || !editable) return field;
+          void save() {
+            _commitText();
+            widget.onDone?.call();
+          }
+
+          return TapRegion(
+            onTapOutside: (_) => _commitText(),
+            child: CallbackShortcuts(
+              bindings: {
+                const SingleActivator(LogicalKeyboardKey.enter, control: true):
+                    save,
+                const SingleActivator(LogicalKeyboardKey.enter, meta: true):
+                    save,
+              },
+              child: field,
+            ),
+          );
+        }
+        if (widget.framed) {
+          return TextField(
+            key: key,
+            controller: _text,
+            focusNode: _focus,
+            enabled: editable,
+            maxLines: c.type == 'long_text' ? 6 : 1,
+            minLines: 1,
+            keyboardType: switch (c.type) {
+              'number' || 'currency' => const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              'phone' => TextInputType.phone,
+              'email' => TextInputType.emailAddress,
+              'url' => TextInputType.url,
+              'long_text' => TextInputType.multiline,
+              _ => TextInputType.text,
+            },
+            decoration: panelFieldDecoration(
+              suffixText: c.type == 'number' ? c.unit : null,
+              prefixText: c.type == 'currency' ? '\$ ' : null,
+              hint: c.type == 'datetime' ? 'YYYY-MM-DD HH:MM' : null,
+              errorText: _invalid,
+            ),
+            onChanged: _typed,
+            onSubmitted: (_) => _commitText(),
+          );
+        }
+        final long = c.type == 'long_text';
+        final field = TextField(
           key: key,
           controller: _text,
           enabled: editable,
-          keyboardType: c.type == 'number'
-              ? const TextInputType.numberWithOptions(decimal: true)
-              : TextInputType.text,
+          autofocus: widget.autofocus,
+          // Notes grow to show everything; a text cell wraps so the whole
+          // line is readable, and Enter still saves it.
+          maxLines: long ? 12 : (c.type == 'text' ? 4 : 1),
+          minLines: long ? 5 : 1,
+          textInputAction: long
+              ? TextInputAction.newline
+              : TextInputAction.done,
+          keyboardType: switch (c.type) {
+            'number' ||
+            'currency' => const TextInputType.numberWithOptions(decimal: true),
+            'phone' => TextInputType.phone,
+            'email' => TextInputType.emailAddress,
+            'url' => TextInputType.url,
+            'long_text' => TextInputType.multiline,
+            _ => TextInputType.text,
+          },
           decoration: InputDecoration(
             isDense: true,
             border: const OutlineInputBorder(),
             suffixText: c.type == 'number' ? c.unit : null,
+            prefixText: c.type == 'currency' ? '\$ ' : null,
+            hintText: c.type == 'datetime' ? 'YYYY-MM-DD HH:MM' : null,
+            errorText: _invalid,
           ),
           onSubmitted: (_) => _commitText(),
           onTapOutside: (_) => _commitText(),
+        );
+        if (!long) return field;
+        void save() {
+          _commitText();
+          widget.onDone?.call();
+        }
+
+        return CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.enter, control: true):
+                save,
+            const SingleActivator(LogicalKeyboardKey.enter, meta: true): save,
+          },
+          child: field,
         );
     }
   }
@@ -397,28 +1727,51 @@ class _DateEditor extends StatefulWidget {
 }
 
 class _DateEditorState extends State<_DateEditor> {
-  late final _controller = TextEditingController(text: widget.value ?? '');
-
+  /// A month grid, Today and Clear, closed by a pick (Jose 11-17: "i also
+  /// dont like when it opens massive tabs"); only as tall as the month.
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime.tryParse(widget.value ?? '');
+    void pick(DateTime? d) {
+      final v = d == null ? null : formatCalendarDay(d);
+      if (v != widget.value) widget.onChanged?.call(v);
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 300,
+          child: CalendarDatePicker(
+            key: const Key('cell-date-calendar'),
+            initialDate: day ?? today,
+            firstDate: DateTime(2000),
+            lastDate: DateTime(2100),
+            onDateChanged: widget.onChanged == null ? (_) {} : pick,
+          ),
+        ),
+        Row(
+          children: [
+            TextButton(
+              key: const Key('cell-date-today'),
+              onPressed: widget.onChanged == null ? null : () => pick(today),
+              child: const Text('Today'),
+            ),
+            const Spacer(),
+            TextButton(
+              key: const Key('cell-date-clear'),
+              onPressed: widget.onChanged == null || day == null
+                  ? null
+                  : () => pick(null),
+              child: const Text('Clear'),
+            ),
+          ],
+        ),
+      ],
+    );
   }
-
-  @override
-  Widget build(BuildContext context) => CalendarDayField(
-    controller: _controller,
-    formats: widget.formats,
-    dense: true,
-    enabled: widget.onChanged != null,
-    onChanged: (v) {
-      final day = v.isEmpty ? null : v;
-      if (day != widget.value &&
-          (day == null || RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(day))) {
-        widget.onChanged?.call(day);
-      }
-    },
-  );
 }
 
 // ── Setting a board up (UI queue 84) ─────────────────────────────
@@ -432,19 +1785,49 @@ String statusesPath(String board, [String? id]) =>
 
 /// The colours a status or an option can be, as Monday offers them.
 const swatches = [
-  '#579BFC', '#00708F', '#A25DDC', '#7A4FB5', '#00C875', '#2F9A4C', //
+  '#579BFC', '#00708F', '#00A9B5', '#7F5347', '#00C875', '#2F9A4C', //
   '#FDAB3D', '#D9930D', '#E2445C', '#C53B3B', '#FF5AC4', '#8E9BA3',
 ];
 
-/// The seven column types, in the order the + menu offers them.
+/// The column types, in the order the + menu offers them.
+/// Jose, 2026-11-09: Monday's types. A Label is one coloured option, Tags
+/// several; the server's names stay (dropdown is the Label).
 const columnTypes = [
   ('text', 'Text', Icons.short_text),
+  ('long_text', 'Long text', Icons.notes),
   ('number', 'Number', Icons.tag),
-  ('status', 'Status', Icons.label_outline),
+  ('currency', 'Currency', Icons.attach_money),
+  ('phone', 'Phone', Icons.phone_outlined),
+  ('email', 'Email', Icons.mail_outline),
+  ('url', 'Link (URL)', Icons.link),
   ('date', 'Date', Icons.event_outlined),
-  ('person', 'Person', Icons.person_outline),
-  ('dropdown', 'Dropdown', Icons.arrow_drop_down_circle_outlined),
+  ('datetime', 'Date + time', Icons.schedule),
   ('checkbox', 'Checkbox', Icons.check_box_outlined),
+  ('person', 'Person', Icons.person_outline),
+  ('people', 'People', Icons.group_outlined),
+  ('status', 'Status', Icons.label_outline),
+  ('dropdown', 'Label', Icons.arrow_drop_down_circle_outlined),
+  ('tags', 'Tags', Icons.sell_outlined),
+  ('link', 'Customer / job', Icons.handshake_outlined),
+  ('timeline', 'Timeline', Icons.view_timeline_outlined),
+  ('formula', 'Formula', Icons.functions),
+  ('location', 'Location', Icons.place_outlined),
+  ('rating', 'Rating', Icons.star_border),
+  ('files', 'Files', Icons.attach_file),
+  ('connect', 'Connect boards', Icons.device_hub),
+  ('mirror', 'Mirror', Icons.flip),
+  ('dependency', 'Dependency', Icons.account_tree_outlined),
+  ('last_updated', 'Last updated', Icons.update),
+  ('creation_log', 'Creation log', Icons.history),
+];
+
+/// The + popover's sections, as Monday has them; the rest is More.
+const columnTypeSections = [
+  ('Essentials', ['status', 'dropdown', 'text', 'date', 'people', 'number']),
+  (
+    'Super useful',
+    ['files', 'checkbox', 'long_text', 'formula', 'connect', 'timeline'],
+  ),
 ];
 
 String columnTypeLabel(String type) =>
@@ -514,11 +1897,19 @@ class ColumnPanel extends StatefulWidget {
     required this.type,
     this.column,
     this.raw,
+    this.others = const [],
+    this.newType,
   });
 
   final ApiClient api;
   final String boardId;
   final String type;
+
+  /// Opened from the header's Type menu: the type to change to.
+  final String? newType;
+
+  /// The board's other columns, for a formula's building blocks.
+  final List<BoardColumn> others;
 
   /// The column being changed; null adds one.
   final BoardColumn? column;
@@ -533,25 +1924,62 @@ class ColumnPanel extends StatefulWidget {
 class _ColumnPanelState extends State<ColumnPanel> {
   late final _name = TextEditingController(text: widget.column?.name ?? '');
   late final _unit = TextEditingController(text: widget.column?.unit ?? '');
-  late final List<({TextEditingController label, String colour, String? id})>
+  late String _type = widget.newType ?? widget.type;
+
+  /// The server's "N values would be cleared", shown before a type change
+  /// goes ahead anyway.
+  String? _loss;
+  late String _format = widget.column?.format ?? 'plain';
+  late String _footer = widget.column?.footer ?? 'none';
+  late final _expression = TextEditingController(
+    text: '${widget.raw?['settings']?['expression'] ?? ''}',
+  );
+
+  bool get _numeric => _type == 'number' || _type == 'formula';
+
+  /// Mirror: the connect column it follows, and the column of the tasks
+  /// that one names which it shows.
+  late String? _mirrorConnect =
+      widget.raw?['settings']?['connect_column_id'] as String?;
+  late String? _mirrorColumn = widget.raw?['settings']?['column_id'] as String?;
+
+  /// Puts [text] where the cursor is in the formula.
+  void _insert(String text) {
+    final sel = _expression.selection;
+    final at = sel.isValid ? sel.start : _expression.text.length;
+    final end = sel.isValid ? sel.end : at;
+    final pad = text.startsWith('[') ? text : ' $text ';
+    _expression.value = TextEditingValue(
+      text: _expression.text.replaceRange(at, end, pad),
+      selection: TextSelection.collapsed(offset: at + pad.length),
+    );
+    setState(() {});
+  }
+
+  late final List<
+    ({TextEditingController label, String colour, String? id, bool retired})
+  >
   _options = [
     for (final o in widget.column?.options ?? const <ColumnOption>[])
       (
         label: TextEditingController(text: o.label),
         colour: o.colour == null ? swatches.first : ColourField.hex(o.colour!),
         id: o.id,
+        retired: o.retired,
       ),
   ];
   bool _saving = false;
   bool _confirmDelete = false;
   String? _error;
 
-  bool get _hasOptions => widget.type == 'status' || widget.type == 'dropdown';
+  bool get _hasOptions =>
+      _type == 'status' || _type == 'dropdown' || _type == 'tags';
 
   @override
   void dispose() {
     _name.dispose();
     _unit.dispose();
+    _expression.dispose();
     for (final o in _options) {
       o.label.dispose();
     }
@@ -559,15 +1987,82 @@ class _ColumnPanelState extends State<ColumnPanel> {
   }
 
   Map<String, dynamic> get _settings => {
-    if (widget.type == 'number' && _unit.text.trim().isNotEmpty)
+    if (_type == 'number' && _unit.text.trim().isNotEmpty)
       'unit': _unit.text.trim(),
+    if (_numeric && _format != 'plain') 'format': _format,
+    if (_numeric && _footer != 'none') 'footer': _footer,
+    if (_type == 'formula') 'expression': _expression.text.trim(),
+    if (_type == 'mirror') ...{
+      'connect_column_id': ?_mirrorConnect,
+      'column_id': ?_mirrorColumn,
+    },
     if (_hasOptions)
       'options': [
         for (final o in _options)
           if (o.label.text.trim().isNotEmpty)
-            {'id': ?o.id, 'label': o.label.text.trim(), 'colour': o.colour},
+            {
+              'id': ?o.id,
+              'label': o.label.text.trim(),
+              'colour': o.colour,
+              if (o.retired) 'retired': true,
+            },
       ],
   };
+
+  List<Widget> _mirrorFields() {
+    final connects = [
+      for (final c in widget.others)
+        if (c.type == 'connect' && c.id != widget.column?.id) c,
+    ];
+    final shown = [
+      for (final c in widget.others)
+        if (c.type != 'mirror' &&
+            c.type != 'connect' &&
+            c.id != widget.column?.id)
+          c,
+    ];
+    return [
+      const SizedBox(height: 12),
+      if (connects.isEmpty)
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            'Add a Connect column first: a mirror shows a column of the tasks '
+            'it connects to.',
+          ),
+        ),
+      Text(
+        'Connect column to follow',
+        style: Theme.of(context).textTheme.labelMedium,
+      ),
+      const SizedBox(height: 4),
+      SearchPickerField<String>(
+        key: const Key('column-mirror-connect'),
+        value: connects.any((c) => c.id == _mirrorConnect)
+            ? _mirrorConnect
+            : null,
+        hint: 'Pick a Connect column',
+        options: [
+          for (final c in connects)
+            SearchOption<String>(value: c.id, label: c.name),
+        ],
+        onChanged: (v) => setState(() => _mirrorConnect = v),
+      ),
+      const SizedBox(height: 12),
+      Text('Column to show', style: Theme.of(context).textTheme.labelMedium),
+      const SizedBox(height: 4),
+      SearchPickerField<String>(
+        key: const Key('column-mirror-column'),
+        value: shown.any((c) => c.id == _mirrorColumn) ? _mirrorColumn : null,
+        hint: 'Pick a column',
+        options: [
+          for (final c in shown)
+            SearchOption<String>(value: c.id, label: c.name),
+        ],
+        onChanged: (v) => setState(() => _mirrorColumn = v),
+      ),
+    ];
+  }
 
   Future<void> _send(Future<ApiResponse> Function() call) async {
     setState(() {
@@ -579,14 +2074,16 @@ class _ColumnPanelState extends State<ColumnPanel> {
     if (res.ok) {
       Navigator.of(context).pop(true);
     } else {
+      final lost = res.reason;
       setState(() {
         _saving = false;
-        _error = res.reason;
+        _loss = lost.contains('would be cleared') ? lost : null;
+        _error = _loss == null ? res.reason : null;
       });
     }
   }
 
-  void _save() {
+  void _save({bool acceptLoss = false}) {
     if (_name.text.trim().isEmpty) {
       setState(() => _error = 'Give the column a name.');
       return;
@@ -594,9 +2091,10 @@ class _ColumnPanelState extends State<ColumnPanel> {
     final id = widget.column?.id;
     final body = {
       'name': _name.text.trim(),
-      // Fixed once made: the server refuses a new type on a column with
-      // values, so a change never sends one.
-      if (id == null) 'type': widget.type,
+      // A changed type carries the values over; the server says first how
+      // many it cannot, and acceptLoss goes ahead.
+      if (id == null || _type != widget.type) 'type': _type,
+      if (acceptLoss) 'accept_loss': true,
       'settings': _settings,
     };
     _send(
@@ -623,8 +2121,8 @@ class _ColumnPanelState extends State<ColumnPanel> {
     return SidePanel(
       title: editing
           ? widget.column!.name
-          : 'Add a ${columnTypeLabel(widget.type).toLowerCase()} column',
-      subtitle: columnTypeLabel(widget.type),
+          : 'Add a ${columnTypeLabel(_type).toLowerCase()} column',
+      subtitle: columnTypeLabel(_type),
       actions: [
         if (editing)
           if (_confirmDelete)
@@ -649,11 +2147,22 @@ class _ColumnPanelState extends State<ColumnPanel> {
               onPressed: () => setState(() => _confirmDelete = true),
               child: const Text('Delete…'),
             ),
-        FilledButton(
-          key: const Key('column-save'),
-          onPressed: _saving ? null : _save,
-          child: Text(editing ? 'Save' : 'Add column'),
-        ),
+        if (_loss != null)
+          FilledButton(
+            key: const Key('column-type-anyway'),
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+              foregroundColor: theme.colorScheme.onError,
+            ),
+            onPressed: _saving ? null : () => _save(acceptLoss: true),
+            child: const Text('Change type and clear them'),
+          )
+        else
+          FilledButton(
+            key: const Key('column-save'),
+            onPressed: _saving ? null : _save,
+            child: Text(editing ? 'Save' : 'Add column'),
+          ),
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -667,7 +2176,109 @@ class _ColumnPanelState extends State<ColumnPanel> {
               border: OutlineInputBorder(),
             ),
           ),
-          if (widget.type == 'number') ...[
+          if (editing) ...[
+            const SizedBox(height: 12),
+            DropdownMenu<String>(
+              key: const Key('column-type'),
+              enableFilter: true,
+              requestFocusOnTap: true,
+              expandedInsets: EdgeInsets.zero,
+              label: const Text('Type'),
+              initialSelection: _type,
+              onSelected: (v) => setState(() {
+                _type = v ?? _type;
+                _loss = null;
+              }),
+              dropdownMenuEntries: [
+                for (final (type, label, icon) in columnTypes)
+                  DropdownMenuEntry(
+                    value: type,
+                    label: label,
+                    leadingIcon: Icon(icon, size: 18),
+                  ),
+              ],
+            ),
+            if (_type != widget.type)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Values are carried over where they fit. You are told first if any would be cleared.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+          ],
+          if (_type == 'mirror') ..._mirrorFields(),
+          if (_type == 'formula') ...[
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('column-formula'),
+              controller: _expression,
+              decoration: const InputDecoration(
+                labelText: 'Formula',
+                hintText: '[Job Cost] + [Materials]',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final c in widget.others)
+                  if ((c.type == 'number' || c.type == 'formula') &&
+                      c.id != widget.column?.id)
+                    ActionChip(
+                      key: ValueKey('formula-column-${c.id}'),
+                      label: Text(c.name),
+                      onPressed: () => _insert('[${c.name}]'),
+                    ),
+                for (final (op, label) in const [
+                  ('+', '+'),
+                  ('-', '−'),
+                  ('*', '×'),
+                  ('/', '÷'),
+                  ('(', '('),
+                  (')', ')'),
+                ])
+                  ActionChip(
+                    key: ValueKey('formula-op-$op'),
+                    label: Text(label),
+                    onPressed: () => _insert(op),
+                  ),
+              ],
+            ),
+          ],
+          if (_numeric) ...[
+            const SizedBox(height: 12),
+            Text('Show as', style: theme.textTheme.labelLarge),
+            const SizedBox(height: 6),
+            SegmentedButton<String>(
+              key: const Key('column-format'),
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: 'plain', label: Text('Plain')),
+                ButtonSegment(value: 'currency', label: Text('Currency')),
+                ButtonSegment(value: 'percent', label: Text('%')),
+              ],
+              selected: {_format},
+              onSelectionChanged: (v) => setState(() => _format = v.first),
+            ),
+            const SizedBox(height: 12),
+            Text('Group footer', style: theme.textTheme.labelLarge),
+            const SizedBox(height: 6),
+            SegmentedButton<String>(
+              key: const Key('column-footer'),
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: 'sum', label: Text('Sum')),
+                ButtonSegment(value: 'average', label: Text('Average')),
+                ButtonSegment(value: 'none', label: Text('None')),
+              ],
+              selected: {_footer},
+              onSelectionChanged: (v) => setState(() => _footer = v.first),
+            ),
+          ],
+          if (_type == 'number' && _format == 'plain') ...[
             const SizedBox(height: 12),
             TextField(
               key: const Key('column-unit'),
@@ -682,7 +2293,10 @@ class _ColumnPanelState extends State<ColumnPanel> {
           if (_hasOptions) ...[
             const SizedBox(height: 16),
             Text(
-              widget.type == 'status' ? 'Labels' : 'Options',
+              switch (_type) {
+                'status' || 'dropdown' => 'Labels',
+                _ => 'Tags',
+              },
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -701,6 +2315,7 @@ class _ColumnPanelState extends State<ColumnPanel> {
                           label: o.label,
                           colour: hex,
                           id: o.id,
+                          retired: o.retired,
                         ),
                       ),
                     ),
@@ -716,7 +2331,27 @@ class _ColumnPanelState extends State<ColumnPanel> {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Remove',
+                      key: ValueKey('column-option-retire-$i'),
+                      tooltip: o.retired
+                          ? 'Retired: kept on old tasks, not offered. Bring back'
+                          : 'Retire: keep it on old tasks, stop offering it',
+                      isSelected: o.retired,
+                      icon: const Icon(Icons.visibility_outlined, size: 18),
+                      selectedIcon: const Icon(
+                        Icons.visibility_off_outlined,
+                        size: 18,
+                      ),
+                      onPressed: () => setState(
+                        () => _options[i] = (
+                          label: o.label,
+                          colour: o.colour,
+                          id: o.id,
+                          retired: !o.retired,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Delete (clears it from every task)',
                       icon: const Icon(Icons.close, size: 18),
                       onPressed: () => setState(() => _options.removeAt(i)),
                     ),
@@ -732,12 +2367,11 @@ class _ColumnPanelState extends State<ColumnPanel> {
                     label: TextEditingController(),
                     colour: swatches[_options.length % swatches.length],
                     id: null,
+                    retired: false,
                   )),
                 ),
                 icon: const Icon(Icons.add, size: 18),
-                label: Text(
-                  widget.type == 'status' ? 'Add a label' : 'Add an option',
-                ),
+                label: Text(_type == 'tags' ? 'Add a tag' : 'Add a label'),
               ),
             ),
           ],
@@ -773,6 +2407,14 @@ class _ColumnPanelState extends State<ColumnPanel> {
                   label: const Text('Hide'),
                 ),
               ],
+            ),
+          ],
+          if (_loss != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _loss!,
+              key: const Key('column-type-loss'),
+              style: TextStyle(color: theme.colorScheme.error),
             ),
           ],
           if (_error != null) ...[
@@ -816,6 +2458,7 @@ class _StatusesPanelState extends State<StatusesPanel> {
 
   @override
   void dispose() {
+    _typing?.cancel();
     for (final c in _names.values) {
       c.dispose();
     }
@@ -842,9 +2485,35 @@ class _StatusesPanelState extends State<StatusesPanel> {
     }
   }
 
+  Timer? _typing;
+
+  /// A row dropped at [to]: the new order, each moved label's position saved.
+  Future<void> _reorder(int from, int to) async {
+    if (to > from) to--;
+    final rows = [..._rows];
+    rows.insert(to, rows.removeAt(from));
+    setState(() => _rows = rows);
+    for (final (i, r) in rows.indexed) {
+      if (r['position'] != i) await _patch(r, {'position': i});
+    }
+  }
+
+  void _rename(Map<String, dynamic> s, String v) {
+    _typing?.cancel();
+    if (v.trim().isNotEmpty && v.trim() != s['name']) {
+      _patch(s, {'name': v.trim()});
+    }
+  }
+
   Future<void> _add() async {
+    // A second new one before the first is named is not a duplicate.
+    final taken = {for (final r in _rows) '${r['name']}'.toLowerCase()};
+    var name = 'New status';
+    for (var i = 2; taken.contains(name.toLowerCase()); i++) {
+      name = 'New status $i';
+    }
     final res = await widget.api.post(statusesPath(_board), {
-      'name': 'New status',
+      'name': name,
       'colour': swatches[_rows.length % swatches.length],
       'is_done': false,
     });
@@ -888,101 +2557,172 @@ class _StatusesPanelState extends State<StatusesPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final s in _rows) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  SwatchButton(
-                    key: ValueKey('status-colour-${s['id']}'),
-                    colour: '${s['colour'] ?? swatches.last}',
-                    onPicked: (hex) => _patch(s, {'colour': hex}),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      key: ValueKey('status-name-${s['id']}'),
-                      controller: _name(s),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      onSubmitted: (v) {
-                        if (v.trim().isNotEmpty && v.trim() != s['name']) {
-                          _patch(s, {'name': v.trim()});
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Tooltip(
-                    message: 'Counts as done',
-                    child: FilterChip(
-                      key: ValueKey('status-done-${s['id']}'),
-                      showCheckmark: false,
-                      label: const Text('Done'),
-                      selected: s['is_done'] == true,
-                      onSelected: (v) => _patch(s, {'is_done': v}),
-                    ),
-                  ),
-                  IconButton(
-                    key: ValueKey('status-delete-${s['id']}'),
-                    tooltip: 'Delete',
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    onPressed: _rows.length <= 1
-                        ? null
-                        : () => setState(() {
-                            _deleting = '${s['id']}';
-                            _moveTo = null;
-                          }),
-                  ),
-                ],
-              ),
-            ),
-            if (_deleting == '${s['id']}')
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Column(
+          // Gap review P1 (Monday's label editor): drag to reorder, a default
+          // label new tasks start on, and retired labels kept off the pickers.
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            onReorder: _reorder,
+            children: [
+              for (final (i, s) in _rows.indexed)
+                Column(
+                  key: ValueKey('status-row-${s['id']}'),
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('Tasks in "${s['name']}" move to:', style: muted),
-                    const SizedBox(height: 6),
-                    SearchPickerField<String>(
-                      key: const Key('status-move-to'),
-                      value: _moveTo,
-                      isDense: true,
-                      hint: 'Choose a status',
-                      options: [
-                        for (final o in _rows)
-                          if (o['id'] != s['id'])
-                            SearchOption(
-                              value: '${o['id']}',
-                              label: '${o['name']}',
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          ReorderableDragStartListener(
+                            index: i,
+                            child: const MouseRegion(
+                              cursor: SystemMouseCursors.grab,
+                              child: Icon(Icons.drag_indicator, size: 18),
                             ),
-                      ],
-                      onChanged: (v) => setState(() => _moveTo = v),
+                          ),
+                          const SizedBox(width: 4),
+                          SwatchButton(
+                            key: ValueKey('status-colour-${s['id']}'),
+                            colour: '${s['colour'] ?? swatches.last}',
+                            onPicked: (hex) => _patch(s, {'colour': hex}),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              key: ValueKey('status-name-${s['id']}'),
+                              controller: _name(s),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                              ),
+                              // Natalie 11-24: a name typed and left (a click on
+                              // Done, anywhere) saves too, not only on Enter.
+                              onSubmitted: (v) => _rename(s, v),
+                              onChanged: (v) {
+                                _typing?.cancel();
+                                _typing = Timer(
+                                  const Duration(milliseconds: 700),
+                                  () => _rename(s, v),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Tooltip(
+                            message: 'Counts as done',
+                            child: FilterChip(
+                              key: ValueKey('status-done-${s['id']}'),
+                              showCheckmark: false,
+                              label: const Text('Done'),
+                              selected: s['is_done'] == true,
+                              onSelected: (v) => _patch(s, {'is_done': v}),
+                            ),
+                          ),
+                          IconButton(
+                            key: ValueKey('status-default-${s['id']}'),
+                            tooltip: s['is_default'] == true
+                                ? 'New tasks start here'
+                                : 'Make this the default',
+                            icon: Icon(
+                              s['is_default'] == true
+                                  ? Icons.star
+                                  : Icons.star_border,
+                              size: 18,
+                            ),
+                            onPressed: s['is_default'] == true
+                                ? null
+                                : () async {
+                                    await _patch(s, {'is_default': true});
+                                    setState(() {
+                                      for (final r in _rows) {
+                                        r['is_default'] = r['id'] == s['id'];
+                                      }
+                                    });
+                                  },
+                          ),
+                          IconButton(
+                            key: ValueKey('status-retired-${s['id']}'),
+                            tooltip: s['retired'] == true
+                                ? 'Retired: kept on its tasks, out of the pickers. Bring back'
+                                : 'Retire',
+                            icon: Icon(
+                              s['retired'] == true
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              size: 18,
+                            ),
+                            onPressed: s['is_default'] == true
+                                ? null
+                                : () => _patch(s, {
+                                    'retired': s['retired'] != true,
+                                  }),
+                          ),
+                          IconButton(
+                            key: ValueKey('status-delete-${s['id']}'),
+                            tooltip: 'Delete',
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            onPressed: _rows.length <= 1
+                                ? null
+                                : () => setState(() {
+                                    _deleting = '${s['id']}';
+                                    _moveTo = null;
+                                  }),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 6),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => setState(() => _deleting = null),
-                          child: const Text('Keep it'),
+                    if (_deleting == '${s['id']}')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Tasks in "${s['name']}" move to:',
+                              style: muted,
+                            ),
+                            const SizedBox(height: 6),
+                            SearchPickerField<String>(
+                              key: const Key('status-move-to'),
+                              value: _moveTo,
+                              isDense: true,
+                              hint: 'Choose a status',
+                              options: [
+                                for (final o in _rows)
+                                  if (o['id'] != s['id'])
+                                    SearchOption(
+                                      value: '${o['id']}',
+                                      label: '${o['name']}',
+                                    ),
+                              ],
+                              onChanged: (v) => setState(() => _moveTo = v),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: () =>
+                                      setState(() => _deleting = null),
+                                  child: const Text('Keep it'),
+                                ),
+                                FilledButton(
+                                  key: const Key('status-delete-confirm'),
+                                  onPressed: _moveTo == null
+                                      ? null
+                                      : () => _delete('${s['id']}'),
+                                  child: const Text('Delete'),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                        FilledButton(
-                          key: const Key('status-delete-confirm'),
-                          onPressed: _moveTo == null
-                              ? null
-                              : () => _delete('${s['id']}'),
-                          child: const Text('Delete'),
-                        ),
-                      ],
-                    ),
+                      ),
                   ],
                 ),
-              ),
-          ],
+            ],
+          ),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
@@ -1001,6 +2741,794 @@ class _StatusesPanelState extends State<StatusesPanel> {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// A table cell that turns into its editor when clicked: typed types in the
+/// cell itself, a day, a timeline or a person in a small card under it.
+/// Enter or clicking away saves; Esc puts it back as it was.
+class InlineCellEditor extends StatefulWidget {
+  const InlineCellEditor({
+    super.key,
+    this.api,
+    required this.column,
+    required this.value,
+    required this.people,
+    required this.formats,
+    required this.onChanged,
+    required this.child,
+    this.onFilter,
+    this.cellMenu = true,
+  });
+
+  /// The cell's Copy/Paste/Clear right-click menu; off where the right-click
+  /// belongs to something else (the task name: the row's fast actions).
+  final bool cellMenu;
+
+  /// Adds "Filter by this value" to the right-click menu.
+  final VoidCallback? onFilter;
+
+  final BoardColumn column;
+  final Object? value;
+  final Map<String, String> people;
+  final DisplayFormats formats;
+  final ValueChanged<Object?> onChanged;
+  final Widget child;
+
+  final ApiClient? api;
+
+  /// How many cells are open for editing right now. A board's live refresh
+  /// patches rows in place but holds back inserts and removals while one is
+  /// open, so the row under the editor stays the row being edited.
+  static final editing = ValueNotifier<int>(0);
+
+  @override
+  State<InlineCellEditor> createState() => _InlineCellEditorState();
+}
+
+class _InlineCellEditorState extends State<InlineCellEditor> {
+  bool _editing = false;
+  final _link = LayerLink();
+  final _card = OverlayPortalController();
+
+  /// Typed in the cell; everything else in a card, which has the room for a
+  /// calendar, a picker or a validation message.
+  /// Text and notes edit in the card too (Jose 11-17: "u cant even tell
+  /// what ur typing on notes"): a 38 px cell is no place to read a sentence.
+  /// Jose 11-24: nothing edits in the cell; numbers use the card too.
+  bool get _inPlace => false;
+
+  /// The value this cell last sent, and whether the value under it moved to
+  /// something else while it was open (a remote change: Monday, a colleague).
+  Object? _sent;
+  bool _elsewhere = false;
+
+  static bool _same(Object? a, Object? b) =>
+      a == b || jsonEncode(a) == jsonEncode(b);
+
+  void _start() {
+    setState(() => _editing = true);
+    InlineCellEditor.editing.value++;
+    if (!_inPlace) _card.show();
+  }
+
+  void _stop() {
+    if (!mounted || !_editing) return;
+    if (_card.isShowing) _card.hide();
+    InlineCellEditor.editing.value--;
+    setState(() {
+      _editing = false;
+      _elsewhere = false;
+      _sent = null;
+    });
+  }
+
+  @override
+  void didUpdateWidget(InlineCellEditor old) {
+    super.didUpdateWidget(old);
+    // The editor keeps what the person typed; the marker says the saved
+    // value under it changed meanwhile.
+    if (_editing &&
+        !_same(widget.value, old.value) &&
+        !_same(widget.value, _sent)) {
+      _elsewhere = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_editing) InlineCellEditor.editing.value--;
+    super.dispose();
+  }
+
+  Widget _editor() => CallbackShortcuts(
+    bindings: {const SingleActivator(LogicalKeyboardKey.escape): _stop},
+    child: TapRegion(
+      groupId: this,
+      onTapOutside: (_) => Future.microtask(_stop),
+      child: Stack(
+        clipBehavior: Clip.none,
+        fit: StackFit.passthrough,
+        children: [
+          _columnEditor(),
+          if (_elsewhere)
+            Positioned(
+              top: -6,
+              right: -6,
+              child: Tooltip(
+                message: 'Changed elsewhere; saving keeps yours',
+                child: Icon(
+                  key: const Key('cell-changed-elsewhere'),
+                  Icons.sync_problem,
+                  size: 14,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _columnEditor() => ColumnEditor(
+    api: widget.api,
+    column: widget.column,
+    value: widget.value,
+    people: widget.people,
+    formats: widget.formats,
+    autofocus: true,
+    onDone: () => Future.microtask(_stop),
+    onChanged: (v) {
+      _sent = v;
+      widget.onChanged(v);
+      // A timeline is two days: stay open for the second.
+      if (widget.column.type != 'timeline' &&
+          widget.column.type != 'datetime' &&
+          !_inPlace) {
+        _stop();
+      }
+    },
+  );
+
+  /// What a copied cell carries: text as typed, anything else as JSON so a
+  /// paste into the same kind of column puts back the same value.
+  String _copyText(Object? v) => switch (v) {
+    null => '',
+    String s => s,
+    num n => '$n',
+    _ => jsonEncode(v),
+  };
+
+  Object? _pasteValue(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return null;
+    switch (widget.column.type) {
+      case 'number' || 'currency' || 'rating':
+        return num.tryParse(t.replaceAll(RegExp(r'[,$\s]'), ''));
+      case 'text' || 'long_text' || 'email' || 'phone' || 'url':
+        return t;
+    }
+    try {
+      return jsonDecode(t);
+    } on FormatException {
+      return t;
+    }
+  }
+
+  /// Right-click on a cell: Copy, Paste, Clear (Monday's cell menu).
+  Future<void> _menu(Offset at) async {
+    final box = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        at & const Size(1, 1),
+        Offset.zero & box.size,
+      ),
+      items: [
+        const PopupMenuItem(
+          key: Key('cell-rc-copy'),
+          value: 'copy',
+          height: 36,
+          child: Text('Copy'),
+        ),
+        const PopupMenuItem(
+          key: Key('cell-rc-paste'),
+          value: 'paste',
+          height: 36,
+          child: Text('Paste'),
+        ),
+        const PopupMenuItem(
+          key: Key('cell-rc-clear'),
+          value: 'clear',
+          height: 36,
+          child: Text('Clear'),
+        ),
+        if (widget.onFilter != null && widget.value != null)
+          const PopupMenuItem(
+            key: Key('cell-filter-value'),
+            value: 'filter',
+            height: 36,
+            child: Text('Filter by this value'),
+          ),
+      ],
+    );
+    switch (choice) {
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: _copyText(widget.value)));
+      case 'paste':
+        final data = await Clipboard.getData(Clipboard.kTextPlain);
+        final v = _pasteValue(data?.text ?? '');
+        if (v != null) widget.onChanged(v);
+      case 'clear':
+        widget.onChanged(null);
+      case 'filter':
+        widget.onFilter?.call();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final key = ValueKey('column-cell-edit-${widget.column.id}');
+    if (_editing && _inPlace) {
+      return KeyedSubtree(key: key, child: _editor());
+    }
+    final cell = CellTap(
+      key: key,
+      onTap: _editing ? null : _start,
+      onSecondaryTapDown: _editing || !widget.cellMenu
+          ? null
+          : (d) => _menu(d.globalPosition),
+      child: SizedBox.expand(
+        child: Align(alignment: Alignment.centerLeft, child: widget.child),
+      ),
+    );
+    // The card's portal only while editing: one per cell on every row was
+    // most of a big board's build (Task Board lag, 11-16).
+    if (!_editing) return CompositedTransformTarget(link: _link, child: cell);
+    return CompositedTransformTarget(
+      link: _link,
+      child: OverlayPortal(
+        controller: _card,
+        overlayChildBuilder: (context) => CompositedTransformFollower(
+          link: _link,
+          targetAnchor: Alignment.bottomLeft,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Material(
+              key: const Key('cell-card'),
+              elevation: 4,
+              borderRadius: BorderRadius.circular(8),
+              color: Theme.of(context).colorScheme.surface,
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: SizedBox(
+                  width:
+                      const {'text', 'long_text'}.contains(widget.column.type)
+                      ? 340
+                      : 300,
+                  child: _editor(),
+                ),
+              ),
+            ),
+          ),
+        ),
+        child: cell,
+      ),
+    );
+  }
+}
+
+/// One label in a [LabelBlocks] menu: its id (null: the blank label),
+/// name and colour.
+typedef LabelBlock = ({String? id, String label, Color? colour});
+
+/// Text that reads on a label's solid colour, the same in light and dark:
+/// white on a dark fill, ink on a light one (Monday's cells, Jose 11-13).
+Color labelInk(Color fill) =>
+    ThemeData.estimateBrightnessForColor(fill) == Brightness.dark
+    ? EzBiziTheme.fieldInkLight
+    : EzBiziTheme.fieldInkDark;
+
+/// The grey a blank label wears.
+/// A full-bleed label stops 1 px short of the row lines above and below, so
+/// rows of one colour still read as separate rows (desk 11-24, row 37).
+const labelInset = EdgeInsets.symmetric(vertical: 1);
+
+Color blankLabel(ThemeData theme) => theme.colorScheme.outline;
+
+/// Monday's label picker: solid colour blocks in one to three columns
+/// (more labels, more columns), the current one outlined, then the tools.
+class LabelBlocks extends StatelessWidget {
+  const LabelBlocks({
+    super.key,
+    required this.keyPrefix,
+    required this.labels,
+    required this.current,
+    required this.onPick,
+    this.onEdit,
+    this.onAutoAssign,
+  });
+
+  final String keyPrefix;
+  final List<LabelBlock> labels;
+  final String? current;
+  final ValueChanged<String?> onPick;
+  final VoidCallback? onEdit;
+  final VoidCallback? onAutoAssign;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final columns = labels.length > 12 ? 3 : (labels.length > 6 ? 2 : 1);
+    const width = 150.0;
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: columns * width + (columns - 1) * 6,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final l in labels)
+                  _block(theme, l, width, l.id == current),
+              ],
+            ),
+          ),
+          if (onEdit != null || onAutoAssign != null) const SizedBox(height: 8),
+          if (onEdit != null)
+            TextButton.icon(
+              key: ValueKey('$keyPrefix-edit'),
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Edit labels'),
+            ),
+          if (onAutoAssign != null)
+            TextButton.icon(
+              key: ValueKey('$keyPrefix-auto'),
+              onPressed: onAutoAssign,
+              icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+              label: const Text('Auto-assign label'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _block(ThemeData theme, LabelBlock l, double width, bool on) {
+    final fill = l.colour ?? blankLabel(theme);
+    return SizedBox(
+      width: width,
+      height: 32,
+      child: Material(
+        color: fill,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(4),
+          side: on
+              ? BorderSide(color: theme.colorScheme.onSurface, width: 2)
+              : BorderSide.none,
+        ),
+        child: InkWell(
+          key: ValueKey('$keyPrefix-${l.id ?? 'blank'}'),
+          onTap: () => onPick(l.id),
+          child: Center(
+            child: Text(
+              l.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: labelInk(fill), fontSize: 14),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Monday's timeline cell: a pill with the elapsed part filled; "-" empty.
+class TimelinePill extends StatelessWidget {
+  const TimelinePill({
+    super.key,
+    required this.value,
+    required this.formats,
+    this.now,
+    this.done = false,
+  });
+
+  final Object? value;
+  final DisplayFormats formats;
+  final DateTime? now;
+
+  /// The task is done: an end date in the past is finished, not late.
+  final bool done;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = timelineLabel(value, formats);
+    if (label == null) return const EmptyCellIcon(Icons.date_range_outlined);
+    final v = value as Map;
+    final from = DateTime.parse('${v['from']}');
+    final to = DateTime.parse('${v['to']}').add(const Duration(days: 1));
+    final at = now ?? DateTime.now();
+    final total = to.difference(from).inMinutes;
+    final elapsed = total <= 0
+        ? 1.0
+        : (at.difference(from).inMinutes / total).clamp(0.0, 1.0);
+    final back = theme.colorScheme.onSurfaceVariant;
+    // Monday: an open task whose end date has passed wears red.
+    final day = DateTime(at.year, at.month, at.day);
+    // [to] is the midnight after the last day: late from that midnight on.
+    final overdue = !done && !to.isAfter(day);
+    return Center(
+      child: Tooltip(
+        message: label,
+        child: Container(
+          height: 22,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: back,
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Stack(
+            children: [
+              FractionallySizedBox(
+                key: const Key('timeline-elapsed'),
+                widthFactor: elapsed,
+                heightFactor: 1,
+                child: Container(
+                  color: overdue
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.primary,
+                ),
+              ),
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    // The short range, "11/16–20": the full one was cut to
+                    // "11/16/2026 –…" in a 120 px cell (hands-on QA 11-16).
+                    dateRangeLabel(
+                          [from, DateTime.parse('${v['to']}')],
+                          formats,
+                          short: true,
+                        ) ??
+                        label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: labelInk(overdue ? theme.colorScheme.error : back),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A group footer's stacked bar: each label's share of the group's tasks,
+/// in its colour; blank labels grey.
+class LabelBar extends StatelessWidget {
+  const LabelBar({super.key, required this.counts});
+
+  /// Colour (null: blank) and how many tasks wear it.
+  final List<(Color?, int)> counts;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final shown = [
+      for (final c in counts)
+        if (c.$2 > 0) c,
+    ];
+    if (shown.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final (colour, n) in shown)
+              Expanded(
+                flex: n,
+                child: ColoredBox(color: colour ?? blankLabel(theme)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A group footer's date range: the earliest to the latest day in [days];
+/// null when there are none.
+/// [short] drops the year when both ends share one, for a footer's 104 px
+/// (hands-on QA 11-16: "11/16/2026…" was cut off).
+String? dateRangeLabel(
+  Iterable<DateTime> days,
+  DisplayFormats formats, {
+  bool short = false,
+}) {
+  final list = days.toList()..sort();
+  if (list.isEmpty) return null;
+  final (first, last) = (list.first, list.last);
+  if (short && first.year == last.year) {
+    if (first == last) return shortDate(first, formats);
+    // One month: its days run together, "11/16–21" (Monday's "Nov 16 - 21").
+    if (first.month == last.month) {
+      return switch (formats.dateFormat) {
+        'M/D/YYYY' => '${first.month}/${first.day}–${last.day}',
+        'D/M/YYYY' => '${first.day}–${last.day}/${first.month}',
+        _ =>
+          '${shortDate(first, formats)}–${last.day.toString().padLeft(2, '0')}',
+      };
+    }
+    return '${shortDate(first, formats)}–${shortDate(last, formats)}';
+  }
+  return first == last
+      ? formats.formatDate(first)
+      : '${formats.formatDate(first)} – ${formats.formatDate(last)}';
+}
+
+/// A day without its year, in the organization's order: "11/16", "16/11"
+/// or "11-16".
+String shortDate(
+  DateTime d,
+  DisplayFormats formats,
+) => switch (formats.dateFormat) {
+  'M/D/YYYY' => '${d.month}/${d.day}',
+  'D/M/YYYY' => '${d.day}/${d.month}',
+  _ =>
+    '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+};
+
+/// Every day a value covers, for a footer's range: a date, or a timeline's
+/// two ends.
+Iterable<DateTime> daysOf(Object? v) sync* {
+  if (v is String) {
+    if (DateTime.tryParse(v) case final d?) yield d;
+  } else if (v is Map) {
+    if (DateTime.tryParse('${v['from']}') case final d?) yield d;
+    if (DateTime.tryParse('${v['to']}') case final d?) yield d;
+  }
+}
+
+/// Monday's People cell: up to three overlapping initials and "+N";
+/// "—" when nobody.
+class PeopleAvatars extends StatelessWidget {
+  const PeopleAvatars({
+    super.key,
+    required this.names,
+    this.ids,
+    this.api,
+    this.boardId,
+  });
+
+  final List<String> names;
+
+  /// Each name's user id, in order; with [api] and [boardId] every face
+  /// carries the person hover card.
+  final List<String>? ids;
+  final ApiClient? api;
+  final String? boardId;
+
+  bool get _cards =>
+      api != null &&
+      boardId != null &&
+      ids != null &&
+      ids!.length == names.length;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (names.isEmpty) {
+      // Nobody yet: a faint person-plus; the cell's own tap assigns.
+      return Semantics(
+        label: 'Nobody assigned',
+        child: Icon(
+          Icons.person_add_alt_outlined,
+          key: const Key('people-empty'),
+          size: 18,
+          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
+        ),
+      );
+    }
+    final shown = names.take(3).toList();
+    final more = names.length - shown.length;
+    // The photo where there is one, initials while it loads or without.
+    Widget photo(int i, String n) => !_cards
+        ? _initials(theme, n)
+        : Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: theme.colorScheme.surface, width: 2),
+            ),
+            child: UserAvatar(api: api!, userId: ids![i], name: n, radius: 11),
+          );
+    Widget face(int i, String n) => !_cards
+        ? photo(i, n)
+        : PersonHoverCard(
+            key: ValueKey('people-face-${ids![i]}'),
+            api: api!,
+            boardId: boardId!,
+            userId: ids![i],
+            child: photo(i, n),
+          );
+    return Tooltip(
+      // The card says who; a tooltip on top of it would cover it.
+      message: _cards ? '' : names.join(', '),
+      excludeFromSemantics: true,
+      child: Semantics(
+        label: names.join(', '),
+        child: ExcludeSemantics(child: _faces(theme, shown, more, face)),
+      ),
+    );
+  }
+
+  Widget _faces(
+    ThemeData theme,
+    List<String> shown,
+    int more,
+    Widget Function(int, String) face,
+  ) {
+    return SizedBox(
+      height: 26,
+      width: 26.0 + (shown.length - 1) * 16 + (more > 0 ? 22 : 0),
+      child: Stack(
+        children: [
+          for (final (i, n) in shown.indexed)
+            Positioned(left: i * 16.0, child: face(i, n)),
+          if (more > 0)
+            Positioned(
+              left: shown.length * 16.0 + 6,
+              top: 5,
+              child: Text(
+                '+$more',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _initials(ThemeData theme, String name) {
+    final words = name.trim().split(RegExp(r'\s+'));
+    final letters = [
+      for (final w in words.take(2))
+        if (w.isNotEmpty) w[0].toUpperCase(),
+    ].join();
+    final fill = EzBiziTheme
+        .avatarPalette[name.hashCode.abs() % EzBiziTheme.avatarPalette.length];
+    return Container(
+      width: 26,
+      height: 26,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: fill,
+        shape: BoxShape.circle,
+        border: Border.all(color: theme.colorScheme.surface, width: 2),
+      ),
+      child: Text(
+        letters,
+        style: TextStyle(
+          color: labelInk(fill),
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+/// A Connect or Dependency cell: a click opens a small card under it to tick
+/// the tasks it points at, with a search on top (Monday's item picker).
+class TaskPickCell extends StatefulWidget {
+  const TaskPickCell({
+    super.key,
+    required this.column,
+    required this.value,
+    required this.tasks,
+    required this.onChanged,
+    required this.child,
+  });
+
+  final BoardColumn column;
+  final Object? value;
+  final List<(String, String)> tasks;
+  final ValueChanged<Object?> onChanged;
+  final Widget child;
+
+  @override
+  State<TaskPickCell> createState() => _TaskPickCellState();
+}
+
+class _TaskPickCellState extends State<TaskPickCell> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  List<String> get _ids => [
+    for (final id in (widget.value as List?) ?? const []) '$id',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _search.text.trim().toLowerCase();
+    final ids = _ids;
+    final shown = [
+      for (final (id, title) in widget.tasks)
+        if (q.isEmpty || title.toLowerCase().contains(q)) (id, title),
+    ].take(30);
+    return MenuAnchor(
+      menuChildren: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+          child: SizedBox(
+            width: 260,
+            child: TextField(
+              key: ValueKey('task-pick-search-${widget.column.id}'),
+              controller: _search,
+              autofocus: autofocusOnOpen,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'Find a task',
+                prefixIcon: Icon(Icons.search, size: 18),
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ),
+        for (final (id, title) in shown)
+          CheckboxMenuButton(
+            key: ValueKey('task-pick-${widget.column.id}-$id'),
+            value: ids.contains(id),
+            closeOnActivate: false,
+            onChanged: (on) {
+              final next = [
+                for (final x in ids)
+                  if (x != id) x,
+                if (on == true) id,
+              ];
+              widget.onChanged(next.isEmpty ? null : next);
+            },
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: Text(title, overflow: TextOverflow.ellipsis),
+            ),
+          ),
+        if (shown.isEmpty)
+          const MenuItemButton(onPressed: null, child: Text('No tasks match')),
+      ],
+      builder: (context, menu, _) => InkWell(
+        key: ValueKey('column-cell-${widget.column.id}'),
+        onTap: () {
+          if (menu.isOpen) return menu.close();
+          _search.clear();
+          menu.open();
+        },
+        child: Align(alignment: Alignment.centerLeft, child: widget.child),
       ),
     );
   }

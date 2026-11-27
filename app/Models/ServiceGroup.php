@@ -27,6 +27,11 @@ class ServiceGroup extends Model implements StatesRetention
 
     /** @use HasFactory<ServiceGroupFactory> */
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES): groups and labels together. */
+    protected static string $changeType = 'service_taxonomy';
+
     use HasFactory;
     use HasUuids;
 

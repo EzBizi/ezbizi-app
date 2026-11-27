@@ -7,18 +7,10 @@ use App\Models\WorkizRecord;
 
 /**
  * How long a job has waited on its estimate, and what has been paid: shared by
- * the daily `job.estimate_aging` trigger and the Project Management tab, so
- * the two never disagree (Jose's PM rules, 2026-10-21).
+ * the daily `job.estimate_aging` trigger (Jose, 2026-10-21).
  */
 final class EstimateAging
 {
-    /**
-     * The days the rule template waits before cancelling. The rule holds its own
-     * threshold; this is only for saying "cancels on …" on screen.
-     * ponytail: one number; read it from the rule when templates let it vary.
-     */
-    public const DAYS = 30;
-
     /**
      * The LATEST estimate date per job: EzBizi's own (issued_on, else the day it
      * was made) or Workiz's estimate records, whichever is later.

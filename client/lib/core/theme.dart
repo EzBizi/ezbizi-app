@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// The EzBizi look — cyan on white, from the brand mark (ezbizi.com).
@@ -30,10 +32,10 @@ class EzBiziTheme {
   static const fieldYellow = Color(0xFFFACC15);
   static const fieldBlue = Color(0xFF3B82F6);
 
-  /// People-only states (Jose, 2026-10-26): purple is stopped too long and
+  /// People-only states (Jose, 2026-10-26): teal is stopped too long (was purple; no-purple rule, 2026-11-02) and
   /// slate is offline, so no person colour equals a job marker's
   /// (blue, yellow, onSurface). Mid-tone, so both read on light and dark tiles.
-  static const fieldPurple = Color(0xFFA855F7);
+  static const fieldTeal = Color(0xFF14B8A6);
   static const fieldSlate = Color(0xFF64748B);
 
   /// Ink on a coloured pin: near-black on yellow and on the light "opened"
@@ -48,11 +50,52 @@ class EzBiziTheme {
   static const paperInk = Color(0xFF111111);
   static const paperMuted = Color(0xFF555555);
 
+  /// Gold, silver and bronze for a leaderboard's top three (design 204),
+  /// white numbers on each, the same in both modes.
+  static const medals = [
+    Color(0xFFB8901F),
+    Color(0xFF8E979F),
+    Color(0xFFA5672F),
+  ];
+
   /// The corner of every button, chip and field. Cards are rounder (14).
   static const double controlRadius = 10;
 
+  /// The height of a toolbar's field, picker and button side by side (Jose,
+  /// 2026-11-13: "The Filters button is not the same size as the status
+  /// picker or the field"). Such a row sets [VisualDensity.standard]: the
+  /// desktop's compact density draws a field 8 shorter than its slot.
+  static const double controlHeight = 44;
+
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
+
+  /// EzChat, the chat companion app (Jose 2026-11-25: "a green version of the
+  /// icon"): this theme with a green accent in place of the cyan. Primary
+  /// keeps the same contrast rule as above — #15803D on white is 5.0:1, ink on
+  /// #4ADE80 is 12:1. [ezChatGreen] is the brand green of the icon and large
+  /// fills (UI-UX design 213), as the bright cyan is EzBizi's; never text.
+  static const ezChatGreen = Color(0xFF00C875);
+
+  static ThemeData ezChat(Brightness brightness) {
+    final base = _build(brightness);
+    final dark = brightness == Brightness.dark;
+    final seeded = ColorScheme.fromSeed(
+      seedColor: ezChatGreen,
+      brightness: brightness,
+    );
+    return base.copyWith(
+      colorScheme: base.colorScheme.copyWith(
+        primary: dark ? const Color(0xFF4ADE80) : const Color(0xFF15803D),
+        onPrimary: dark ? _ink : Colors.white,
+        primaryContainer: seeded.primaryContainer,
+        onPrimaryContainer: seeded.onPrimaryContainer,
+        secondary: dark ? const Color(0xFF22C55E) : const Color(0xFF166534),
+        secondaryContainer: seeded.secondaryContainer,
+        onSecondaryContainer: seeded.onSecondaryContainer,
+      ),
+    );
+  }
 
   /// The line between the chrome's regions — top bar to page, sidebar to page.
   ///
@@ -68,6 +111,56 @@ class EzBiziTheme {
       Theme.of(context).brightness == Brightness.dark
       ? const Color(0xFF1E262E)
       : const Color(0xFFE9EDF1);
+
+  /// A board's three steps, as Monday (design 200, 1; Jose 11-20: ours was
+  /// too flat): the page behind the groups, a group's card, and its rows a
+  /// step lighter again; [boardRowHover] one more step under the pointer.
+  static Color boardCanvas(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF080B0F)
+      : const Color(0xFFE8EDF2);
+
+  static Color boardGroup(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF151B21)
+      : const Color(0xFFF6F8FA);
+
+  static Color boardRow(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF1B2229)
+      : Colors.white;
+
+  static Color boardRowHover(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF252D35)
+      : const Color(0xFFEDF2F7);
+
+  /// A group's title row (gallery 210, Jose 11-24): the board's group grey
+  /// tinted by the group colour. Light uses 30% colour (Jose 11-24: "a bit
+  /// lighter"); dark stays half and half, since mixing in more of the dark
+  /// grey would only make it darker.
+  static Color groupTitleFill(BuildContext context, Color colour) => Color.lerp(
+    boardGroup(context),
+    colour,
+    Theme.of(context).brightness == Brightness.dark ? 0.5 : 0.3,
+  )!;
+
+  /// The ink for text on [fill]: white or near-black, whichever reads more.
+  static Color inkOn(Color fill) {
+    const ink = Color(0xFF16191C);
+    double ratio(Color a, Color b) {
+      final x = a.computeLuminance(), y = b.computeLuminance();
+      return (math.max(x, y) + 0.05) / (math.min(x, y) + 0.05);
+    }
+
+    return ratio(Colors.white, fill) >= ratio(ink, fill) ? Colors.white : ink;
+  }
+
+  /// The Task Board's rule between rows, Monday's grey (Jose 11-23, row 37).
+  static Color boardRowLine(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF4B4E69)
+      : const Color(0xFFD0D4E4);
 
   /// Punch-in green. Named so the top-bar button never picks a hex, and so
   /// the pair cannot drift into purple when a theme is mixed.
@@ -441,6 +534,9 @@ class EzBiziTheme {
   /// as absence rather than as the wrong finder.
   static const wordmarkKey = Key('ezbizi-wordmark');
 
+  /// The app the wordmark names: EzBizi, or EzChat (main_ezchat.dart).
+  static bool isEzChat = false;
+
   static Widget wordmark(BuildContext context, {double size = 28}) {
     final onSurface = Theme.of(context).brightness == Brightness.dark
         ? Colors.white
@@ -456,11 +552,11 @@ class EzBiziTheme {
               fontSize: size,
               fontWeight: FontWeight.w800,
               letterSpacing: -1,
-              color: _cyan,
+              color: isEzChat ? ezChatGreen : _cyan,
             ),
           ),
           TextSpan(
-            text: 'Bizi',
+            text: isEzChat ? 'Chat' : 'Bizi',
             style: TextStyle(
               fontSize: size,
               fontWeight: FontWeight.w800,
@@ -509,12 +605,26 @@ class EzBiziTheme {
   /// hardcode its own eight and the same person would be two colours in two
   /// places. And these carry white glyphs, so the day dark mode makes one of
   /// them unreadable there is exactly one place to fix it.
+  /// Task Board folder and board colours (Jose 11-13): Monday's folder
+  /// colours, kept as data like a status's colour. No purple.
+  static const List<Color> boardPalette = [
+    Color(0xFFC4C4C4),
+    Color(0xFFE2445C),
+    Color(0xFFFDAB3D),
+    Color(0xFFFFCB00),
+    Color(0xFF00C875),
+    Color(0xFF4ECCC6),
+    Color(0xFF0086C0),
+    Color(0xFF225091),
+    Color(0xFF7F5347),
+  ];
+
   static const List<Color> avatarPalette = [
     Color(0xFF1A73E8),
     Color(0xFFD93025),
     Color(0xFF188038),
     Color(0xFFF9AB00),
-    Color(0xFF9334E6),
+    Color(0xFF00897B),
     Color(0xFF1967D2),
     Color(0xFFE37400),
     Color(0xFF12B5CB),
@@ -674,7 +784,8 @@ enum Tone {
   /// Needs somebody soon. Jobs: Pending. Availability: 2 spots left.
   caution,
 
-  /// Finished, and waiting for sign-off. Jobs: Done pending approval.
+  /// Finished, and waiting for sign-off. Jobs: Done pending approval. Teal,
+  /// not purple (the no-purple rule, UI/UX review 2026-11-02).
   review,
 
   /// All is well. Jobs: Done. Availability: 3 or more left, and the first
@@ -694,6 +805,11 @@ enum Tone {
 ///
 /// The text is at least 4.5:1 on its fill in both brightnesses, measured by
 /// `tone_colours_test` rather than asserted here.
+/// White or near-black text, whichever reads on [fill]: for a colour the
+/// app does not choose, such as a Workiz tag's (Jose, 2026-11-10).
+// By measured contrast: estimateBrightness put white on #0093CA at 3.37:1 (Mobile UI-UX 11-25).
+Color inkOn(Color fill) => EzBiziTheme.inkOn(fill);
+
 class ToneColours {
   const ToneColours(this.fill, this.ink);
 
@@ -704,7 +820,7 @@ class ToneColours {
     Tone.neutral: ToneColours(Color(0xFFE8ECF0), Color(0xFF33404A)),
     Tone.info: ToneColours(Color(0xFFD9EFF8), Color(0xFF00566E)),
     Tone.caution: ToneColours(Color(0xFFFFF0D2), Color(0xFF734600)),
-    Tone.review: ToneColours(Color(0xFFEEE5FA), Color(0xFF5A3290)),
+    Tone.review: ToneColours(Color(0xFFDDF3EE), Color(0xFF0B5E54)),
     Tone.ok: ToneColours(Color(0xFFE1F2E5), Color(0xFF16662D)),
     Tone.bad: ToneColours(Color(0xFFFDECEC), Color(0xFF9F1D1D)),
   };
@@ -713,7 +829,7 @@ class ToneColours {
     Tone.neutral: ToneColours(Color(0xFF2C333B), Color(0xFFD3DAE0)),
     Tone.info: ToneColours(Color(0xFF0E3A48), Color(0xFF8FD6EE)),
     Tone.caution: ToneColours(Color(0xFF3D2E0C), Color(0xFFF1C56A)),
-    Tone.review: ToneColours(Color(0xFF33264A), Color(0xFFCDB6F2)),
+    Tone.review: ToneColours(Color(0xFF0F3B36), Color(0xFF86DCCB)),
     Tone.ok: ToneColours(Color(0xFF163A22), Color(0xFF8FDBA4)),
     Tone.bad: ToneColours(Color(0xFF4A1C1C), Color(0xFFFF8A8A)),
   };
@@ -724,13 +840,6 @@ class ToneColours {
   /// Both tables, for the contrast test.
   static Map<Tone, ToneColours> table(Brightness brightness) =>
       brightness == Brightness.dark ? _dark : _light;
-
-  /// A mid grey for a bar's share that has no category ("No reason"): plainly
-  /// darker (light) or lighter (dark) than [Tone.neutral]'s fill, the track.
-  static Color midGrey(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark
-      ? const Color(0xFF7D8A95)
-      : const Color(0xFF8C98A3);
 }
 
 /// A person's colour, for the avatar beside what they wrote (Leads' replies,
@@ -864,4 +973,33 @@ abstract final class SourceColours {
 
     return table[key] ?? ToneColours.table(brightness)[Tone.neutral]!;
   }
+}
+
+/// The side margin of a page's content: 16 on a phone, 24 above (mobile
+/// review 2026-11-13, P6: Jobs and Customers used 16, Settings 24, so the
+/// title, the chips and the list did not line up on a phone).
+abstract final class Gutter {
+  static const double phone = 16;
+  static const double wide = 24;
+
+  static double of(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 600 ? phone : wide;
+}
+
+/// A tag colour that came from outside the app (a Workiz job tag), kept on
+/// the theme's side of two rules (desktop review 2026-11-13, D5): no purple,
+/// so a magenta "DEPOSIT RECEIVED" draws in the theme's `tertiary`; and red
+/// only for problems, so a red label that is not a fault ("RESCHEDULE"
+/// beside a green Done) draws amber. Greys and every other hue pass through.
+Color tagColour(BuildContext context, Color colour) {
+  final hsl = HSLColor.fromColor(colour);
+  if (hsl.saturation < 0.25) return colour;
+  final hue = hsl.hue;
+  if (hue >= 250 && hue < 340) {
+    return Theme.of(context).colorScheme.tertiary;
+  }
+  if (hue >= 340 || hue < 15) {
+    return ToneColours.of(context, Tone.caution).fill;
+  }
+  return colour;
 }

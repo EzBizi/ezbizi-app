@@ -1,5 +1,7 @@
+import '../widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
 
+import '../core/app_window.dart';
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
@@ -9,6 +11,7 @@ import 'hr/dashboard_tab.dart';
 import 'hr/invitations_tab.dart';
 import 'hr/onboarding_tab.dart';
 import 'hr/payroll_tab.dart';
+import 'hr/recruiting_tab.dart';
 import 'hr/records_tab.dart';
 
 /// Human Resources — five tabs (HR plan), plus Clock in–out when the
@@ -138,7 +141,11 @@ class _HrScreenState extends State<HrScreen> {
       'records',
       'Records',
       Icons.folder_shared_outlined,
-      () => RecordsTab(api: widget.api, session: widget.session),
+      () => RecordsTab(
+        api: widget.api,
+        session: widget.session,
+        link: _recordsLink,
+      ),
     ),
     (
       'contracts',
@@ -169,6 +176,13 @@ class _HrScreenState extends State<HrScreen> {
       'Payroll',
       Icons.payments_outlined,
       () => PayrollTab(api: widget.api, session: widget.session),
+    ),
+    // Design 201 (Shoval, 2026-11-20): applicants, interviews and spend.
+    (
+      'recruiting',
+      'Recruiting',
+      Icons.person_search_outlined,
+      () => RecruitingTab(api: widget.api, session: widget.session),
     ),
   ];
 
@@ -226,6 +240,9 @@ class _HrScreenState extends State<HrScreen> {
   /// as the link itself, so tapping the same one twice opens it twice.
   DeepLink? _onboardingLink;
 
+  /// A person to open in Records (an invite link's "Joined" name).
+  DeepLink? _recordsLink;
+
   @override
   void initState() {
     super.initState();
@@ -241,7 +258,20 @@ class _HrScreenState extends State<HrScreen> {
 
   void _takeLink() {
     final link = DeepLinks.take('hr');
-    if (link == null || link.type != 'onboarding') return;
+    if (link == null) return;
+    // A phone bottom-bar slot (design 208).
+    if (link.type == 'tab') {
+      _tab = link.id;
+      _shown.add(link.id);
+      return;
+    }
+    if (link.type == 'person') {
+      _recordsLink = link;
+      _tab = 'records';
+      _shown.add('records');
+      return;
+    }
+    if (link.type != 'onboarding') return;
     _onboardingLink = link;
     _tab = 'onboarding';
     _shown.add('onboarding');
@@ -326,6 +356,10 @@ class _HrScreenState extends State<HrScreen> {
             // leaking back into the state it was just taken out of.
             selected: _selectedIndex,
             onSelected: (i) => _select(_shownTabs[i].$1),
+            windowPaths: [
+              for (final tab in _shownTabs)
+                AppWindow.pathFor('hr', tab: tab.$1),
+            ],
           ),
         ),
         const Divider(height: 1),
@@ -342,9 +376,12 @@ class _HrScreenState extends State<HrScreen> {
               for (final tab in _shownTabs)
                 Offstage(
                   offstage: tab.$1 != _activeTab,
-                  child: _shown.contains(tab.$1) || tab.$1 == _activeTab
-                      ? tab.$4()
-                      : const SizedBox.shrink(),
+                  child: ModuleActionGate(
+                    active: tab.$1 == _activeTab,
+                    child: _shown.contains(tab.$1) || tab.$1 == _activeTab
+                        ? tab.$4()
+                        : const SizedBox.shrink(),
+                  ),
                 ),
             ],
           ),

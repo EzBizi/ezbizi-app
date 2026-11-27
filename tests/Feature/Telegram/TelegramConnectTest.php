@@ -56,7 +56,7 @@ class TelegramConnectTest extends TestCase
                     : Http::response(['ok' => false, 'error_code' => 401, 'description' => 'Unauthorized'], 401);
             }
             if ($method === 'getWebhookInfo') {
-                return Http::response(['ok' => true, 'result' => ['url' => 'https://x/api/v1/telegram/webhook', 'last_error_message' => $this->lastError]]);
+                return Http::response(['ok' => true, 'result' => ['url' => route('telegram.webhook'), 'last_error_message' => $this->lastError]]);
             }
 
             return Http::response(['ok' => true, 'result' => true]);

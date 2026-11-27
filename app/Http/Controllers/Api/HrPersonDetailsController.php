@@ -6,6 +6,7 @@ use App\Models\EmergencyContact;
 use App\Models\HeldEquipment;
 use App\Models\HrNote;
 use App\Models\PayRate;
+use App\Models\PersonCertification;
 use App\Models\PtoUsed;
 use App\Models\User;
 use App\Support\Access\Refusal;
@@ -49,6 +50,8 @@ class HrPersonDetailsController extends Controller
         'equipment' => [HeldEquipment::class, 'equipment', null],
         // Days already taken, so a balance starts right (Jose, 2026-10-21).
         'pto-used' => [PtoUsed::class, 'pto_used', null],
+        // Licences and trade cards, with expiry (Jose, 2026-11-20).
+        'certifications' => [PersonCertification::class, 'certification', null],
     ];
 
     public function __construct(private readonly AuditLogger $audit) {}
@@ -135,6 +138,15 @@ class HrPersonDetailsController extends Controller
                 'used_on' => $row->used_on?->toDateString(),
                 'note' => $row->note,
             ],
+            $row instanceof PersonCertification => [
+                'id' => $row->id,
+                'name' => $row->name,
+                'issuer' => $row->issuer,
+                'number' => $row->number,
+                'issued_on' => $row->issued_on?->toDateString(),
+                'expires_on' => $row->expires_on?->toDateString(),
+                'note' => $row->note,
+            ],
             $row instanceof HeldEquipment => [
                 'id' => $row->id,
                 'name' => $row->name,
@@ -213,6 +225,14 @@ class HrPersonDetailsController extends Controller
             'pto-used' => [
                 'days' => [$required, 'numeric', 'min:0.25', 'max:366'],
                 'used_on' => ['sometimes', 'nullable', 'date'],
+                'note' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            ],
+            'certifications' => [
+                'name' => [$required, 'string', 'max:160'],
+                'issuer' => ['sometimes', 'nullable', 'string', 'max:160'],
+                'number' => ['sometimes', 'nullable', 'string', 'max:80'],
+                'issued_on' => ['sometimes', 'nullable', 'date'],
+                'expires_on' => ['sometimes', 'nullable', 'date'],
                 'note' => ['sometimes', 'nullable', 'string', 'max:1000'],
             ],
             'equipment' => [

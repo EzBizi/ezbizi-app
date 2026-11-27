@@ -17,6 +17,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class EstimateLine extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A line is its estimate's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['estimates', Estimate::class, 'estimate_id'];
+
     use HasUuids;
 
     public static function retention(): RetentionPolicy

@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
+use App\Models\Company;
 use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -244,7 +245,14 @@ class CampaignPerformanceTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
         $row = $this->connected($t);
-        $this->fakeGoogle($this->customerRow(), []);
+        // The leads are Local Services': priced on its 300.00, never on the
+        // Search 934.56 beside it (Bar, 2026-11-18).
+        $this->fakeGoogle($this->customerRow(), [
+            ['campaign' => ['id' => '1', 'name' => 'LSA', 'status' => 'ENABLED', 'advertisingChannelType' => 'LOCAL_SERVICES'],
+                'metrics' => ['costMicros' => '300000000']],
+            ['campaign' => ['id' => '2', 'name' => 'Search', 'status' => 'ENABLED', 'advertisingChannelType' => 'SEARCH'],
+                'metrics' => ['costMicros' => '934560000']],
+        ]);
 
         $this->inTenant($t['org'], function () use ($t, $row) {
             $leads = [];
@@ -308,14 +316,83 @@ class CampaignPerformanceTest extends TestCase
         $this->assertSame(3, $account['leads']);
         $this->assertSame(2, $account['charged_leads']);
         $this->assertSame(1, $account['credited_leads']);
-        $this->assertSame(411.52, $account['cost_per_lead'], '1234.56 over three leads');
+        $this->assertSame(300.0, (float) $account['lsa_cost']);
+        $this->assertSame(100.0, (float) $account['cost_per_lead'], 'Local Services 300.00 over three leads, not 1234.56');
         $this->assertSame(3, $account['calls']);
         $this->assertSame(1, $account['missed_calls']);
         $this->assertSame(45, $account['median_first_reply_minutes'], 'the FIRST answer, not the last');
         $this->assertSame(0, $account['unanswered_messages']);
         $this->assertSame(1, $account['jobs']);
         $this->assertSame(450.0, (float) $account['revenue']);
-        $this->assertSame(0.36, $account['return_on_spend'], '450 over 1234.56');
+        $this->assertSame(1.5, (float) $account['return_on_spend'], '450 over the Local Services 300.00');
+    }
+
+    /**
+     * Jose, 2026-11-18: "What needs to be shown in the leads is all the created
+     * jobs basically everything from those jobs sources". The account's branch's
+     * PPC jobs join its Local Services leads, each priced on its own spend,
+     * counted as Reports' Marketing tab counts them (job source).
+     */
+    public function test_leads_include_the_branchs_ppc_jobs_each_priced_on_its_own_spend(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), [
+            ['campaign' => ['id' => '1', 'name' => 'LSA', 'status' => 'ENABLED', 'advertisingChannelType' => 'LOCAL_SERVICES'],
+                'metrics' => ['costMicros' => '300000000']],
+            ['campaign' => ['id' => '2', 'name' => 'Search', 'status' => 'ENABLED', 'advertisingChannelType' => 'SEARCH'],
+                'metrics' => ['costMicros' => '934560000']],
+        ]);
+
+        $this->inTenant($t['org'], function () use ($t, $row) {
+            $row->forceFill(['leads_franchise_id' => $t['franchise']->id])->save();
+            Lead::create(['organization_id' => $t['org']->id, 'connection_id' => $row->getKey(), 'source' => 'local_services',
+                'remote_id' => 'l1', 'lead_type' => 'PHONE_CALL', 'received_at' => Carbon::parse('2026-09-01T15:00:00Z')]);
+            $job = fn (string $source, string $at) => \App\Models\WorkizJob::query()->create([
+                'franchise_id' => $t['franchise']->id, 'remote_id' => 'JOB-'.bin2hex(random_bytes(4)),
+                'job_source' => $source, 'booked_at' => $at, 'payload' => [], 'synced_at' => now(),
+            ]);
+            $job('PPC', '2026-09-01 09:00:00');
+            $job('PPC', '2026-09-01 17:30:00');
+            $job('PPC', '2026-09-02 09:00:00');     // another day
+            $job('LS Ads', '2026-09-01 10:00:00');  // Local Services' jobs are its leads, not counted twice
+        });
+
+        $account = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance?from=2026-09-01&to=2026-09-01&connection_id='.$row->getKey())
+            ->assertOk()
+            ->json('data.0.account');
+
+        $this->assertSame(2, $account['ppc_jobs']);
+        $this->assertSame(1, $account['lsa_leads']);
+        $this->assertSame(3, $account['leads']);
+        $this->assertSame(467.28, (float) $account['cost_per_ppc_job'], '934.56 Search over two PPC jobs');
+        $this->assertSame(300.0, (float) $account['cost_per_lsa_lead']);
+        $this->assertSame(411.52, (float) $account['cost_per_lead'], 'all 1234.56 over all three');
+    }
+
+    /** Desk, 2026-11-18: NJ's three accounts share a branch; only Mt Laurel pays for PPC, so only it takes the jobs. */
+    public function test_an_account_with_no_ppc_spend_takes_none_of_its_branchs_ppc_jobs(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), [
+            ['campaign' => ['id' => '1', 'name' => 'LSA', 'status' => 'ENABLED', 'advertisingChannelType' => 'LOCAL_SERVICES'],
+                'metrics' => ['costMicros' => '300000000']],
+        ]);
+        $this->inTenant($t['org'], function () use ($t, $row) {
+            $row->forceFill(['leads_franchise_id' => $t['franchise']->id])->save();
+            \App\Models\WorkizJob::query()->create(['franchise_id' => $t['franchise']->id, 'remote_id' => 'JOB-1',
+                'job_source' => 'PPC', 'booked_at' => '2026-09-01 09:00:00', 'payload' => [], 'synced_at' => now()]);
+        });
+
+        $account = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance?from=2026-09-01&to=2026-09-01&connection_id='.$row->getKey())
+            ->assertOk()
+            ->json('data.0.account');
+
+        $this->assertSame(0, $account['ppc_jobs']);
+        $this->assertSame(0, $account['leads']);
     }
 
     public function test_a_ratio_with_no_denominator_is_null(): void
@@ -917,5 +994,37 @@ class CampaignPerformanceTest extends TestCase
         $this->signedInAs($t['admin']->fresh())
             ->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())
             ->assertOk();
+    }
+
+    /** Jose, 2026-11-16: "Everything" - the company and its sub companies, each account once, read once. */
+    public function test_everything_rolls_up_every_account_in_view_once_and_reads_google_once(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $child = $this->connected($t);
+        $this->inTenant($t['org'], function () use ($t) {
+            $this->manager($t)->forceFill(['is_manager' => true])->save();
+            $sub = Company::create(['organization_id' => $t['org']->id, 'parent_company_id' => $t['company']->id, 'name' => 'Angi Sweep']);
+            foreach ([['1726694743', 'Angi Sweep - Bucks', $sub->id], ['405-172-9356', 'Cleveland again', $t['company']->id]] as [$remote, $name, $company]) {
+                $row = SocialConnection::create(['organization_id' => $t['org']->id, 'scope_type' => SocialConnection::SCOPE_COMPANY, 'scope_id' => $company,
+                    'provider' => SocialProvider::GoogleAds->value, 'remote_id' => $remote, 'display_name' => $name]);
+                $row->connect(['refresh_token' => 'rt-good']);
+                $row->save();
+            }
+        });
+        $this->fakeGoogle($this->customerRow(), []);
+        $as = $this->signedInAs($t['admin']->fresh());
+
+        $body = $as->getJson('/api/v1/ads/rollup?everything=1')->assertOk()->json();
+
+        // The manager is not an account of its own, and Cleveland, connected twice, counts once.
+        $this->assertEqualsCanonicalizing(['A1 Chimney - Cleveland', 'Angi Sweep - Bucks'], array_column($body['data'], 'account'));
+        $this->assertSame(2, $body['children_total']);
+        $this->assertContains($child->getKey(), array_column($body['data'], 'connection_id'));
+        $this->assertEquals(412, $body['data'][0]['clicks']);
+
+        $searches = fn () => count(Http::recorded(fn ($r) => str_contains($r->url(), 'googleads.googleapis.com')));
+        $this->assertSame(2, $searches(), 'one account-level query per account, no campaigns');
+        $as->getJson('/api/v1/ads/rollup?everything=1')->assertOk();
+        $this->assertSame(2, $searches(), 'the second look is read from the cache');
     }
 }

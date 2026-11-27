@@ -50,7 +50,7 @@ class BusinessProfileLocations
      * this model holds the same list somebody can read in one place.
      */
     private const READ_MASK = 'name,title,phoneNumbers,storefrontAddress,websiteUri,'
-        .'regularHours,categories,metadata,openInfo';
+        .'regularHours,categories,metadata,openInfo,serviceArea';
 
     public function __construct(private readonly EventEmitter $events) {}
 
@@ -95,6 +95,8 @@ class BusinessProfileLocations
         } while ($pageToken !== null);
 
         $this->markListing($connection, $seen);
+        // A connect finishes its own setup: new listings are filed under their branch by state (Jose, 2026-11-12).
+        \App\Support\CustomerExperience\ListingBranches::fill();
 
         $connection->forceFill(['last_reached_at' => now()])->save();
 
@@ -145,8 +147,8 @@ class BusinessProfileLocations
                 ->timeout(self::TIMEOUT)
                 ->get('https://mybusinessbusinessinformation.googleapis.com/v1/'.$account.'/locations',
                     array_filter([
-                        'readMask'  => self::READ_MASK,
-                        'pageSize'  => self::PAGE_SIZE,
+                        'readMask' => self::READ_MASK,
+                        'pageSize' => self::PAGE_SIZE,
                         'pageToken' => $pageToken,
                     ], fn ($v) => $v !== null));
         } catch (ConnectionException) {
@@ -175,7 +177,7 @@ class BusinessProfileLocations
 
         return [
             'locations' => (array) $response->json('locations', []),
-            'next'      => is_string($next) && $next !== '' ? $next : null,
+            'next' => is_string($next) && $next !== '' ? $next : null,
         ];
     }
 
@@ -197,23 +199,23 @@ class BusinessProfileLocations
                 ->where('remote_name', $remote)
                 ->first();
 
-            $created  = $location === null;
-            $address  = (array) ($raw['storefrontAddress'] ?? []);
-            $lines    = (array) ($address['addressLines'] ?? []);
+            $created = $location === null;
+            $address = (array) ($raw['storefrontAddress'] ?? []);
+            $lines = (array) ($address['addressLines'] ?? []);
             $metadata = (array) ($raw['metadata'] ?? []);
             $openInfo = (array) ($raw['openInfo'] ?? []);
 
             $fields = [
-                'title'   => trim((string) ($raw['title'] ?? '')) ?: $remote,
-                'phone'   => trim((string) (((array) ($raw['phoneNumbers'] ?? []))['primaryPhone'] ?? '')) ?: null,
+                'title' => trim((string) ($raw['title'] ?? '')) ?: $remote,
+                'phone' => trim((string) (((array) ($raw['phoneNumbers'] ?? []))['primaryPhone'] ?? '')) ?: null,
                 'website' => trim((string) ($raw['websiteUri'] ?? '')) ?: null,
 
                 'address_line1' => trim((string) ($lines[0] ?? '')) ?: null,
                 'address_line2' => trim((string) ($lines[1] ?? '')) ?: null,
-                'city'          => trim((string) ($address['locality'] ?? '')) ?: null,
-                'state'         => trim((string) ($address['administrativeArea'] ?? '')) ?: null,
-                'postal_code'   => trim((string) ($address['postalCode'] ?? '')) ?: null,
-                'country'       => trim((string) ($address['regionCode'] ?? '')) ?: null,
+                'city' => trim((string) ($address['locality'] ?? '')) ?: null,
+                'state' => trim((string) ($address['administrativeArea'] ?? '')) ?: null,
+                'postal_code' => trim((string) ($address['postalCode'] ?? '')) ?: null,
+                'country' => trim((string) ($address['regionCode'] ?? '')) ?: null,
 
                 'primary_category' => trim((string) (
                     ((array) (((array) ($raw['categories'] ?? []))['primaryCategory'] ?? []))['displayName'] ?? ''
@@ -228,8 +230,14 @@ class BusinessProfileLocations
                     : BusinessLocation::UNVERIFIED,
 
                 'is_published' => ($openInfo['status'] ?? null) === 'OPEN',
-                'hours'        => $raw['regularHours'] ?? null,
-                'synced_at'    => now(),
+                'hours' => $raw['regularHours'] ?? null,
+                // Where a service-area listing (no storefront) says it works:
+                // its only "where" (Scheduling › Locations, 2026-11-05).
+                'service_places' => array_values(array_filter(array_map(
+                    fn ($p) => trim((string) ($p['placeName'] ?? '')),
+                    (array) (((array) ($raw['serviceArea'] ?? []))['places']['placeInfos'] ?? []),
+                ))) ?: null,
+                'synced_at' => now(),
             ];
 
             // What a person would notice changing on their own listing without
@@ -239,13 +247,13 @@ class BusinessProfileLocations
                 'primary_category', 'verification_state', 'is_published'];
 
             $before = [];
-            $after  = [];
+            $after = [];
 
             if (! $created) {
                 foreach ($watched as $key) {
                     if ($location->{$key} !== $fields[$key]) {
                         $before[$key] = $location->{$key};
-                        $after[$key]  = $fields[$key];
+                        $after[$key] = $fields[$key];
                     }
                 }
             }
@@ -253,15 +261,15 @@ class BusinessProfileLocations
             if ($created) {
                 $location = new BusinessLocation([
                     'organization_id' => $connection->organization_id,
-                    'company_id'      => $connection->scope_type === SocialConnection::SCOPE_COMPANY
+                    'company_id' => $connection->scope_type === SocialConnection::SCOPE_COMPANY
                         ? $connection->scope_id
                         : null,
-                    'franchise_id'    => $connection->scope_type === SocialConnection::SCOPE_FRANCHISE
+                    'franchise_id' => $connection->scope_type === SocialConnection::SCOPE_FRANCHISE
                         ? $connection->scope_id
                         : null,
-                    'connection_id'   => $connection->getKey(),
-                    'remote_name'     => $remote,
-                    'account_name'    => trim((string) $connection->remote_id) ?: null,
+                    'connection_id' => $connection->getKey(),
+                    'remote_name' => $remote,
+                    'account_name' => trim((string) $connection->remote_id) ?: null,
                     ...$fields,
                 ]);
             } else {
@@ -283,11 +291,11 @@ class BusinessProfileLocations
             $location->save();
 
             return [
-                'location'     => $location,
-                'created'      => $created,
+                'location' => $location,
+                'created' => $created,
                 'stateChanged' => $after !== [],
-                'before'       => $before,
-                'after'        => $after,
+                'before' => $before,
+                'after' => $after,
             ];
         });
     }

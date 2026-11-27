@@ -5,11 +5,14 @@ namespace Tests\Feature\Newsletter;
 use App\Jobs\SendNewsletter;
 use App\Models\AutomationEvent;
 use App\Models\Company;
+use App\Models\Customer;
+use App\Models\Job;
 use App\Models\Newsletter;
 use App\Models\NewsletterAudience;
 use App\Models\NewsletterUnsubscribe;
 use App\Models\SocialConnection;
 use App\Models\User;
+use App\Support\Newsletter\BlockRenderer;
 use App\Support\Newsletter\MailchimpClient;
 use App\Support\Newsletter\MailchimpSender;
 use App\Support\Newsletter\NewsletterUnsubscribeLink;
@@ -32,6 +35,14 @@ class NewsletterApiTest extends TestCase
 {
     use BuildsTenants;
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Connect now calls the provider to check it (ConnectSetup): nothing unfaked may leave.
+        Http::preventStrayRequests();
+    }
 
     private const ENDPOINT = '/api/v1/newsletters';
 
@@ -151,6 +162,23 @@ class NewsletterApiTest extends TestCase
                 fn (string $m) => str_contains($m, 'Connect Mailchimp'));
     }
 
+    public function test_the_preview_footer_carries_the_address_and_the_app_url(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $t['org']->forceFill(['address' => '800 SE 4th Ave, Hallandale Beach FL'])->save();
+        config(['app.url' => 'https://app.example.test']);
+
+        $id = $this->signedInAs($t['admin'])
+            ->postJson(self::ENDPOINT, ['subject' => 'Footer'])
+            ->assertCreated()->json('data.id');
+
+        $html = (string) $this->signedInAs($t['admin'])
+            ->getJson(self::ENDPOINT."/{$id}/preview")->assertOk()->json('data.html');
+
+        $this->assertStringContainsString('800 SE 4th Ave, Hallandale Beach FL', $html);
+        $this->assertStringContainsString('https://app.example.test/api/v1/newsletter/unsubscribe/preview', $html);
+    }
+
     public function test_a_newsletter_with_no_audience_is_refused(): void
     {
         $t = $this->provisionTenant('A1-Group');
@@ -168,6 +196,72 @@ class NewsletterApiTest extends TestCase
     }
 
     // ── The send itself ─────────────────────────────────────────
+
+    public function test_a_mailchimp_tag_narrows_the_send_to_its_subscribed_members(): void
+    {
+        $t = $this->provisionTenant('Tagged');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        $this->inTenant($t['org'], fn () => $audience->forceFill(['tag' => 'VIP'])->save());
+        Http::fake([
+            '*/segments?*' => Http::response(['segments' => [['id' => 7, 'name' => 'Other'], ['id' => 9, 'name' => 'vip']]]),
+            '*/segments/9/members*' => Http::response(['members' => [
+                ['email_address' => 'in@example.com', 'status' => 'subscribed'],
+                ['email_address' => 'left@example.com', 'status' => 'unsubscribed'],
+            ], 'total_items' => 2]),
+            '*/segments' => Http::response(['id' => 123]),
+            '*/campaigns' => Http::response(['id' => 'tagged', 'recipients' => ['recipient_count' => 1]]),
+            '*' => Http::response([]),
+        ]);
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, ['subject' => 'VIPs', 'audience_id' => $audience->id])->assertCreated()->json('data.id');
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/send")->assertOk();
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/segments') && $r['static_segment'] === ['in@example.com']);
+    }
+
+    /** Review 2026-11-09 A32: the send confirmation says how many it goes to. */
+    public function test_preflight_counts_the_people_the_send_would_reach(): void
+    {
+        $t = $this->provisionTenant('Counted');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        $this->inTenant($t['org'], function () use ($t, $audience) {
+            $audience->forceFill(['kind' => NewsletterAudience::KIND_CUSTOMERS, 'tag' => null])->save();
+            foreach (['a@example.com', 'b@example.com', 'out@example.com'] as $email) {
+                $c = Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-'.$email, 'name' => $email, 'email' => $email]);
+                if ($email === 'out@example.com') {
+                    $c->forceFill(['email_opt_out_at' => now()])->save();
+                }
+            }
+        });
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, ['subject' => 'Count', 'audience_id' => $audience->id])->assertCreated()->json('data.id');
+
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT."/{$id}/preflight")
+            ->assertOk()->assertJsonPath('data.recipients', 2);
+    }
+
+    public function test_a_customers_tag_takes_only_customers_whose_jobs_carry_it(): void
+    {
+        $t = $this->provisionTenant('JobTagged');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        $this->inTenant($t['org'], function () use ($t, $audience) {
+            $audience->forceFill(['kind' => NewsletterAudience::KIND_CUSTOMERS, 'tag' => 'Annual'])->save();
+            Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-own', 'name' => 'Own', 'email' => 'own@example.com', 'tags' => ['annual']]);
+            foreach (['yes@example.com' => ['Annual'], 'no@example.com' => ['Other']] as $email => $tags) {
+                $c = Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-'.$email, 'name' => $email, 'email' => $email]);
+                Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $c->id, 'tags' => $tags]);
+            }
+        });
+        Http::fake([
+            '*/members*' => Http::response(['members' => [['email_address' => 'yes@example.com'], ['email_address' => 'no@example.com'], ['email_address' => 'own@example.com']], 'total_items' => 3]),
+            '*/segments' => Http::response(['id' => 123]),
+            '*/campaigns' => Http::response(['id' => 'jt', 'recipients' => ['recipient_count' => 1]]),
+            '*' => Http::response([]),
+        ]);
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, ['subject' => 'Annual', 'audience_id' => $audience->id])->assertCreated()->json('data.id');
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/send")->assertOk();
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/segments') && $r['static_segment'] === ['yes@example.com', 'own@example.com']);
+    }
 
     public function test_a_send_reaches_mailchimp_and_raises_the_event(): void
     {
@@ -226,6 +320,50 @@ class NewsletterApiTest extends TestCase
             // and mail the audience twice.
             $this->assertSame('queued', Newsletter::query()->sole()->sends()->sole()->status);
         });
+    }
+
+    /** Review 2026-11-09 A28: a scheduled newsletter can go back to a draft. */
+    public function test_a_scheduled_newsletter_unschedules_back_to_an_editable_draft(): void
+    {
+        $t = $this->provisionTenant('Unsched');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        Http::fake();
+
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
+            'subject' => 'Later', 'audience_id' => $audience->getKey(),
+            'scheduled_for' => now()->addDays(3)->format('Y-m-d H:i'),
+        ])->assertCreated()->json('data.id');
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/send")->assertOk();
+
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/unschedule")
+            ->assertOk()->assertJsonPath('data.status', 'draft');
+        $this->inTenant($t['org'], fn () => $this->assertSame(0, Newsletter::query()->sole()->sends()->count()));
+        $this->signedInAs($t['admin'])->putJson(self::ENDPOINT."/{$id}", ['subject' => 'Later, edited', 'audience_id' => $audience->getKey()])
+            ->assertOk();
+
+        // A draft has nothing to unschedule.
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/unschedule")->assertUnprocessable();
+    }
+
+    /** Review 2026-11-09 A34: Duplicate starts a new draft with the same content. */
+    public function test_duplicate_makes_a_new_draft_with_the_same_content(): void
+    {
+        $t = $this->provisionTenant('Dup');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
+            'subject' => 'Spring', 'audience_id' => $audience->getKey(),
+            'blocks' => [['type' => 'heading', 'text' => 'Spring']],
+        ])->assertCreated()->json('data.id');
+
+        $copy = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/duplicate")
+            ->assertCreated()->json('data');
+
+        $this->assertNotSame($id, $copy['id']);
+        $this->assertSame('Copy of Spring', $copy['subject']);
+        $this->assertSame('draft', $copy['status']);
+        $this->assertSame('Spring', $copy['blocks'][0]['text']);
     }
 
     public function test_an_already_sent_newsletter_cannot_be_edited(): void
@@ -351,7 +489,10 @@ class NewsletterApiTest extends TestCase
             'subject' => 'Custom', 'html_override' => '<p>Exact copy</p>',
         ])->assertCreated()->json('data.id');
         $this->signedInAs($t['admin'])->getJson(self::ENDPOINT."/{$id}/preview")
-            ->assertOk()->assertJsonPath('data.html', '<p>Exact copy</p>');
+            // Stored exactly; the preview adds only the protected footer after it (audit 2026-11-10).
+            ->assertOk()->assertJsonPath('data.html', fn (string $h) => str_starts_with($h, '<p>Exact copy</p><table'));
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT)
+            ->assertJsonPath('data.0.html_override', '<p>Exact copy</p>');
     }
 
     public function test_scope_is_applied_before_the_fifty_row_limit(): void
@@ -657,8 +798,8 @@ class NewsletterApiTest extends TestCase
             return $n;
         });
         Http::fake(function ($r) {
-            if ($r->method() === 'PUT' && str_contains($r->url(), '/members/')) {
-                return Http::response(['status' => 'unsubscribed']);
+            if ($r->method() === 'POST' && str_ends_with($r->url(), '/lists/list-1')) {
+                return Http::response(['errors' => [['email_address' => 'unsubscribed@example.com', 'error_code' => 'ERROR_CONTACT_EXISTS']]]);
             }
             if (str_contains($r->url(), '/members?')) {
                 return Http::response(['members' => [['email_address' => 'eligible@example.com'], ['email_address' => 'outsider@example.com']], 'total_items' => 2]);
@@ -675,7 +816,8 @@ class NewsletterApiTest extends TestCase
         $this->inTenant($t['org'], fn () => app(MailchimpSender::class)->send($connection, $n, '<p>Custom</p>', [
             ['email' => 'eligible@example.com'], ['email' => 'unsubscribed@example.com'],
         ]));
-        Http::assertSent(fn ($r) => $r->method() === 'PUT' && str_contains($r->url(), '/members/') && $r['status_if_new'] === 'subscribed' && ! isset($r['status']));
+        // Batch subscribe with update_existing false: the status applies to new members only.
+        Http::assertSent(fn ($r) => $r->method() === 'POST' && str_ends_with($r->url(), '/lists/list-1') && $r['update_existing'] === false);
         Http::assertSent(fn ($r) => str_ends_with($r->url(), '/segments') && $r['static_segment'] === ['eligible@example.com']);
         Http::assertSent(fn ($r) => str_ends_with($r->url(), '/content') && str_contains($r['html'], '*|UNSUB|*'));
     }
@@ -735,6 +877,8 @@ class NewsletterApiTest extends TestCase
     private function mailchimp(array $t): SocialConnection
     {
         return $this->inTenant($t['org'], function () use ($t) {
+            // A send refuses without a postal address for the footer.
+            $t['org']->forceFill(['address' => '1 Main St'])->save();
             $c = new SocialConnection;
             $c->forceFill([
                 'organization_id' => $t['org']->id,
@@ -770,7 +914,7 @@ class NewsletterApiTest extends TestCase
     /** A block's address keeps only a scheme a newsletter uses. */
     public function test_a_block_link_with_a_script_scheme_is_dropped(): void
     {
-        $html = app(\App\Support\Newsletter\BlockRenderer::class)->render([
+        $html = app(BlockRenderer::class)->render([
             ['type' => 'button', 'text' => 'Go', 'url' => 'javascript:alert(1)'],
             ['type' => 'button', 'text' => 'Book', 'url' => 'https://a-1chimney.com/book'],
             ['type' => 'image', 'src' => 'data:image/svg+xml;base64,PHN2Zz4=', 'alt' => 'x'],

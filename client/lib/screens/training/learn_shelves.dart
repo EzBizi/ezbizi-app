@@ -1,6 +1,8 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -89,22 +91,33 @@ class _LearnShelvesState extends State<LearnShelves> {
   void initState() {
     super.initState();
     _load();
+    // Something assigned to me, published, or my own result landing from
+    // another device: the shelves re-read; an open guide or test is kept.
+    _live = LiveChanges.of(widget.api).subscribe({'training'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _assigned.isEmpty && _library.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the shelves on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _assigned.isEmpty && _library.isEmpty;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/training/learn');
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       _loading = false;
@@ -567,14 +580,10 @@ class _LearnShelvesState extends State<LearnShelves> {
 
     final search = SizedBox(
       width: wide ? 260 : double.infinity,
-      child: TextField(
+      child: ListSearch(
         key: const Key('learn-search'),
         controller: _search,
-        decoration: const InputDecoration(
-          hintText: 'Find a guide or test',
-          prefixIcon: Icon(Icons.search, size: 20),
-          isDense: true,
-        ),
+        hint: 'Find a guide or test',
         onChanged: (_) => setState(() {}),
       ),
     );
@@ -1016,14 +1025,14 @@ String? _str(Object? v) {
 int? _int(Object? v) => v is num ? v.toInt() : null;
 
 /// The place a guide or test belongs to, resolved from the SAME reach `/me`
-/// already carries — never a company this entry does not name. `*InView`
-/// rather than full reach: an id the server already scope-filtered never
-/// needs more, and a row it could not legitimately send reads
-/// "Organization" instead of a sibling's name.
+/// already carries — never a company this entry does not name. Full reach,
+/// not `*InView`: the server already scope-filtered the row, and a guide filed
+/// on a switched-off company (out of `*InView` since 2026-11-10) still reads
+/// its own name rather than "Organization".
 String _scopeLabel(Me me, Map<String, dynamic> entry) {
   final franchiseId = entry['franchise_id'] as String?;
   if (franchiseId != null) {
-    final franchise = me.franchisesInView
+    final franchise = me.franchises
         .where((f) => f.id == franchiseId)
         .firstOrNull;
     if (franchise != null) return franchise.name;
@@ -1031,7 +1040,7 @@ String _scopeLabel(Me me, Map<String, dynamic> entry) {
 
   final companyId = entry['company_id'] as String?;
   if (companyId != null) {
-    final company = me.companiesInView
+    final company = me.companies
         .where((c) => c.id == companyId)
         .firstOrNull;
     if (company != null) return company.name;

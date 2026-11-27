@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 /** One thing a customer did with their review link (Customer Experience, 2026-10-15). */
-#[Fillable(['customer_id', 'job_id', 'kind', 'occurred_at'])]
+#[Fillable(['customer_id', 'job_id', 'review_code', 'user_id', 'kind', 'occurred_at'])]
 class ReviewLinkEvent extends Model implements StatesRetention
 {
     use BelongsToTenant;

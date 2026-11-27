@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import 'device_display.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Settings › Monitoring › Camera sites (UI queue 117, desktop 1 + phone 4;
 /// camera bridge plan, Task 3).
@@ -447,16 +449,9 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
         // Standard field height, as tall as Leads search (Jose, 2026-10-27).
         SizedBox(
           width: 240,
-          child: TextField(
+          child: ListSearch(
             key: const Key('camera-sites-search'),
-            textAlignVertical: TextAlignVertical.center,
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIconConstraints: BoxConstraints(minWidth: 36),
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Find a site',
-              border: OutlineInputBorder(),
-            ),
+            hint: 'Find a site',
             onChanged: (v) => setState(() => _query = v),
           ),
         ),
@@ -910,7 +905,6 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
     final expires = DateTime.tryParse('${code?['expires_at'] ?? ''}');
     final left = expires?.difference(DateTime.now());
     final expired = left != null && left.isNegative;
-    String two(int n) => n.toString().padLeft(2, '0');
 
     final children = <Widget>[
       Text(
@@ -957,7 +951,7 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
             Text(
               expired
                   ? 'This code has expired.'
-                  : 'Expires in ${left.inMinutes}:${two(left.inSeconds % 60)}',
+                  : 'Expires in ${formatClock(left)}',
               key: const ValueKey('camera-site-pairing-expiry'),
               style: expired ? _errorText(context) : muted,
             ),
@@ -1012,7 +1006,7 @@ class _NewSiteState extends State<_NewSite> {
         TextField(
           key: const ValueKey('camera-site-new-name'),
           controller: _name,
-          autofocus: true,
+          autofocus: autofocusOnOpen,
           maxLength: 120,
           decoration: const InputDecoration(
             labelText: 'Site name',

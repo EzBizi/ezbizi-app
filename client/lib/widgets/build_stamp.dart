@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/api_client.dart';
 import '../core/build_info.dart';
 import '../core/desktop_updater.dart';
 import 'version_history_panel.dart';
@@ -13,7 +14,15 @@ import 'version_history_panel.dart';
 /// Tapping it opens [VersionHistoryPanel]: each version, what it did, when.
 /// That list is how we remember. The tooltip still names the exact bundle.
 class BuildStamp extends StatelessWidget {
-  const BuildStamp({super.key, this.onDark = false, this.compact = false});
+  const BuildStamp({
+    super.key,
+    this.onDark = false,
+    this.compact = false,
+    this.api,
+  });
+
+  /// Signed in: the panel shows the release on its way. Null on sign-in.
+  final ApiClient? api;
 
   /// On the sign-in panel's dark half the theme's own muted colour disappears.
   final bool onDark;
@@ -44,7 +53,7 @@ class BuildStamp extends StatelessWidget {
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
-          onTap: () => showVersionHistory(context),
+          onTap: () => showVersionHistory(context, api: api),
           borderRadius: BorderRadius.circular(4),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),

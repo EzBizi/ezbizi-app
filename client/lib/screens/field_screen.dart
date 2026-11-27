@@ -6,6 +6,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../core/app_window.dart';
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
@@ -50,6 +51,12 @@ class _FieldScreenState extends State<FieldScreen> {
 
   void _open() {
     final link = DeepLinks.take('field');
+    // A phone bottom-bar slot (design 208).
+    if (link?.type == 'tab') {
+      _tab = link!.id;
+      _shown.add(_tab);
+      return;
+    }
     if (link?.type != 'field_alert' || !_may('field.dashboard.view')) return;
     _alertId = link!.id;
     _tab = 'dashboard';
@@ -149,6 +156,9 @@ class _FieldScreenState extends State<FieldScreen> {
           color: theme.colorScheme.surface,
           child: TabBarLike(
             key: const ValueKey('tour-field-tabs'),
+            windowPaths: [
+              for (final tab in tabs) AppWindow.pathFor('field', tab: tab.$1),
+            ],
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: index < 0 ? 0 : index,
             onSelected: (i) => setState(() {

@@ -50,6 +50,46 @@ void main() {
     expect(find.byKey(const Key('alert-popup')), findsNothing);
   });
 
+  // Jose, 2026-11-17: "Your Suggestion has been approved and Implemented,
+  // Please Update". The suggestion's pop-up opens it and offers the update;
+  // a colleague's alert offers neither.
+  testWidgets('a suggestion pop-up opens the suggestion and offers Update', (
+    tester,
+  ) async {
+    final server = _Server();
+    await _pump(tester, server);
+    final opened = <String>[];
+    final popups = AlertPopups(
+      ApiClient(client: MockClient(server.handle)),
+      onOpenSuggestion: opened.add,
+    );
+
+    popups.show(_context(tester), [
+      _alert('a-1', 'Take van 7 today.'),
+      {
+        ..._alert('a-2', 'Your suggestion is live in v0.0.0584: Filters. Please update to see it.'),
+        'sender': 'EzBizi',
+        'suggestion_id': 's-1',
+        'update': true,
+      },
+    ], formats: DisplayFormats.fallback);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('alert-open-suggestion')), findsNothing);
+    expect(find.byKey(const Key('alert-update')), findsNothing);
+    await tester.tap(find.byKey(const Key('alert-dismiss')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Alert from EzBizi'), findsOneWidget);
+    expect(find.byKey(const Key('alert-update')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('alert-open-suggestion')));
+    await tester.pumpAndSettle();
+
+    expect(opened, ['s-1']);
+    expect(server.read, ['a-1', 'a-2']);
+    expect(find.byKey(const Key('alert-popup')), findsNothing);
+  });
+
   testWidgets('a poll in between neither repeats one nor opens a second', (
     tester,
   ) async {

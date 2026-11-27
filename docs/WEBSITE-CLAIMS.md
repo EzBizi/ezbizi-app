@@ -1,5 +1,7 @@
 # What the website claims, and on whose authority
 
+> **2026-11-02: www.ezbizi.com is WordPress now** (Jose: "remake it on wordpress then, the entire site"). `www/` edits NO LONGER GO LIVE. Pages live on the websites box, /var/www/vhosts/ezbizi.com/httpdocs (theme ezbizi-site). Body = one HTML block in post_content; <head> = post meta `_ezb_head`. Edit with wp-cli as ezbizi_ftp, `--user=ezbizi_admin` (else kses strips scripts). Imported from main f4cb9327e. The claims register below still holds; the daily check must diff the live page against WordPress, not `www/`. Owner of the WP plumbing: Web Module (local_89561020).
+
 
 The public site says what EzBizi does. This page records **why each claim is
 allowed to be there**, and — more importantly — what must *not* go back on.
@@ -54,7 +56,7 @@ SELECT COUNT(*) FROM leads WHERE remote_id NOT LIKE 'DEMO-%';   -- real enquirie
 ```
 
 **Measured on production 2026-09-03, and the dump is the proof rather than the count:** `remote_id NOT LIKE 'DEMO-%'` → **0**, out of 8 leads, **0 with a null `remote_id`** — so nothing hides in a third state between the two tests. All eight rows carry `has_connection_id = 1` **and** `has_synced_at = 1`, which is the wrong test failing visibly in the data: it would have counted all eight as real and reported the module in use. A count alone would have agreed with both tests; only the dump separates them. Note the command takes `--live`, which is how fiction reached production in the first place. **Read the seeder before trusting any test meant to exclude it** — three tests have now been written for this one row, and the two derived from the real code path both failed, because a good seeder imitates exactly the fields that path writes. This forbids the marketing claim, not the compliance page; see below. |
-| **Thumbtack or website enquiries arriving as leads** | **HALF-INVERTED 2026-09-10. THUMBTACK IS NOW TRUE AND PUBLISHED; the website-chat half is unchanged and still conditional.** The desk answered twice in one day and the SECOND answer supersedes the first, which is the whole lesson of this edit. `0042` measured `thumbtack = 1` and said do not invert: that row was `ThumbtackTestLead` firing Thumbtack's own `POST /webhooks/test-negotiation`, with placeholder phone `1234567890`, and `remote_id NOT LIKE 'DEMO-%'` let it straight through because a real Thumbtack id has no `DEMO-` prefix. `0043` re-measured an hour later: a **real customer enquiry** had arrived (`remote_id` `575864197057708035`, phone `4142023918`, created 2026-09-10 15:00:47, ten messages), and Jose had Leads delete the specimen. **The query is now `WHERE is_test = 0`** — `leads.is_test` exists and the marker is live in `0.0.0185`, so the phone-number discriminator is history rather than a step to repeat. Production reads `local_services is_test=0 40745`, `thumbtack is_test=0 1`. Published the same day in the Growth card: *"Connect Thumbtack and its enquiries arrive the same way, carrying the messages that came with them, and you reply from the same screen."* Every clause read out of the deployed tree at `8588589e` (`/download/windows.json` = `0.0.0192`): `ThumbtackLeads::store()` files a `Lead` with `source => Lead::SOURCE_THUMBTACK`; `messages()` files `LeadConversation` rows; `send()` posts the reply and `ThumbtackLeads` is **tagged** into `LeadReplies::TAG` at `AppServiceProvider.php:70-75` beside `LocalServicesLeads` — the tag was checked, not the interface, because a class implementing `LeadReplyChannel` that nothing tags is invisible to `LeadReplies::for()`. That tagging is also what FIXED the bug this very enquiry exposed: replying on a Thumbtack thread used to emit Google's refusal sentence. **`web_chats` is still 0**, so the website-chat half keeps the conditional shape — Web management's card already uses it ("the enquiries they take arrive in Leads") and needs no edit. **What would put the Thumbtack half back:** `WHERE is_test = 0` returning 0 for `thumbtack`, which is a wipe. **And still no usage claim** — one enquiry, from Jose's own twelve connections. The card says what happens when you connect one; it does not say businesses rely on it. |
+| **Thumbtack or website enquiries arriving as leads** | **HALF-INVERTED 2026-09-10. THUMBTACK IS NOW TRUE AND PUBLISHED; the website-chat half is unchanged and still conditional.** The desk answered twice in one day and the SECOND answer supersedes the first, which is the whole lesson of this edit. `0042` measured `thumbtack = 1` and said do not invert: that row was `ThumbtackTestLead` firing Thumbtack's own `POST /webhooks/test-negotiation`, with placeholder phone `1234567890`, and `remote_id NOT LIKE 'DEMO-%'` let it straight through because a real Thumbtack id has no `DEMO-` prefix. `0043` re-measured an hour later: a **real customer enquiry** had arrived (`remote_id` `575864197057708035`, phone `4145550100`, created 2026-09-10 15:00:47, ten messages), and Jose had Leads delete the specimen. **The query is now `WHERE is_test = 0`** — `leads.is_test` exists and the marker is live in `0.0.0185`, so the phone-number discriminator is history rather than a step to repeat. Production reads `local_services is_test=0 40745`, `thumbtack is_test=0 1`. Published the same day in the Growth card: *"Connect Thumbtack and its enquiries arrive the same way, carrying the messages that came with them, and you reply from the same screen."* Every clause read out of the deployed tree at `8588589e` (`/download/windows.json` = `0.0.0192`): `ThumbtackLeads::store()` files a `Lead` with `source => Lead::SOURCE_THUMBTACK`; `messages()` files `LeadConversation` rows; `send()` posts the reply and `ThumbtackLeads` is **tagged** into `LeadReplies::TAG` at `AppServiceProvider.php:70-75` beside `LocalServicesLeads` — the tag was checked, not the interface, because a class implementing `LeadReplyChannel` that nothing tags is invisible to `LeadReplies::for()`. That tagging is also what FIXED the bug this very enquiry exposed: replying on a Thumbtack thread used to emit Google's refusal sentence. **`web_chats` is still 0**, so the website-chat half keeps the conditional shape — Web management's card already uses it ("the enquiries they take arrive in Leads") and needs no edit. **What would put the Thumbtack half back:** `WHERE is_test = 0` returning 0 for `thumbtack`, which is a wipe. **And still no usage claim** — one enquiry, from Jose's own twelve connections. The card says what happens when you connect one; it does not say businesses rely on it. |
 | **That a post reaches every connected network, or reaches a TikTok profile** | Nine networks connect; **five publish** — corrected upward 2026-09-02, see below. `Publishers::for()` returns a publisher for Facebook Pages, Threads, Instagram, Pinterest and TikTok, and `default => null` for LinkedIn, YouTube, X and Bluesky, which `refusalFor()` answers with "Publishing to X is not built yet". **TikTok posts to the creator's DRAFTS, not the profile** — TikTok requires an audit before an app may post publicly and ours has not had it, so somebody must finish the post in the TikTok app. Pinterest is **images only**; video publishing does not exist. Flagged 2026-08-31 by the deploy session as a live false statement in the in-app release notes; corrected on the site the same day. The checkable test: does `Publishers::for()` return non-null for that provider. |
 | **Suggestions** | **INVERTED 2026-09-03 — it *is* on production, and this row said the opposite for a day.** All 17 commits are in the deployed tree (`git merge-base --is-ancestor 486668c 15c9762f` → true), merged at `e718748a`, and they were already in the *previous* production commit `678c3e83` — so it shipped in a deploy nobody announced, not in the 20:32 push. `create_suggestions_table` is in the deployed tree, so **the table test this row named has flipped to yes**, and production `client/VERSION` is `0.0.0147`. **The two design facts have not changed and still mean "present in the app" proves nothing either way**: it is still absent from `ModuleRegistry` (0 hits in the deployed tree) so a module count never sees it, and still pinned unconditionally for every user (`client/lib/main.dart:687` in the deployed tree — it was `:724` on the branch; re-read the line, do not trust this number). **Still do not put it on the site, for an entirely new reason.** The two screen layouts reached production *before* Jose reviewed them — he had delegated the choice for one night on the understanding they could change — and a defect is open against the §9 privacy inventory under-reporting the suggestion count. Neither makes the feature untrue; both make "we shipped this" a sentence we might have to retract. Revisit when the layouts are reviewed and the defect is closed. |
 | **That anybody has *set up* coverage and capacity** | Built and unused — a different state from unbuilt, and the two must not be flattened. The capability shipped in `0.0.0137`; `service_areas` and `service_area_slots` both hold **0 rows**, so no customer has created one. This does **not** forbid the "Coverage & capacity" card, which reads *"Set the areas each location covers and how much work a day can take"* — that is capability phrasing, and by the Inspections precedent below, built-and-unused is sellable as a capability and never as usage. **What it forbids is the tense**: "businesses set their coverage", "locations already covering", any sentence implying somebody has. If you are here because you read a 0 and reached for the card, leave the card alone. |
@@ -85,7 +87,7 @@ touches apps, monitoring, social, Google or mail.
 
 | The sentence | Page | What makes it true, and where to look |
 |---|---|---|
-| "Your phone asks you before the app gets any of these" — notifications, microphone (iPhone), location only if Field tracking is on; "We ask for nothing else: no camera, no photo library, no contacts, no calendar" | `/privacy/` | `AndroidManifest.xml`, `Info.plist`, `pubspec.yaml`. **Location is now EXPECTED in all three** once Field ships (`ACCESS_FINE_LOCATION`, `FOREGROUND_SERVICE_LOCATION`, `NSLocationAlways*`, `geolocator`) — so the break is now any permission that is NOT in the sentence: camera, photos, contacts, calendar. It went false twice before this (notifications, microphone). **And the manifest is not the test — it went false a THIRD time with the manifest clean.** Android has asked for the microphone since `52941393` (09-02) and the Phone group (`READ_PHONE_STATE`, `READ_PHONE_NUMBERS`, `CALL_PHONE`) since `19403de6` (09-14), all at RUNTIME from `voice_device_mobile.dart` through `twilio_voice`, whose own manifest merges the declarations at build — so `AndroidManifest.xml` in this repo never shows them. The page said microphone "On iPhone" only until 2026-09-25. Test: `grep -rn 'request[A-Za-z]*Permission\|requestMicAccess\|Permission.*request' client/lib` as well as the three files. |
+| "Your phone asks you before the app gets any of these" — notifications, microphone (iPhone), location only if Field tracking is on; "We ask for nothing else: no photo library, no contacts, no calendar" (camera: see the Device permissions row) | `/privacy/` | `AndroidManifest.xml`, `Info.plist`, `pubspec.yaml`. **Location is now EXPECTED in all three** once Field ships (`ACCESS_FINE_LOCATION`, `FOREGROUND_SERVICE_LOCATION`, `NSLocationAlways*`, `geolocator`) — so the break is now any permission that is NOT in the sentence: camera, photos, contacts, calendar. It went false twice before this (notifications, microphone). **And the manifest is not the test — it went false a THIRD time with the manifest clean.** Android has asked for the microphone since `52941393` (09-02) and the Phone group (`READ_PHONE_STATE`, `READ_PHONE_NUMBERS`, `CALL_PHONE`) since `19403de6` (09-14), all at RUNTIME from `voice_device_mobile.dart` through `twilio_voice`, whose own manifest merges the declarations at build — so `AndroidManifest.xml` in this repo never shows them. The page said microphone "On iPhone" only until 2026-09-25. Test: `grep -rn 'request[A-Za-z]*Permission\|requestMicAccess\|Permission.*request' client/lib` as well as the three files. |
 | Field tracking: "Employees are tracked only if their employer turns it on for their role. An organization's administrators are included automatically" · window default "while you are clocked in" · "three months" · "your own location trail is not sent to Google" | `/privacy/` | **REVERSED 2026-09-28 on Jose's ruling: "admins should be tracked as well, i never said they shouldn't" / "Always, like any tracked role."** The admin exclusion (`! role?->isAdministrator()` in `FieldTracking::isTracked`) is being removed; the page was changed FIRST, over-disclosing until it ships — the safe direction. **Test the consequence, not just the clause:** `isTracked` is then `is_active && hasPermission('field.tracked')`, admins hold every key, and `ModuleAvailability::isAvailable` returns true when no flag exists — so **every active administrator in every organization is tracked, with nobody switching anything on**. That is why the page says "included automatically" rather than "like any tracked role": the latter implies somebody chose it. Guard: `FieldTest::test_the_administrator_is_tracked_like_any_tracked_role` (renamed from `…never_tracked_by_implication`). **If an org-level switch is ever added in front of tracking, "included automatically" goes false** — it becomes "once your employer turns on Field". Retention: `RetentionPolicy::window(3, …)` on all four field tables — **months, not days**. Google: **`FieldMaps` sends job addresses/locations AND the technician's current position — "only" was false, corrected 2026-09-30.** The position goes twice: as today's route starting point (`optimise($origin…)`, live) and for dispatcher ETAs (`matrix(array $origins, …)`, Field worktree, next release). **The trail is never sent**, and that is what the page leans on. Test: every call site passing a PERSON's position into `FieldMaps` — a third makes the page's two-case sentence incomplete. Device description on `field_presences` (`battery_pct`, `charging`, `platform`, `os_version`, `device_model`, `app_version`, migration `2026_09_30_100000`): latest only, no history — a history table would falsify "only the latest description is kept". Separately, since 2026-09-29 (Jose: "yes update the privacy page"), Leads sends the street address an enquirer wrote, to geocode it (`AddressCheck`); the Who-we-rely-on bullet says so and says nothing else from the conversation is sent - keep it true: only `LeadDetails::address` + ZIP may reach Google. SOS sits behind `permission:field.tracked`; with the reversal, admins sending an SOS is consistent with everything else rather than an exception. |
 | "whether anybody is told … the answer is no unless they change it" | `/privacy/` | `SettingRegistry` → `monitoring.control_indicator` → `default:`. If that ever becomes `true`, this sentence is wrong in the reassuring direction. |
 | "We do not aggregate or anonymise Google user data … not combine it across customers" | `/privacy/` | No cross-organization read in `app/Services/Leads/`, `app/Support/Leads/`, `app/Services/Ads/`. **Filed with Google against `ezbizi-506117`, so a reviewer can re-read it.** Any benchmark, "average in your industry" or analytics rollup is a COMPLIANCE change and the policy moves first. |
@@ -96,7 +98,8 @@ touches apps, monitoring, social, Google or mail.
 | "Facebook Pages, Instagram and Threads send today" · TikTok "rebuilt to TikTok's Direct Post rules … not yet proven" (was "drafts, not the profile" until 2026-10-12: `TIKTOK_DIRECT_POST` is `true` on production since `4f8ee29b`, and its only row is a refusal) · Pinterest "posting waits on Pinterest" · LinkedIn/YouTube/X/Bluesky "newly built and not yet proven" | `/`, `/social-media/` | **`Publishers::for()` is NECESSARY, NOT SUFFICIENT — it passed for Pinterest while Pinterest refused every Pin.** Since 2026-10-09 all nine return a publisher. Also run, on the box: `social_post_targets` JOIN `social_connections` grouped by `provider, status`, and read `failure` on the newest rows. **Pull** a network on a network refusal in `failure`; **add** one only on a `sent` row from a real tenant connection that did not go through a sandbox. Pinterest inverts when `services.pinterest.sandbox_token` is unset AND a `sent` row follows. Was two, corrected upward to five on 2026-09-02, down to four on 2026-10-09. |
 | "It is not on the App Store yet" | `/download/` | `curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"` → `resultCount`. The card owes a link the moment it answers. |
 | "A Google Business Profile can be connected to read and answer reviews" — **REMOVED 2026-09-22** | `/` ×3 | `app/Services/Reviews/BusinessProfileReviews.php` — its own docblock: *"The Business Profile APIs ship at 0 QPM and stay there until Google approves an access application. Every call here will fail until that lands."* The replacement sentence is true while that stays so. **What would let it back:** Google granting Business Profile quota, which `08c2b82e` puts no earlier than **2026-10-24** — the application was REFUSED on the 60-day verified-listing rule and the profile verified 2026-08-25. Re-read the docblock, not this row. |
-| "There are two writes to Google" (reply to a text enquiry; pause or resume a campaign) · "does not create or remove campaigns, or change anything … other than pausing or resuming it" · "No rule or schedule does it" | `/google-ads-api/` | Every Google Ads/LSA `->post(` in `app/`: `grep -rn "googleAds\|localServices:\|:mutate" app --include=*.php`. Today: `LocalServicesLeads` `appendLeadConversation` and `CampaignPerformance::setStatus` `campaigns:mutate` (`updateMask: status`). **Went false on 2026-09-24** (`5b27593b` added pause/enable) and was caught 09-30: the page said "one write" and "does not … pause campaigns" for six days, on the page Google's API reviewer reads. A third endpoint, a mask wider than `status`, or an automation action/command calling `setStatus` falsifies it. |
+| "There are two writes to Google" (reply to a text enquiry; pause or resume a campaign, by a person or at on/off times a person set — "No rule or schedule does it" REMOVED 2026-11-05 for `ad_schedules`) · "does not create or remove campaigns, or change anything … other than pausing or resuming it" · "calls and bookings are never replied to through Google" | `/google-ads-api/` | Every Google Ads/LSA `->post(` in `app/`: `grep -rn "googleAds\|localServices:\|:mutate" app --include=*.php`. Today: `LocalServicesLeads` `appendLeadConversation` and `CampaignPerformance::setStatus` `campaigns:mutate` (`updateMask: status`). **Went false on 2026-09-24** (`5b27593b` added pause/enable) and was caught 09-30: the page said "one write" and "does not … pause campaigns" for six days, on the page Google's API reviewer reads. A third endpoint, a mask wider than `status`, or an automation action/command calling `setStatus` falsifies it. |
+| "an automated first reply: a message the customer wrote themselves" · "EzBizi supplies no wording of its own" | `/google-ads-api/` | **NEW 2026-11-03, true today by usage only.** `lead.book_by_chat` (`3c56384c6`, live in 0.0.0525) is an automation step that answers a Local Services text with EzBizi's own template lines (`BookingBot::next`: address, service, an open window, "we are holding") through `replyToLead(..., automatic: true)`, on every customer message, after Grok reads the thread. **Test:** active automations whose active version's `actions` contain `book_by_chat` (production 2026-11-03: **0**, 0 runs). The first such rule makes both sentences false on a page filed with Google — the page is the Google API module's and Jose's call, not this check's; flag it, do not rewrite it. `/privacy/` "A draft is never sent on its own" survives (the bot sends templates, not drafts) but its Leads purpose list does not name reading the thread for an address, service and a yes. |
 | "watch a machine live and take control of it, and … browse the files on it and download them — reading only … each folder opened and file downloaded recorded" · "watching a screen or browsing its files shows no notice" | `/privacy/` | `app/Http/Controllers/Api/Monitoring/FilesController.php` (ops `list`/`download` only; audit `monitoring.files.listed` / `.downloaded` per path; grant `monitoring.files.view`) and `client/lib/core/file_access_service.dart` (no notice drawn). Added 2026-10-02 after `0.0.0348` shipped it. An upload/rename/delete op, or audit moving to once-per-session, falsifies it; a notice on the machine falsifies the second clause in the reassuring direction. |
 | "An organization can also have EzBizi send mail on its behalf" | `/privacy/` | The automation actions that send. Corrected in `0.0.0240` after two days wrong — the previous sentence promised the opposite. |
 | "WhatsApp … kept for 24 months" · "Facebook or Instagram message is kept with the enquiry … deleted when that enquiry is" | `/privacy/` | `WhatsAppMessage::retention()` (`window(months: 24)`) and `LeadConversation::retention()` (`withParent`). Two different rules; never merge them into one period. |
@@ -115,7 +118,7 @@ touches apps, monitoring, social, Google or mail.
 | FB campaign categories → xAI: "names of the campaigns in an organization's connected Facebook ad accounts, and the names of its own service categories" · "Nothing about a customer is sent" | `/privacy/` Calls and messages + Who we rely on | `SuggestMetaCategories` (session/grok 68cefaee): prompt = category list + `MetaAdCampaign.name` only. **HELD, not written: ad spend / cost-per-job per source (Google Ads, LSA, Facebook) to Grok** — Google Ads figures are Google user data; the Google section allows xAI only "for that same purpose" (enquiries + coaching). **Jose 2026-10-12, relayed verbatim by Grok AI: "Facebook only for now (Recommended)" — no Google Ads/LSA figures to xAI; Google section and /google-ads-api/ unchanged.** Any Google spend to xAI later still needs a new verbatim yes for a new purpose, and /privacy/ Google section + /google-ads-api/ "No aggregation" paragraph changed before it ships. |
 | AI Assistance → xAI: question + "the Library answers that person is allowed to read" + "up to five matching branches (name, phone, address and service area)" · "their phone number is not" sent | `/privacy/` Calls and messages + Who we rely on | `AssistantBrain::aiAnswer` (session/grok f11d1190): prompt = org name + readable `AssistantEntry` rows + `locations()->take(5)` + `$query`; `WhatsAppStaffBot` calls it with the message text only. **Adding the sender's number, name or history to that prompt breaks "their phone number is not"**. |
 | WhatsApp figures → xAI: "jobs by source, sales, each technician's sales and deposits by name, and how many enquiries arrived from each source other than Google Local Services" · "No customer's name or contact details" | `/privacy/` Calls and messages + Who we rely on | `ReportAsk::answer` (d883e59b): question + branch names, then `PeriodReport::figures()` (created/closed by source, techs) + `ReportAsk::leads()` (counts by `source`). `leads()` excludes `Lead::SOURCE_LOCAL_SERVICES` since 76c2bb74 (on main, with a test) — LSA counts are Google user data and Jose ruled "Facebook only for now" (2026-10-12). **Removing that where-clause breaks the page.** Workiz `job_source` values named "Google LSA" are A1's own CRM records, not Google API data, so "jobs by source" may carry that label truthfully. |
-| Device permissions: "only when you tap Download on a how-to video, permission to add that video to your photos — on an iPhone, and on Android 9 or older" · "only when you tap to take a photo for a job, the camera — your iPhone asks first; on Android the phone's own camera app takes the picture" · "never reads your photos" · "no contacts, no calendar" | `/privacy/` Where EzBizi runs | `client/ios/Runner/Info.plist`: `NSPhotoLibraryAddUsageDescription`, and since 199538a9 (0.0.0463) `NSCameraUsageDescription` + `NSPhotoLibraryUsageDescription` — the second is declared because image_picker requires it, never requested: `files_io.dart` `takePhoto` calls `ImagePicker().pickImage(source: ImageSource.camera)` only. **If any `ImageSource.gallery` / `pickMultiImage` appears, "never reads your photos" is false.** `AndroidManifest.xml`: `WRITE_EXTERNAL_STORAGE maxSdkVersion=29`, no CAMERA (the camera intent needs none), no READ_MEDIA_*/READ_CONTACTS/READ_CALENDAR. **Adding CAMERA to the Android manifest makes "on Android the camera app takes it" incomplete — Android would then prompt. Any new Usage key or uses-permission breaks this paragraph.** "no camera" removed 2026-10-20. |
+| Device permissions: "only when you tap Download on a how-to video, permission to add that video to your photos" · "The camera is used for two things only: a photo you tap to take for a job, and your own video in a Chat video call you start or answer. Your phone or computer asks first. Chat calls are carried by Twilio, and nothing in them is recorded" · microphone also "on a Chat call you start or answer" · "never reads your photos" · "no contacts, no calendar" | `/privacy/` (WordPress post 8) Where EzBizi runs | Rewritten 2026-11-25 for Chat calls (951aa2805, 0.0.0647): Android `CAMERA` + `MODIFY_AUDIO_SETTINGS`, macOS camera entitlement + `NSCameraUsageDescription`, iOS/macOS strings name Chat calls. `app/Support/Chat/ChatCalls.php`: Twilio Video rooms (`VideoGrant`), "Nothing is recorded". **Turning on room recording or composition breaks "nothing in them is recorded"; a third camera use breaks "two things only".** `files_io.dart` `takePhoto` uses `ImageSource.camera` only — any `ImageSource.gallery` / `pickMultiImage` makes "never reads your photos" false. Any new Usage key or uses-permission breaks this paragraph. |
 | AppAsk (WhatsApp staff line AND, since 5eb754c8 / 0.0.0432, the in-app AI tab via `AssistantController` when the Library has no answer) → xAI: "any record the person may see, including customers, jobs, calls, staff records, details of monitored computers, the contents of connected mailboxes, and Google Ads, Local Services and Business Profile data" · "Only text … never audio, images or files" · "read only" | `/privacy/` Calls and messages + Google user data + Who we rely on; `/google-ads-api/` | **Jose 2026-10-13: "Everything, as asked"** (relayed desk → Grok AI; supersedes "Facebook only for now" FOR THIS PATH ONLY — ReportAsk still excludes LSA). At 1a0802dd (950f1f32) BLOCKED is only auth/staff/mcp/me/api-keys/me/sessions; JSON-only gate (`Content-Type` contains json) stays; GETs run as the asker with a 2-minute token. History: 050d6753 refused, 57c80ace/35cf8644 blocked Google/mail/monitoring, 950f1f32 dropped those blocks on Jose's word. **Removing the JSON-only gate breaks "never audio, images or files"; a non-GET breaks "read only".** Gmail content to xAI also sits under Google's Workspace API user-data policy — that is a review risk, not a page falsehood. |
 | WhatsApp actions: "a small, fixed set of things — such as answering a review, moving a job, changing a lead's status or adding a scheduling note" · "repeats exactly what it is about to do and waits for a YES" · "does not ask for the app's second sign-in step" | `/privacy/` Keeping it safe (6d82a948, another session, 2026-10-16) | `AppAct::COMMANDS` (allowlist: review reply + publish, board reschedule, `PATCH leads/{lead}` `['status']` only, scheduling location note) and `AppAct::NEVER`; gate tick `ai_assistance.command`. Ships in 0.0.0446 — the page was written ahead of the release. **A new key in `COMMANDS` that is not one of those four kinds, or the allowlist becoming a denylist, breaks "small, fixed set"; a 2FA step added makes the bold sentence over-disclose (safe).** |
 | Call recordings by number: message → xAI "only to read the number and the dates" · recordings "pass through Meta" · "not sent to xAI" | `/privacy/` Calls and messages + Meta line | `CallRecordingsRequest` (6727b341) sends the staff text to Grok for phone/from/to; `SendCallRecordings` reads `RingCentralCallLog` only (no LeadConversation, so no LSA recordings) and uploads audio to the WhatsApp Cloud `/media` endpoint. **If it ever reads Lead recordings, Google LSA audio reaches Meta — re-check.** |
@@ -123,8 +126,12 @@ touches apps, monitoring, social, Google or mail.
 | AI & the API card: "Make an API key and an AI like Claude, or your own script, works in EzBizi as you — through an MCP server that reaches the same API the app uses, with your permissions and nothing more" · "read only, read and edit, or also delete" · "Every change made with a key is logged with each field as it was before" · "any key can be revoked" · FAQ "Administrators decide which roles may make keys" · Growth "An AI can read the conversation and draft a reply, which a person reads and sends" | `/` (Jose 2026-10-13: "update the site … AI Connections - API - MCP") | `McpController` (`list_endpoints` + `call_api` through the kernel with the caller's token; `BLOCKED` = auth, staff, mcp, me/api-keys, me/sessions — "same API" stays true while that list holds only credentials/platform); `routes/api.php` `POST mcp`; levels `viewer/editor/full` in `api_keys_card.dart`; `ApiKeysController::activity` (`before` from the audit trail) and `destroy`; the API keys permission row is administrators-only until ticked. **Measured on production 2026-10-13**: this session's own MCP key answered `GET me` 200. Growth AI line: `LeadsController` `can_suggest` = `canReply && LeadInsights::enabled()` — read `true` on a production lead the same day; `suggestReply` returns text only. **Breaks if**: `LEADS_AI_GROK` goes off (pull the Growth sentence), anything sends a draft without a person, the MCP endpoint gains OAuth-only access, or key activity stops recording `before`. Not claimed: OAuth / claude.ai or ChatGPT connectors (docblock: none), call scoring (off), Monday summary (inactive), review drafts (A1-Group-only path). |
 | DO NOT: "Keeps working offline — everything syncs once there's signal again" | `/` Office, truck or phone | Removed 2026-10-09. `client/pubspec.yaml` has no local database (no sqflite/drift/hive/isar) and `api_client.dart` has no outbox; only `field_tracker.dart` buffers GPS points offline. Replaced with "Installs without IT", which the FAQ already carried. Re-add only with an offline write queue in the client. |
 
-| Call labelling: "Where call labelling is switched on, the text of a transcribed call … never the recording … sent to Anthropic (Claude) and to xAI (Grok)" · "one word" · "EzBizi keeps only that word, for twelve months" · sub-processor "Anthropic and xAI" | `/privacy/` | `app/Support/Reports/Tagging/` — every `CallTagger` implementation, and what its `tag()` sends (today: `CallLabels::instruction` + the transcript text, nothing else). **A third tagger falsifies "these are all of them" by existing.** `CallReportLabel::retention()` (`window(12)`); `create_call_report_labels` stores `label` only — **a column holding the model's reasoning or the transcript breaks "only that word"**. Switch: `config/experimental_reports.php` `tagging.enabled` (`REPORT_CALL_TAGGING`, default `false`). Written 2026-10-06 BEFORE the switch, on Reports' `0094`; the sentence is conditional so it is true either way. |
+| Call labelling: "Where call labelling is switched on, the text of a transcribed call … never the recording … sent to Anthropic (Claude) and to xAI (Grok)" · "one word" · "EzBizi keeps only that word, for twelve months" · sub-processor "Anthropic and xAI" | `/privacy/` | `LabelReportCalls` — the AiProviders it asks (`ClaudeProvider`, `GrokCliProvider`), and what its `label()` sends (today: `CallLabels::instruction` + the transcript text, nothing else). **A third provider in that list falsifies "these are all of them" by existing.** `CallReportLabel::retention()` (`window(12)`); `create_call_report_labels` stores `label` only — **a column holding the model's reasoning or the transcript breaks "only that word"**. Switch: `config/experimental_reports.php` `tagging.enabled` (`REPORT_CALL_TAGGING`, default `false`). Written 2026-10-06 BEFORE the switch, on Reports' `0094`; the sentence is conditional so it is true either way. |
 | "When xAI is not available … sent instead to Anthropic (Claude), for the same purpose" · "Anthropic receives the same information, or less: it is never sent a manual to read" · Report files on WhatsApp: message + branch names to xAI "only to read which report, branch and dates"; file "passes through Meta"; "The report itself is not sent to xAI" | `/privacy/` Calls and messages + Who we rely on | `GrokCli::provider()` (`eb2e455d2`, live 0.0.0498): `AI_PROVIDER` auto = Grok CLI if configured, else `ClaudeProvider`. Every xAI sentence on the page rides on this one switch. `ClaudeProvider::askMany` sends images only (no PDF) — if it starts sending files, drop "it is never sent a manual". `ReportFileRequest::read()` (`f903e323d`) and `SendRequestedReport`. |
+
+| Backups: "Up to 14 days in daily backups held on our own infrastructure" · "Up to 45 days in off-site backup copies" · "One backup from the first of each month is kept for about five weeks" | `/delete-account/` (the only page with backup NUMBERS; `/privacy/` gives none) | `deploy/backup.sh` `KEEP_LOCAL_DAYS`, `KEEP_REMOTE_DAYS`, `KEEP_REMOTE_FILES_DAYS`, `KEEP_MONTHLY_DAYS`, and the INSTALLED copy `/usr/local/bin/ezbizi-backup.sh` on the app box. 2026-11-19: 7 / 10 / 3 / 32. The first two are upper bounds kept loose on purpose (the values moved 45→10 on 11-13 and 14→7 on 11-19, and retention is skipped on a night with errors). **False the day local > 14, off-site > 45 or monthly > ~33.** Also list the files: `/var/backups/ezbizi` (app box) and `/home/ubuntu/ezbizi-backups` (websites box). |
+| "Where an organization answers a live chat on its website, the visitor sees the first name and a small copy of the profile photo of the person answering, and of up to three people who answered recently" | `/privacy/` What we collect → Your account | `App\Support\Web\ChatPeople::person()` (first name, initials, signed avatar link) and the header's up-to-three recent repliers; `EnquiriesController::avatar` (96 px). A full name, a title or more than three faces breaks it. |
+| Staff records: "any bonus or deduction a manager adds to a week's pay and the reason given" | `/privacy/` | `PayrollWeekLine::personalDataHeld()` (`bonus, deductions, note`). A new payroll table or column holding another kind of person data needs a clause. |
 
 **Adding a row costs nothing and omitting one costs two days.** If you write a
 sentence on the site that would be false if somebody changed code you do not own,
@@ -3243,3 +3250,821 @@ still held, not re-measured (nothing shipped to move it).
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
 - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502. No `www/`
 edit, so nothing to publish.
+
+## 2026-11-02: 0.0.0514-0.0.0519 live, and three sentences went false on the first WordPress day
+
+Production `/download/windows.json` 0.0.0519 at `3848d575f`. First run against WordPress:
+edits went to the WP pages (wp-cli, `--user=ezbizi_admin`), not `www/`. Pre-edit copies of
+post_content / `_ezb_head` for pages 4, 8, 9 and `sitemap.xml` are in `~/ezb-wp-bak-20261102/`
+on the websites box. **`www/` was NOT updated** — it still carries all three false sentences, so
+rolling back to the static copy re-publishes them.
+
+- **Business Profile works on production.** `ezbizi:review-backlog` (`0541f7b07`, daily 15:00)
+  PUT a reply to Google v4 at 20:36 UTC (`review_replies` automation/published); 610 Google
+  reviews with a `connection_id` were created today. So the homepage "reading and answering its
+  reviews is waiting on Google to grant Business Profile API access" (×3: two in the body, one in
+  the FAQ JSON-LD) was false. **Pulled, not replaced**: now "A Google Business Profile can be
+  connected too." / "Ads brings its Local Services enquiries in as leads." Re-adding "read and
+  answer reviews" is allowed (the row-100 test passed) but was not done on one day's evidence.
+  The `BusinessProfileReviews` docblock still says 0 QPM — stale. **Owed:** the `/privacy/`
+  Google user data section names no Business Profile purpose, and review text read through our
+  Business Profile OAuth now reaches xAI — Google API module's call, not edited here.
+- **`/privacy/` "only to a review less than 30 days old"** was false: the backlog job posts AI
+  replies by itself to up to 50 four- and five-star reviews a day of any age (auto-reply listings,
+  60 on), and drafts ≤3-star ones on every listing — xAI triggered with nobody pressing anything.
+  Rewrote the paragraph and the xAI list item; Last updated / `dateModified` / sitemap 11-02.
+- **`/social-media/` "We do not: Read or reply to direct messages, or use Messenger"** was false:
+  `leads` source facebook 77, instagram 14, `is_test = 0`, newest today. Line removed; date
+  bumped. The Messenger/Instagram do-not row's count test now passes; the Growth card was NOT
+  extended (Meta app status not checked this run).
+- Messenger/Instagram photos streamed not stored, YouTube delete (`youtube.force-ssl`), Google
+  login recorded on connections, Leads rail, Scoring, Task Board, Development tab, web `--wasm`:
+  no other sentence on the site touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy); forbidden-terms (LINE-split)
+over the 8 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1,
+0.0.0502. WP pages 5, 6, 7, 10, 11 unmodified since the 11-02 import. Desk not asked: there is
+no publish step left for it.
+
+## 2026-11-03: 0.0.0520-0.0.0525 live, and `/privacy/`'s xAI list missed two new sends
+
+Production `/download/windows.json` 0.0.0525 at `c32d81b3a`. All 8 live pages match their WP
+post_content (only theme-rewritten logo `src` differ). Another session added a true "Job-visit
+recordings" paragraph to `/privacy/` at 18:49 UTC (checked: Whisper on our box, chunk deleted
+after transcribing, 1-day sweep, `KEEP_DAYS = 90`, Grok summary, consent-state refusal) but not
+to the xAI item under Who we rely on, and did not bump the date.
+
+- **Edited WP page 8** (backup `~/ezb-wp-bak-20261103/` on the websites box): new "Weekly Google
+  posts" paragraph (`WeeklyBusinessProfilePosts::write` sends business name, city/state, category
+  and recent posts; `auto_post` default false, 0 listings on, 0 drafts yet) and both sends added to
+  the xAI item; Last updated / `dateModified` / sitemap lastmod 11-03. `www/` not updated (still
+  frozen at the 11-02 import).
+- **Booking bot held, measured:** 0 rules use `book_by_chat` — see the new load-bearing row; the
+  first one falsifies `/google-ads-api/`.
+- Estimates Board (0.0.0525) is a do-not row; nothing added. STOP/START per company concerns
+  tenant texts, not the sign-in code sentence. Personal Google mail sign-in retired: no page names
+  it. Customer tags, Integrations health, Company chart, Reports overrides, Task Board views: no
+  sentence touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) over the 8
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502.
+
+## 2026-11-04: 0.0.0526-0.0.0530 live, and `/social-media/` said we never manage advertising
+
+Production `/download/windows.json` 0.0.0530 at `ba84e0543`; 0.0.0531 (Google call leads
+answered by SMS) is on main, not live. All 8 live pages matched their WP post_content before
+the edit; no WP page had changed since the 11-03 run.
+
+- **`/social-media/` "We do not: Run or manage advertising of any kind"** was false:
+  `a24e0de6f` (0.0.0528, in `ba84e0543`) lets a business pause/resume Meta campaigns, ad sets
+  and ads and change a daily budget (`MetaAdsManager`, `MetaAdsController`), and the Page
+  connect now asks for `ads_management` (`FacebookOAuth`). "Collect … insight data" was
+  already stretched: `MetaAdInsights::sync` stores ad spend/leads since 10-12. **Edited WP
+  page 9** (backup `~/ezb-wp-bak-20261104/` on the websites box): use column gained "Show a
+  business its own Facebook ad campaigns … pause, resume or change a daily budget when somebody
+  at the business asks for it"; do-not column now "Create or remove ads or campaigns, change
+  their targeting or creative, or change anything nobody at the business asked for" and
+  "Collect audience or follower data". Last updated / `dateModified` / sitemap lastmod 11-04.
+  Writes reach Meta only through the two API endpoints (no automation caller), hence "asks
+  for it" rather than "presses". Not measured: whether any grant holds `ads_management` or
+  Meta has approved it — the sentence describes what the app does, not that anyone has used it.
+- `/google-ads-api/` "set or adjust bids or budgets" still true: the Google side is
+  `campaigns:mutate` status only (`CampaignPerformance`); budgets are Meta-only.
+- Times per company time zone, Settings › Lists, Email paging, Reports audit, review replies
+  for every company, WhatsApp media fixes: no sentence on the site touched. "Post anything a
+  person did not write and send" left alone: weekly Google posts still `auto_post` false
+  (11-03 row), not re-counted.
+- `www/` not updated (frozen at the 11-02 import).
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) over the 8
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502.
+
+## 2026-11-05: 0.0.0531-0.0.0538 live, and three sentences were false or about to be
+
+Production `/download/windows.json` 0.0.0538 at `fa411af62`; 0.0.0539 (`ccc4992c5`, ad on/off
+schedules) on main, not live. All 8 live pages matched their WP post_content before the edits.
+Backups of every page's post_content / `_ezb_head` and `sitemap.xml`: `~/ezb-wp-bak-20261105/` on
+the websites box. `www/` not updated (frozen at the 11-02 import).
+
+- **`/google-ads-api/` "No rule or schedule does it"** goes false when 0.0.0539 deploys:
+  `ezbizi:ad-schedules` (every minute) calls `CampaignPerformance::setStatus` at the times an
+  `ads_performance.manage` holder set, audited `by=schedule`. Rewritten to be true before and after
+  the deploy: a person presses Pause/Resume "or sets days and times for the campaign to be switched
+  on and off"; audit "the person or the schedule that made it"; table row "or at the on and off
+  times a person set for it". Status only, so "nothing else" still holds.
+- **`/google-ads-api/` "calls and bookings are never replied to"** was false since 0.0.0531
+  (`b7d7a6e47`): the not-booked rule texts a Local Services caller from the company's cleared line
+  (skipped 71 of 125 before the fix, so it runs). Now "never replied to through Google; a caller can
+  instead be sent a text from the customer's own phone line, by an automation rule the customer set
+  up". "Two writes to Google" still true (Twilio, not Google).
+- **`/privacy/` xAI list** missed the Leads proofreader (`bdc83ca79`, `leads.proofread` default
+  true): the reply being typed goes to Grok (Bedrock/Anthropic when on) for spelling/grammar
+  fixes, offered and never sent by itself. Added to the xAI item. Anthropic fallback sentence
+  already covers Bedrock.
+- Dates: Last updated / `dateModified` / sitemap lastmod 11-05 on both pages.
+- One Google sign-in for Business Profile, Ads and YouTube (`6262b4928`) asks only the ticked
+  products' scopes, so the YouTube "read-only … used once" sentence was not re-read against it —
+  **owed**: confirm the combined callback does not read the channel for a non-YouTube connect.
+  Meta catch-up, Facebook client accounts, Integrations redesign, Gmail IMAP fill, Ads under
+  Marketing: no sentence touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) over the 8
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502.
+Desk (11-05): 0.0.0539 is LIVE (`7305be3c3`), so the schedule sentence above is now load-bearing, not
+pre-emptive; nothing merged today touched Training, ring groups, Scheduled Jobs, LSA ingest or
+publishers (no row counts taken).
+
+## 2026-11-06: `/developers/` and `/developers/reference/` published (Jose, via the desk)
+
+Jose asked (relayed by the deploy desk) for a public developer section in the shape of the one
+he built for Memberly: a guide page and a Scalar reference. New WP pages 22 (`developers`) and 23
+(`reference`, child of 22). Footer link "Developers" on `/` and `/download/`; sitemap +2 entries.
+
+- **The reference is generated, never hand-written.** `GET /api/v1/openapi.json`
+  (`OpenApiController`, public, throttle 60/min) is built from `McpController::routes()`, the
+  table `list_endpoints` reads, so the blocked prefixes (auth, staff, mcp, me/api-keys,
+  me/sessions) never appear; test `test_the_public_reference_lists_what_list_endpoints_lists_…`.
+  The page fetches `/ezbizi-api.json` on www (CSP `connect-src 'self'`); the websites box copies
+  the app's spec there hourly (ezbizi_ftp crontab, `refresh-api-spec.sh`, keeps the last good
+  copy). Until the endpoint is released the seed copy is one generated locally from main
+  (734 paths, 989 operations).
+- **No key is ever typed into www**: Scalar test requests and client button hidden, no proxy, no
+  telemetry. App CORS still allows only app/dev origins — do not add www to make "try it" work.
+- **Load-bearing on `/developers/`** (re-check if these move): levels Viewer = GET, Editor = no
+  DELETE, Full = all (`EnforceApiKeyAccess`); role grants `api_keys.view/edit/delete`; no key may
+  touch password/2FA/SMS codes/sessions/keys/account deletion; keys never idle out, end on revoke
+  or password reset; MCP 120/min (`routes/api.php` `mcp` throttle) and no general per-key limit;
+  error codes `api_key_*`, `permission_denied`, `subscription_inactive` (402); webhook signature
+  = hex HMAC-SHA256 of `timestamp.body` (`OutboundWebhook`); "Not yet: OAuth, SSE" (`McpController`
+  docblock). If OAuth lands, the claude.ai/ChatGPT note goes false.
+- **Checked, and deliberately left alone:** the reference lists every tenant route, so it names
+  modules on the do-not list (Training, WhatsApp, invoices…) as paths. That is a route table,
+  not a capability claim; the forbidden-terms gate is for page copy. The spec currently has none
+  of the four terms anyway.
+
+Gate: forbidden-terms (LINE-split) over `/`, `/download/`, `/developers/`, `/developers/reference/`
+ok - 4 terms, none present. MCP/API tests 23/23 (`ApiKeysAndMcpTest`, private schema).
+
+
+## 2026-11-06 (evening): 0.0.0540-0.0.0542 live, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0542 at `94a3e89d0`. All 10 live pages match their WP
+post_content (only block markers and theme-rewritten logo `src` differ); pages 5, 10, 11 untouched
+since the 11-02 import, 4/6/22/23 last written by the 11-06 developers publish.
+
+- **`/developers/` reference is now the released spec, not a local seed.** `GET /api/v1/openapi.json`
+  shipped in 0.0.0540 (`9aec70f44`); www `/ezbizi-api.json` (refreshed 23:17 UTC by the hourly
+  `refresh-api-spec.sh`) is byte-identical to it, 739 paths. The 11-06 "until the endpoint is
+  released" caveat is closed.
+- Website bookings answered by a text (`57737e4de`): an EzBizi `website_booking` lead, not a Google
+  channel, so `/google-ads-api/`'s "never replied to through Google" still holds.
+- RingCentral callers raise `lead.received`, HR Training tab redesign (tense rule unaffected), HR
+  several places, Social "Posted · deleted", Scheduling Availability, Payments plan (research only,
+  no processor shipped): no sentence on the site touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms
+(LINE-split) over the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple
+`resultCount` 1, 0.0.0502. 
+**Desk (11-06 evening):** 0.0.0543 (`1c56f5bfd`) is also live; 0.0.0544 (`f53a26020`) was cutting.
+Training: 0542 UI only. Ring groups, Scheduled Jobs, LSA ingest, publishers: no release touched them
+(desk took no row counts; not measured here either). Re-read against both releases, no page edited:
+
+- **Stripe Connect invoice payments (0543): dormant, with no keys on production.** No payer data reaches
+  Stripe, so `/privacy/` naming no Stripe is still true. **Trigger:** the day Stripe keys land on prod or
+  a company connects, `/privacy/` must name Stripe (payer data goes to it), and the invoices do-not row
+  needs a fresh look. `invoic`/`bill` stay gate terms.
+- **Promotions (0544): a business texts its own past Done-job customers from its line, with STOP.**
+  `/terms/` "never marketing … we do not send offers, news or promotions by text" is about EzBizi's own
+  sign-in-code texts (its own number, account holders only), so it still holds; the tenant clause
+  "not … unsolicited marketing calls or messages" is a duty on the customer and stays consistent. No
+  page says a business cannot text its customers. Do not add a Promotions card until a real send is counted.
+- **Project Management 1/2 removed, project-board/jobs added (0544):** `/developers/` prose names no
+  project endpoint; the reference re-reads the app's spec hourly, so it follows the deploy unedited.
+
+Separately (relayed by the desk, Jose's word to the Website Changes session): Toula Elwell / Itzhak
+Swarch off every site's Team page. That session cleaned 48 sites; re-measured all 138 WP installs on
+the websites box (posts + postmeta): one leftover, calla1.com page 149 `post_content` (the
+Elementor fallback; the rendered page already showed neither). Removed (backup
+`~/swarch-bak-20261106/` on the websites box). Remaining matches are the town "Ponchatoula". The 9
+SiteGround-era domains not served from the websites box: live pages, 0 matches.
+
+## 2026-11-07: 0.0.0544-0.0.0548 live, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0548 at `c035699e5`. No WP page modified since the 11-06
+runs (newest `post_modified_gmt` 2026-11-06 13:58); all 10 live pages match their post_content
+(only theme-rewritten logo `src` differ). www `/ezbizi-api.json` byte-identical to the app's
+`/api/v1/openapi.json`.
+
+- **AI assistant reads in rounds (`d47831939`, `030be6215`, `f374ee43b`):** same `GrokCli`, same
+  as-the-asker GETs, Library still tried first, so `/privacy/`'s "records that person may see"
+  and xAI list still hold. No new destination.
+- Project Management rebuilt (`project_board`), Task Board off for Sub Companies, Meta cost per
+  lead from instant forms, report-text branch names, schedule-tick fix: no page names any of them.
+- Promotions (0544) and Stripe Connect (0543): unchanged from the 11-06 triggers; not re-counted.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms
+(LINE-split) over the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple
+`resultCount` 1, 0.0.0502. Desk (11-07): 0544-0548 all live; nothing on Training, ring groups, Scheduled Jobs, LSA or
+publishers (no row counts); no STRIPE keys in prod `.env`, no company connected, so `/privacy/` unchanged.
+
+## 2026-11-08: nothing shipped, nothing on the site went false
+
+`main` and `origin/main` have no product commit since `c035699e5`, and production `/download/windows.json`
+still reads 0.0.0548 there. No WP page modified since 11-06 13:58 (`post_modified_gmt`). All 10 live
+pages match their post_content, apart from the logo `src` the theme rewrites. www `/ezbizi-api.json`
+is byte-identical to the app's `/api/v1/openapi.json`.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms
+(LINE-split) over the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple
+`resultCount` 1, 0.0.0502. Desk asked (11-08) for anything live since 0548 and for row counts on the
+do-not rows. Desk (11-08): confirmed nothing shipped since 0548. Training, ring groups, Scheduled Jobs,
+LSA and publishers are untouched; Stripe keys on prod 0 and no connected company, so `/privacy/` is unchanged.
+Note for the next run: on the websites box wp-cli needs `/opt/plesk/php/8.4/bin/php /usr/local/bin/wp --path=/var/www/vhosts/ezbizi.com/httpdocs`, because `ubuntu` cannot `cd` into the docroot and there is no `php` on PATH.
+
+## 2026-11-09: 0.0.0549-0.0.0551 live, and `/privacy/` did not say staff-bot answers carry job photos
+
+Production `/download/windows.json` 0.0.0551 at `4efd8b8ce`. Before the edit, all 10 live pages matched
+their WP post_content (logo `src` only) and no page had changed since 11-06 13:58. www `/ezbizi-api.json`
+byte-identical to the app's `/api/v1/openapi.json`.
+
+- **Edited WP page 8** (backup `~/ezb-wp-bak-20261109/page8.html` on the websites box). `d9d7cb569` (in
+  0551): AppAsk answers on the WhatsApp staff line now send photos from previous Done jobs (Workiz
+  attachment URLs, via `GET jobs/photos`) and training mp4s as WhatsApp image/video, which Meta fetches.
+  xAI gets the links as text, never the images, so "Only text is sent — never audio, images or files"
+  still holds. Added after it: answers can bring job photos or a training video over WhatsApp, passing
+  through Meta; xAI receives only their links. Live, checked with and without a cache-buster.
+- HR onboarding SSN card photo (`ed5eb9156`, in 0551): encrypted at rest, audited reveal. No page says
+  anything about SSNs or identity documents, so nothing went false; nothing added.
+- **On main, not in 0551 — trigger for the next run:** `98837a32e`/`f9e96697d`/`b32e3e76a` send every
+  report as a PDF in a WhatsApp `report_document` template from a "Reports" number, and email undelivered
+  ones to the rule's maker. `/privacy/` "Report files on WhatsApp" describes only asked-for files and the
+  weekly-summary line says automation rules pick the channel; re-read both once these are live.
+- Promotions MMS picture, Task Board, quick search, signatures, Scheduling office, Pinterest token renewal:
+  no page names them.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split)
+over the 10 LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount`
+1, 0.0.0502. **Desk (11-09):** 0549-0551 live, 0552 cutting. Training, ring groups, Scheduled Jobs, LSA, a 7th
+publisher: unchanged. Stripe keys on prod 0, `payment_accounts` 0, so `/privacy/` names no Stripe.
+
+- **Second edit to WP page 8 after the desk's list** (pre-edit copy `~/ezb-wp-bak-20261109/page8-b.html`): the email
+  signature builder (0550) serves each photo publicly at `/api/v1/signature-photos/{40-char random}.ext` so recipients'
+  mail can load it. "What we collect › Your account" now says it sits at an unguessable address that anyone holding it
+  can see. Live.
+- SSN card photo: "Staff records … onboarding documents" already covers it (encrypted, HR-only, not in exports or AI,
+  per the desk). Left alone: no page promises anything narrower.
+- Review-link → Google review matching by name and @mentions: nothing leaves EzBizi; no sentence touched.
+- 0552 trigger stands: reports go as PDF documents over WhatsApp from +1 877-450-8572 (a "Reports" purpose number).
+
+## 2026-11-10: 0.0.0552-0.0.0558 live, and `/privacy/`'s Meta line named only asked-for report files
+
+Production `/download/windows.json` 0.0.0558 at `753e2a424`. Before the edit all 10 live pages matched their
+WP post_content (the theme adds `decoding="async"` to logo `<img>`s; nothing else). www `/ezbizi-api.json`
+byte-identical to the app's `/api/v1/openapi.json`.
+
+- **Edited WP page 8** (backup `~/ezb-wp-bak-20261110/page8.html` on the websites box). `98837a32e`/`f9e96697d`/
+  `b32e3e76a`/`6af62cdf4` (0553+, ancestors of `753e2a424`): every automation-rule report now goes to a person
+  over WhatsApp as its text plus a PDF (`WhatsAppGroups::deliverTextToUser`, `ReportPdf`), from the number whose
+  purpose is Reports. The Who-we-rely-on Meta line said only "report files a staff member asks for"; it now also
+  names "the reports an organization's automation rules send its people as a message and a PDF". No xAI change
+  (report rules do not call Grok; the weekly-summary sentence already lets rules pick WhatsApp). Undelivered ones
+  are emailed to the rule's maker through SES, already covered. Live, with and without a cache-buster.
+- Review auto-replies (Customer Experience › Auto-replies, `813e2176b`): `/privacy/` already describes the
+  per-listing switch, the 30-day rule and the daily 4-5 star job. Nothing changed.
+- STOP blank line in tenant texts, Workiz tags matrix, switched-off companies hidden, live access refresh, signature
+  preview, Social compose video preview, Mail 4xx retry: no page names them.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages, and over `/privacy/` after the edit: ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount`
+1, 0.0.0502.
+
+**Desk (11-11, ~13:30 UTC), recorded as given:** Training 3 guides / 144 media (attempts and progress NOT counted,
+so the tense rule's test is still unmeasured); ring groups 2 (a group count, not the resolved fraction the Phone row
+names); LSA `is_test=0` 52,155 (already published); `payment_accounts` 0, no Stripe account, so `/privacy/` names
+no Stripe. Scheduled Jobs: the desk looked for `jobs.scheduled_at`; the row's test is `jobs.scheduled_for` without a
+`workiz_jobs` row — ask that next time. Publishers: the desk counted 7 connected posting providers; in code
+`Publishers::for()` has had 10 since `947e6cc23` (GBP posts, 10-15), and none is new since 0551. No sentence moves.
+
+## 2026-11-11: 0.0.0559-0.0.0562 live, and `/privacy/` said a website visitor's IP is never stored
+
+Production `/download/windows.json` 0.0.0562 at `ec1229d74`. Before the edit all 10 live pages matched their WP
+post_content (block markers, `decoding="async"` and logo `src` aside). www `/ezbizi-api.json` byte-identical to the
+app's `/api/v1/openapi.json`.
+
+- **Edited WP page 8** (backup `~/ezb-wp-bak-20261111/page8.html` on the websites box). `540403226` (in 0562): the
+  booking widget's optional SMS consent box, when ticked, keeps `sms_consent_at/_text/_site/_ip` on the lead.
+  "Enquiries from your websites" said the visitor's IP "is not stored as part of the enquiry" — false from 0562 for
+  anyone who ticks it. Now: "…with one exception: where a form offers a box agreeing to receive text messages and
+  the visitor ticks it, we keep their IP address with the time, the website and the exact words they agreed to, as
+  the record of that consent." True whether or not plugin 1.26.29 has rolled out (no rows needed for it to hold).
+  Generic "a form" on purpose: the booking widget itself stays unpublished as a capability. Live, with and without
+  a cache-buster, after `wp cache flush`.
+- Per-number call-flow override and ring-group member registration (`eb23f74c4`, `a1f13eeb1`, `13b602e73`): ring
+  groups stay on the do-not list; no page names them.
+- Automation WhatsApp to a person goes from the Reports number as a PDF report (`17c29b9ee`): the 11-10 Meta line
+  already names automation-rule reports sent as a message and a PDF. Unchanged.
+- Branded booking confirmation email (`a5dcd181e`), DTMF keypad, Email inbox changes, Reports audit, Project
+  Management rounds 3-4 (scheduling texts from the company's own line), Workiz tags, leads digest: no page names them.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages, and over `/privacy/` after the edit: ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount`
+1, 0.0.0502.
+
+**Desk (11-11, ~23:45 UTC), recorded as given:** 0559 `dfb0bf8be`, 0560 `3edfd3a51`, 0561 `8d069094e`, 0562 `ec1229d74`
+all live (web + natives). iOS 0558 rejected for the "Advertising" age-rating descriptor, reply sent, awaiting Apple; the
+iOS card stays unlinked (lookup still 0.0.0502). SMS consent: `leads.sms_consent_ip` set on **1** row (first real
+booking, 23:27 UTC), so the edit above is now true by data, not only by code. Booking confirmation email goes through
+SES, EzBizi's From with the business name, business's site email as Reply-To: covered by "Amazon SES — email we send
+on the service's behalf"; nothing added.
+
+- **Training: `training_attempts` 58, `training_progress` 78 — the zeros this row's tense rule rested on are gone.**
+  The card's four imperatives stay true; nothing was added. A usage sentence ("teams train on it") is now allowed by
+  the count, but none was written: no one asked for it and a count is not a claim's wording.
+- **Scheduling: jobs with `scheduled_for`, not deleted, and no `workiz_jobs` row = 38. The row's own test (nonzero
+  inverts) has tripped.** Not published today, for one checkable reason: whose 38 they are. Next run, ask the desk
+  for those 38 grouped by organization and by how they were created (Jobs screen vs. website booking). If any is a
+  real tenant setting a date inside EzBizi, the row inverts and a scheduling sentence can go on the homepage.
+- Ring groups 3; numbers with `override_on` 0. Still a group count, not the row's resolved fraction; held.
+- Publishers: still the same 7 connected providers; no 7th written. LSA external_id/timestamp: not measured.
+
+## 2026-11-12: 0.0.0563-0.0.0567 live, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0567 at `9b1056188`. No WP page modified since the 11-11 privacy edit
+(page 8, `post_modified_gmt` 2026-11-12 01:38). All 10 live pages match their post_content as text. www
+`/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+- **Monday connect (`a239b3037`, 0566): read only.** `MondayClient` refuses a mutation before sending; webhook
+  registration (a Monday write) is not built. An account the customer connects and EzBizi reads from, the
+  Workiz/Airtable precedent: no new processor, `/privacy/` unchanged. **Trigger:** the day EzBizi writes to Monday
+  (webhook registration or any mutation), re-read the "these are all of them" list.
+- Phone connect creates an "Everyone" ring group and a voicemail box (`876c25c3e`); every line gets a 911 address
+  from its branch, sent to Twilio (`14d746f80`). Ring groups stay on the do-not list; the business address going to
+  Twilio, which already carries the calls, adds no recipient. No page names E911.
+- Email HTML drawn by a real engine (`dbc02432c`), Sensitive tasks sealed behind an authenticator code
+  (`ff999a7c9`), Task Board Gallery, Integrations redesign and connect-finishes-setup, Workiz watchdog/clock,
+  Re-Scheduling GSM-7 texts, Reports spam marks, HR removed people, What's-been-built release bar: no page names them.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502.
+Desk asked (11-12): 0563-0567 live status, Monday connection count, the 38 scheduled jobs by organization and
+origin (the scheduling row's open question), ring-group resolution, Training/LSA/7th publisher/Stripe.
+
+**Desk (11-12, ~23:50 UTC), recorded as given:** 0563 never shipped (web build crashed; 0564 carried it); 0564-0567
+live web + natives; 0568 cutting (Integrations status lines, Monday token refresh, imported video types, E911 wording).
+- Monday: 1 connection (A-1/Triplex, connected 21:16 UTC), 5 personal boards imported (254 tasks, 275 subtasks, 814
+  updates, 705 files), poll running, 0 webhooks registered. Read-only confirmed by data; no edit.
+- **Scheduling: 72 (up from 38), all in Triplex Group.** `jobs` has no source/created-via column, so the split by
+  origin could not be taken, and the desk warns the test may count EzBizi jobs mirrored through another link. Held:
+  one organization, origin unknown, and the test itself is suspect. **Next run:** ask for the 72 by `created_by`
+  (a staff user vs null/system) and by whether a lead with `source = website_booking` points at them; a job a staff
+  member dated on the Jobs screen inverts the row.
+- Ring groups 6 (3 "Everyone"); 6 of 15 numbers point at a group directly; 4 of 4 phone connections have a default
+  group. Closer to the row's resolved fraction, still held (the row is about selling ring groups, and nothing asks to).
+- Publishers on prod: bluesky, facebook_page, google_business_profile, instagram_professional, pinterest, tiktok, x,
+  youtube connected; no new publisher; LinkedIn 0 rows. `payment_accounts` 0, no Stripe secret. Training, LSA: not measured.
+No sentence moves.
+
+## 2026-11-13: 0.0.0568-0.0.0574 live, and `/privacy/` said EzBizi only reads the business accounts you connect
+
+Production `/download/windows.json` 0.0.0574 at `36fce1c42`. Before the edit all 10 live pages matched their WP
+post_content as text; no page modified since the 11-11 privacy edit. www `/ezbizi-api.json` byte-identical to the
+app's `/api/v1/openapi.json`.
+
+- **Edited WP page 8** (backup `~/ezb-wp-bak-20261113/page8.html` on the websites box). The 11-12 Monday trigger
+  tripped: `a4ea775fb` (ancestor of `36fce1c42`) schedules `ezbizi:monday-push` every minute (creates/changes items,
+  groups, updates on the customer's Monday boards) and adds `ezbizi:monday-webhooks`. "The accounts you connect" said
+  "any business account EzBizi reads from at your instruction" — already narrower than `MirrorToWorkiz` (jobs written
+  to the customer's Workiz), and false for Monday the first time the outbox sends. Now "reads from **or updates** at
+  your instruction, such as Google Ads". Neither Workiz nor Monday named (Workiz stays deliberately unpublished; a
+  customer's own account is not EzBizi's processor, so no new line in the list). True with zero writes too.
+  Measured: `monday_outbox` 0 rows on prod at ~00:10 UTC 11-14. Live, with and without a cache-buster, bare and www.
+- Backups: 10 days offsite instead of 45 (`6ba2da82d`). `/privacy/` gives no backup period ("a limited period …
+  as backups require"; the erasure page is the place for a number). Unchanged.
+- Automation steps to branch managers, clock-in shifts to managers on WhatsApp, STOP opt-outs recorded, TikTok
+  avatar on the card, Task Board/Monday parity, tab style, Integrations, ponytail shrink: staff-side, or covered by
+  existing Meta/Twilio lines. No page names them.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502 (iOS card stays unlinked).
+Desk asked (11-13): 0568-0574 live status, Monday writes, the 72 scheduled jobs by `created_by` and website-booking
+lead, Training/ring groups/LSA/7th publisher/`payment_accounts`. Answer below.
+
+- **Second edit to WP page 8** (pre-edit copy `~/ezb-wp-bak-20261113/page8-b.html`). `fe918296a` (in 0571): where an
+  organization manages Google Workspace signatures, a person's EzBizi profile photo is copied to the public
+  `/api/v1/signature-photos/{hmac}` address when their signature has no photo. "A photo added to an email signature is
+  kept at an unguessable web address" no longer covered it; now "A photo added to an email signature — and, where an
+  organization manages its email signatures in EzBizi, the profile photo of anyone whose signature has none — is kept
+  at an unguessable web address". Live, with and without a cache-buster; forbidden-terms over the live page ok - 4.
+
+**Desk (11-13, ~00:20 UTC 11-14), recorded as given:** 0568-0574 all live web + natives (0571 `6079e0937` after two
+cuts that never deployed; 0572 `e58f6f65e`, 0573 `248d93150`, 0574 `36fce1c42`); Apple "delivered, not yet
+accepted"; nothing rolled back. Monday push writes back every minute; webhook registration not yet run. Grok reply
+reader reads customer replies (xAI line already names a lead's messages). `aws/aws-sdk-php` removed; mail is SMTP to
+SES, processor unchanged. No new processor.
+- **Scheduling: 74 jobs, all Triplex Group (the A-1 org renamed). `created_by_user_id`: 10 staff, 64 null;
+  `created_by_label`: 28 across 10 staff names, 46 null; website-booking leads pointing at them: 0.** Ten jobs
+  created by a staff user inside EzBizi with a date is what the 11-12 note said inverts the row, so **the row has
+  inverted**: a scheduling sentence is now allowed. None was written, as with Training on 11-11: one organization,
+  nobody asked, and a count is not wording. If one is written, keep it to "set a job's date and time" (no calendar,
+  dispatch board or crew assignment is measured).
+- Training, ring groups, LSA enquiry, publishers, `payment_accounts`: no behaviour change (code shrink only;
+  RetentionPolicy gained 2 Monday lines). No sentence moves.
+
+## 2026-11-14: 0.0.0575 live, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0575 at `441470f79`. 36fce1c42..441470f79 is Monday import/automation work
+only (Job Status as PM status, sealed files not re-uploaded, recipients matched like the import): staff-side, and
+already covered by the 11-13 "reads from or updates" line. No WP page modified since the 11-13 privacy edit (page 8,
+`post_modified_gmt` 2026-11-14 00:07). All 10 live pages contain their WP post_content as text. www
+`/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, now 0.0.0559 (was 0.0.0502);
+`/download/` links id6805979795.
+Desk not asked: this run is unattended and `SendMessage` reached no `ezbizi-99`. No do-not row re-measured today;
+the 11-13 answers stand as recorded (scheduling row inverted, unwritten). No sentence moves.
+
+## 2026-11-15: nothing shipped, nothing on the site went false
+
+Production `/download/windows.json` still 0.0.0575 at `441470f79`; the only commit since is `c8a265eb6` (Monday: a
+blank Monday status is Not started), merged, not released, staff-side. No WP page modified since the 11-13 privacy
+edit (page 8, `post_modified_gmt` 2026-11-14 00:07). All 10 live pages contain their WP post_content as text. www
+`/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+**Method note for the next run** (the comparison reads DIFF on every page until both are applied): drop the
+`<!-- wp:html -->` / `<!-- /wp:html -->` lines from post_content, and strip ` decoding="async"` from the live HTML
+(WordPress adds it to every `<img>`), then compare whitespace-stripped. Run on the websites box with
+`sudo -u ezbizi_ftp /opt/plesk/php/8.4/bin/php /usr/local/bin/wp --path=/var/www/vhosts/ezbizi.com/httpdocs`.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+Desk not asked: production has not moved since the 11-14 audit, so there is no diff to ask about. The 11-13 answers
+stand as recorded (scheduling row inverted, unwritten). No sentence moves.
+
+## 2026-11-16: 0.0.0576-0.0.0578 live, and `/privacy/` said EzBizi does not read YouTube comments
+
+Production web is 0.0.0578 (`/var/www/ezbizi-current` -> release `20261116235815-acbaeee3b`, 23:58 UTC);
+`/download/windows.json` still 0.0.0577 at `49ec335c1` (natives behind web at the time of the check).
+
+- **Edited WP page 8** (pre-edit copy `~/ezb-wp-bak-20261116/page8.html` on the websites box). `37bba8889` (in 0577)
+  added a Social Comments inbox: `GET social/comments` reads Facebook Page post comments, Instagram comments, YouTube
+  `commentThreads` and X `/mentions` live from each network, and offers reply/hide/delete, audited as
+  `social.comment_*` with the comment id only (nothing stored). And `YouTubeOAuth::SCOPES` has requested
+  `youtube.force-ssl` since `bac28e72d` (11-02, delete a video) — **the YouTube paragraph's "two permissions" was
+  false for two weeks and this check missed it**. The page said "two permissions", readonly "used once, when you
+  connect", and "We do not read your videos, comments, subscribers or analytics". Now: three permissions, force-ssl
+  for deleting a chosen video and reading/replying/hiding/deleting comments, "Comments are read each time the inbox
+  is opened and are not stored by EzBizi. We do not read your subscribers or analytics." The Connected social
+  accounts intro now names the Comments inbox (comments, replies, mentions; reply/hide/delete on request; activity
+  log records who and the comment's id). Live on bare and www after `wp-cache-purge`; forbidden-terms ok - 4.
+  **Triggers:** EzBizi storing comments, sending comment text to xAI (an AI reply draft), or any YouTube
+  subscriber/analytics read breaks these sentences. **Rule for next runs:** grep every `*OAuth.php` `SCOPES` against
+  the scopes `/privacy/` names; a scope count is a published claim.
+- Telematics (`482b9eb4b`, 0578): tables and dash cam events list, **no vendor wired** ("until Jose picks one"). The
+  day a vendor (Samsara, Motive, Smartcar...) is wired, re-read the location section: van positions are stored three
+  months and come from the customer's own vendor account.
+- 0578 also: Leads Recovery inbox, automatic-text quiet hours (9 PM-8 AM) and two a day, job source from the dialed
+  line (Workiz `setSource`, deliberately unpublished), WhatsApp payment-method health (tenant's own Meta billing),
+  desktop sign-in fix. No page names them; no new recipient.
+- www `/ezbizi-api.json` differed from the app's `/api/v1/openapi.json` at 00:08 UTC 11-17: the hourly copy (23:17)
+  predates the 0578 deploy (23:58); 6 new app paths (`/leads/recovery*`, `/leads/{lead}/booking/*`,
+  `/monitoring/dashcam-events*`). Self-heals on the next hourly run; not an open item unless it persists.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages ok - 4 terms, none present; all 10 live pages contain their WP post_content (method of 11-15). Stores:
+Play `200`; Apple `resultCount` 1, 0.0.0559.
+Desk not asked: `SendMessage` cannot reach another session from an unattended run. Do-not rows measured from code
+only: no 7th publisher (the inbox reads/replies, it does not publish); Training, ring groups, LSA unchanged.
+
+## 2026-11-17: 0.0.0579-0.0.0587 live, nothing on the site went false
+
+Production web is 0.0.0587 at `dea89258f` (release `20261117220318`); `/download/windows.json` reads 0.0.0588 at
+`6d5adefaf` (a Windows build that ran ahead of its server cut; the desk folds 0588 into 0589, cutting). No WP page
+modified since the 11-16 privacy edit (page 8, `post_modified_gmt` 2026-11-17 00:07). All 10 live pages contain
+their WP post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`
+(yesterday's lag healed itself).
+
+65 commits in `acbaeee3b..dea89258f`, read against the live pages:
+- No `*OAuth.php` or `config/services.php` change, no new outbound host, no new table holding a new kind of person
+  data (`workiz_job_flags`, `latest_windows`, newsletter `revision`/`last_test_*`, suggestion progress, part
+  supplier, note `edited_at`). No new processor; the scope rule of 11-16 has nothing to compare today.
+- **Newsletter stage 1 (`f5a288349`)**: composer, revisions, a recorded test send. Sending, the test included, is
+  still Mailchimp (`MailchimpSender`); the homepage card and the two `/privacy/` Mailchimp sentences hold.
+- **Roles: `monitoring.unmonitored` (`8f3ec897f`)**: a role can now carry the screen-monitoring exemption, and every
+  guard follows (heartbeat strip, screenshots, live view, remote control, files). `/privacy/`'s "A person can be
+  exempted from screen monitoring, and a machine that is exempt reports no window or tab titles at all" holds.
+- Workiz job notes written back (`fe70ecbe3`), RingCentral phone lines per company/branch (`3b7ccb647`): covered by
+  "reads from or updates at your instruction" and the RingCentral recordings sentence. Workiz stays unpublished.
+- Task Board rules/links/bells, Project Management parts and Work Order PDF, HR hourly rate stages, Reports, Leads
+  Recovery, missed-call text limits, latest booking window per weekday, signup-mail retry: no live page names
+  Monday, the Task Board or Project Management (grep over the 10 live pages: 0 hits); no sentence moves.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-17, ~00:10 UTC 11-18), recorded as given** (asked by `send_message` to the SESSIONS.md id, answered in
+`docs/agents/inbox/website-daily-2026-11-17-desk-reply.md`; this route works from an unattended run): 0578-0587
+live on web; 0588 never deployed. Training, ring groups, Scheduled Jobs: nothing changed. Publishers: no file under
+`app/Support/Social` changed, no new publisher. LSA `external_id`: not measured. The desk did not check claims
+against the site; its candidates (Monday, Task Board, Project Management, Newsletter, Reports, permissions wording)
+are the ones read above. The 11-13 scheduling inversion stands, unwritten.
+
+## 2026-11-18: 0.0.0589-0.0.0598 live, and `/google-ads-api/` had said "status only" for nine days
+
+Production web is 0.0.0598 at `1d65ae8c0` (release `20261118225407`); `/download/windows.json` reads 0.0.0598 at
+`1d65ae8c0`. 0588 and 0595 never deployed (folded into 0589 and 0596); 0599 cutting. Before the edit no WP page was
+modified since the 11-16 privacy edit and all 10 live pages contained their WP post_content (method of 11-15). www
+`/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+- **Edited WP page 7, body and `_ezb_head`** (pre-edit copies `~/ezb-wp-bak-20261118/page7.html` and `page7.head` on
+  the websites box). `dc99f2c33` (**11-09**, Marketing › Ads manages Google) added
+  `POST ads-manager/google/budget` → `CampaignPerformance::setDailyBudget` → `campaignBudgets:mutate`
+  (`updateMask: amountMicros`) and `POST ads-manager/google/target` → `setTarget` → `campaigns:mutate` on the target
+  CPA / target ROAS field. The page said `campaigns:mutate`, "status only", "changes the campaign's status and
+  nothing else", and "does not … set or adjust bids or budgets". **False since 11-09 and missed by eight runs**; the
+  11-04 note above ("budgets are Meta-only") was true when written and nobody re-read it. Found today only because
+  `727b6c163`'s subject said "budget before/after with Google's read-back".
+  Now: a `campaigns:mutate` "status and bid target" row, a new `campaignBudgets:mutate` "daily amount" row, the
+  Search row also names status, daily budget and bid target; "two kinds of write"; the second paragraph names
+  pause/resume, daily budget and bid target, campaign level only, by "a person holding the permission to manage
+  advertising" (`ads_manager.manage`; the old "Manage Google Ads permission" name no longer exists), schedule for
+  pause/resume only, shared budgets and manual/shared bid strategies refused, audit with before and after; the
+  not-list reads "other than its status, its daily budget and its bid target; set bids on ad groups or keywords;
+  change a budget or bid strategy shared between campaigns". Last updated / `dateModified` → 2026-11-18. Every
+  clause read from `GoogleAdsManagerController` and `CampaignPerformance` at `1d65ae8c0`: only that controller calls
+  `setDailyBudget`/`setTarget` (`ApplyAdSchedules` calls `setStatus` only). Saved copy diffed against the written
+  one; live on bare and www: new row present, "status only" and "set or adjust bids" gone.
+  **Triggers:** an automation or schedule that changes a budget or target; any ad-group, keyword or creative write;
+  a create/remove campaign call. **Rule for next runs:** grep `->mutate(` and every `ads-manager/` and `meta-ads/`
+  route against the usage table on `/google-ads-api/` and the list on `/social-media/`; a usage table is an
+  exhaustive claim. This page is also what Google holds for the API application; the Leads + Google API session was
+  told (it owns the submission).
+- `/privacy/` holds: no `*OAuth.php` or `config/services.php` change, no new outbound host in the diff. Monday now
+  receives board members, groups and job-id columns (covered by "reads from or updates at your instruction"; no page
+  names Monday). Project Management client texts ship OFF; the client's signed project page (60 days, status only)
+  and a contractor's signed 7-day work-order link are new no-login addresses, and no sentence says otherwise.
+  Newsletter sending is still Mailchimp only (`MailchimpSender`); starter pictures are copied from the company's
+  own website. Work-order Workiz photos are fetched and not stored. Alerts › Questions and bulk-read alerts are
+  staff-side.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-18, ~00:15 UTC 11-19), recorded as given** (`docs/agents/inbox/website-daily-2026-11-18-desk-reply.md`):
+0589-0594, 0596-0598 live, nothing rolled back. No new processor, no new scope. Training, ring groups
+(`phone_ring_groups` 6 rows), Scheduled Jobs: 0 commits. LSA `external_id`: not measured (98 LSA MESSAGE leads since
+11-17). Publishers: **10 classes** (Bluesky, Facebook, Google Business Profile, Instagram, LinkedIn, Pinterest,
+Threads, TikTok, X, YouTube); yesterday's "9" was a miscount, none added. The desk did not flag the Google budget
+write; it answers a diff since yesterday, and this was older than the diff. No other sentence moves.
+
+## 2026-11-19: 0.0.0599-0.0.0611 live, and `/delete-account/` said monthly backups are kept beyond 45 days
+
+Production web is 0.0.0611 at `e2b005063` (release `20261119231839`); `/download/windows.json` reads 0.0.0611 at
+`e2b005063`. 0603, 0604, 0608, 0609 never deployed (folded); 0612 queued. Before the edits no WP page was modified
+since the 11-18 edit (page 7) and all 10 live pages contained their WP post_content and `_ezb_head` (method of
+11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+144 commits in `1d65ae8c0..e2b005063`, read against the live pages. Three edits, pre-edit copies in
+`~/ezb-wp-bak-20261119/` on the websites box, each saved copy read back equal to the written one, live on bare and www:
+- **WP page 5 `/delete-account/`.** `96dd2ca89` (Jose 11-19, installed on the app box 15:58 UTC): backups are 7
+  nights local, 10 days off-site (3 for uploaded files), and ONE month-first copy deleted after 32 days. The page
+  said "Monthly archive backups are retained beyond that period [45 days]": false from today. Now "One backup from
+  the first of each month is kept for about five weeks". "Up to 14 days" and "Up to 45 days" are still true upper
+  bounds and were left. Measured: app box holds 11-01 and 11-12..11-19; websites box 11-01 and 11-09..11-19.
+  **The 11-13 note above ("the erasure page is the place for a number", Unchanged) never opened this page**; 45→10
+  did not falsify it, but nobody had looked. New row in *Load-bearing sentences*.
+- **WP page 8 `/privacy/`, staff in the website chat.** Since `ce84b4c56` (10-01) a chat visitor sees the answering
+  person's first name and photo, and up to three recent repliers; `7c4f0099d` (0607) made the photo link
+  non-expiring. The page said nothing about either. Added one sentence under Your account. New row.
+- **WP page 8 `/privacy/`, payroll.** `ef64b30d5` (0607) adds `payroll_week_lines` (bonus, deductions, note per
+  person per week; 0 rows on prod). Staff records now also name "any bonus or deduction a manager adds to a week's
+  pay and the reason given". New row.
+- Both pages: Last updated / `dateModified` → 2026-11-19.
+
+No sentence moves for: minimum password 12→8 (no page gives a length); `services.twilio.platform_previous_*`
+(same processor, unset on prod); Monday `archive_group` (covered by "updates at your instruction"; no page names
+Monday); Reports Excel/CSV download (built in the client); branch address on contracts; Task Board, Monday sync,
+notifications, reviews filters. No `*OAuth.php` change, no new outbound host, `->mutate(`/`ads-manager/`/`meta-ads/`
+lines unchanged apart from Monday, no manifest/Info.plist/runtime-permission change, `app/Support/Social` unchanged.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages after the edits ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-19, ~00:05 UTC 11-20), recorded as given** (`docs/agents/done/website-daily-2026-11-19-desk-reply.md`):
+0599-0602, 0605-0607, 0610, 0611 live, nothing rolled back. No new processor, scope, host or Google/Meta write.
+`training_attempts` 58, `training_progress` 82, `training_assignments` 12. `phone_ring_groups` 6; numbers resolving
+to a group 6 (total not given). Jobs with `scheduled_for` and no `workiz_jobs` row: **784** (74 on 11-13; orgs not
+split). LSA leads 55,184, all with a `remote_id`. No new publisher class. The scheduling row stays inverted and
+unwritten: ask for the count per organization before a homepage sentence.
+
+## 2026-11-20: 0.0.0612-0.0.0620 live, and `/privacy/` named neither job applicants nor staff certifications
+
+Production web is 0.0.0620 at `3f99b84c5`; `/download/windows.json` reads 0.0.0620 at `3f99b84c5`. 0615-0617 never
+deployed (folded into 0618); 0621 (`43a211f00`) in its gate. Before the edit no WP page was modified since the 11-19
+edits (pages 5 and 8) and all 10 live pages contained their WP post_content (method of 11-15). www
+`/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+One edit, **WP page 8 `/privacy/`**, body and `_ezb_head` (pre-edit copies of every page in `~/ezb-wp-bak-20261120/`
+on the websites box; read back equal apart from trailing newlines; live on bare and www):
+- `9dfa1e434` (0618) adds `applicants` (name, phone, email, position, source, stage, notes; optional `lead_id`) and
+  `applicant_interviews` (outcome, notes). Applicants are neither customers nor staff, and the page named only
+  "your customers, your staff". "What your organization enters" now lists "people who apply to work for the
+  organization and their interviews" and the personal-data clause names "your job applicants". 0 rows on prod; the
+  sentence describes what the product holds, as the payroll line of 11-19 did.
+- `b8a197b15` (0618) adds `person_certifications` (name, issuer, number, issued, expires). The staff-records list now
+  names "the certifications a person holds (with the issuer, number and expiry date)".
+- Last updated / `dateModified` → 2026-11-20.
+
+**QuickBooks, deliberately not on `/privacy/`'s list.** `ad3c7cf1e` ships `QuickBooksOAuth` (Intuit, scope
+`com.intuit.quickbooks.accounting`, read-only expenses into Financials › Markets; hosts `*.intuit.com`). Desk: 0
+`social_connections` rows, `services.quickbooks.client_id` unset on prod, so nobody can connect. It is an account a
+tenant connects, covered by "any business account EzBizi reads from or updates at your instruction"; Intuit is not
+a processor of ours. **Trigger:** if EzBizi ever pushes anything to QuickBooks (invoices, payments), that is a write
+and a `forbidden-terms` question (`invoic`, `bill`), not a privacy line. AppAsk now answers market money questions
+from those figures through the existing xAI staff Q&A item ("any records the person may see").
+
+No sentence moves for: rating badge (aggregate count and average, 13,583 / 4.9 on A-1 sites; no person data),
+AI dispatcher (existing xAI path), complaint triage/board mirror (no AI call; Monday covered by "updates at your
+instruction"), QR centre image, Google review totals (existing GBP read), task reminders, PM job cost, Reports.
+Every new route sits in the authenticated group (desk). `app/Support/Social` gained only the QuickBooks reader.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-20, ~00:05 UTC 11-21), recorded as given** (`docs/agents/done/website-daily-2026-11-20-desk-reply.md`):
+0612-0614, 0618-0620 live, nothing rolled back. Training 58/82/12, `phone_ring_groups` 6 (6 numbers), Scheduled
+Jobs 785, LSA leads 55,428 all with `remote_id`, no new publisher class. Applicants 0, recruiting_spend 0.
+
+## 2026-11-21: 0.0.0621-0.0.0623 live, nothing on the site went false
+
+Production web is 0.0.0623 at `194e4c29c`; `/download/windows.json` reads 0.0.0623 at `194e4c29c`. No WP page modified
+since the 11-20 privacy edit (page 8, `post_modified_gmt` 2026-11-21 00:05); all 10 live pages contain their WP
+post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+`3f99b84c5..194e4c29c` is 18 files: Workiz job-file reads and rate-limit retries (existing processor and host), Reports
+"Not checked"/"photos not read", and plugin 1.26.34 (A-1 sites' aggregateRating JSON-LD follows the live review
+numbers). No new host, route, scope, publisher or `app/Support/Social` change. No sentence moves.
+**The desk's "pages hard-coding 13,583" note is about the A-1 tenant sites, not ezbizi.com**: no live ezbizi.com page
+carries a review count; the homepage's only `4.9` is an SVG star path.
+
+**Gate trap, Git-Bash:** looping `grep -qiF` over the terms core-dumped on every call, and the loop still printed
+`ok - 4 terms, none present` because a crashed grep is not a hit. Run the gate in Python (fails closed on a short
+page). A gate that prints its pass line when its matcher crashes is the fail-open shape the block above forbids.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python) over
+the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-21, ~00:00 UTC 11-22), recorded as given** (`docs/agents/done/website-daily-2026-11-21-desk-reply.md`):
+0621-0623 live, none folded or rolled back. Training 58/82/12, `phone_ring_groups` 6, numbers resolving to a group 6
+**of 15** (the first total since 11-15's 11 of 13 — the Communication card's forbidden phrasings hold more firmly).
+Scheduled Jobs 785, **all in Triplex Group, 0 in any other org** — the per-org split 11-19 asked for: one tenant, so
+the scheduling row stays unwritten on the homepage. LSA leads 55,429 all with `remote_id`. No new publisher class.
+
+## 2026-11-22: nothing shipped, nothing on the site went false
+
+Production `/download/windows.json` still 0.0.0623 at `194e4c29c`; main has only docs commits since. No WP page
+modified since the 11-20 privacy edit (page 8, `post_modified_gmt` 2026-11-21 00:05); all 10 live pages contain their
+WP post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+Desk not asked: production has not moved since the 11-21 reply (measured ~00:00 UTC 11-22), so its counts stand.
+No sentence moves.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python) over
+the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+## 2026-11-23: 0.0.0624-0.0.0627 live, and `/privacy/` did not mention before-and-after photos on tenant websites
+
+Production web is 0.0.0627 at `593d1a696` (release `20261123233554`); `/download/windows.json` reads 0.0.0627 at
+`593d1a696`; 0628 cutting. Before the edit no WP page was modified since the 11-20 privacy edit and all 10 live pages
+contained their WP post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+One edit, **WP page 8 `/privacy/`**, body and `_ezb_head` (pre-edit copies in `~/ezb-wp-bak-20261123/` on the websites
+box; read back equal; purged bare + www; live on both):
+- 0624 adds `GET v1/web/plugin/before-after` (site token) and `/image/{attachment}` (signed, 24h): approved inspection
+  before/after pairs shown by the plugin's `[ezbizi_before_after]` widget on the tenant's own site, with service,
+  city and state (no name, address or job number), 1600px re-encoded JPEGs (EXIF dropped). Approval needs
+  inspection.edit + report reach and a tick "Confirm the photos show no faces and no house numbers"; withdraw removes.
+  **The visitor's browser loads the images from EzBizi**, so the page's "If an organization switches both off ... the
+  plugin sends us nothing about anybody's visitors" no longer covered every case. New paragraph *Before-and-after
+  photos* under Enquiries from your websites; that closing sentence now reads "switches the chat and the form off
+  and shows no before-and-after photos". Approved pairs on prod: 0 (the sentence describes the product, as 11-19/20).
+  **Triggers:** the feed adding the street, customer name or job number; images proxied through the WP site (then the
+  IP clause goes); approval no longer required.
+- Last updated / `dateModified` → 2026-11-23.
+
+No sentence moves for: `/join?link=` invite links (creates an ordinary invitation; `/delete-account/`'s "If you were
+invited by an employer" holds; no page describes signup or "one at a time"); technician Review QR (same `/r/` page,
+scan credited to the technician, no customer); Google review reply explaining removed/eKomi reviews; **View as**
+(platform staff with `development.view_as`, every request audit-logged with the real actor, credentials/keys/
+deletion refused; no page makes a claim about EzBizi staff access either way — if one is ever written, it must
+mention this). No new host, scope, processor, publisher or `app/Support/Social` change (desk + `git diff`).
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python) over
+the 10 LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-23, ~23:45 UTC), recorded as given** (`docs/agents/done/website-daily-2026-11-23-desk-reply.md`):
+0624-0627 live, none rolled back (0624, 0625 re-cut after failed gates). Training 59/83/12. `phone_ring_groups` 6;
+numbers resolving to a group 6 of 15. **Scheduled Jobs now excludes soft-deleted jobs: Triplex Group 80, 0 elsewhere**
+— the 785 of 11-19..21 counted deleted jobs and is not comparable; 80 is the new baseline, still one tenant, so the
+scheduling row stays unwritten. LSA leads 55,898 all with `remote_id`. No new publisher class. invite_links 0,
+technician review codes 2, view_as_sessions 1.
+
+## 2026-11-25: `/privacy/` names Plaid (Financials › Bank)
+
+Plaid Integration session, one edit to **WP page 8 `/privacy/`** body (pre-edit copy
+`~/ezb-wp-bak-20261124/page-8-before-plaid.html` on the websites box; +1,610 bytes; live on www, bare 301s to it;
+`wp-cache-purge` both hosts):
+- New `<h3>Bank and card accounts (Plaid)</h3>` under Connected social accounts: bank sign-in happens on Plaid's
+  page (EzBizi never sees the password), link to the Plaid End User Privacy Policy; what is read (account name, type,
+  last four digits, balances, up to two years of transactions: date, amount, merchant, category); no full account or
+  routing numbers, no money movement; shown only in the company or branch where the bank was connected or above;
+  stored with the encrypted Plaid key until disconnected; disconnect calls Plaid `/item/remove` and deletes what was
+  read; my.plaid.com named.
+- "Who we rely on" gains **Plaid**.
+
+Unlike QuickBooks (11-20, deliberately absent), Plaid runs on EzBizi's own client id (dashboard team EzBizi), so it
+is a service we rely on, and Plaid's developer policy asks apps to disclose it. Code: `af8f6b65d` (Bank tab) and the
+matching/glance follow-up. **Trigger:** if EzBizi ever adds Plaid Auth, Identity, payments or transfers, this
+section says "cannot move money" and "no full account numbers" and goes false.
+
+## 2026-11-24: 0.0.0628-0.0.0635 live, nothing on the site went false
+
+Production web is 0.0.0635 at `b723830e0`; `/download/windows.json` reads 0.0.0635 at `b723830e0` (0633/0634 folded
+into 0635; 0636/0637 failed gates, folded into 0638, cutting). All 10 live pages contain their WP post_content
+(method of 11-15); the only WP change since 11-23 is page 8 `/privacy/` (Plaid, `post_modified_gmt` 2026-11-24 21:06,
+entry above dated 11-25). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+`593d1a696..b723830e0` is 131 files: 0 new hosts, scopes, processors, publishers or `app/Support/Social` changes; the
+new routes (task-board search, scheduling zip-reports, role mobile-bar options, project costs) are all
+authenticated. No sentence moves.
+- **Plaid is NOT on prod yet** (`af8f6b65d` is not an ancestor of `b723830e0`; 0 bank tables, 0 connections). The
+  11-25 `/privacy/` section went up ahead of 0638 and describes what 0638 ships; left as is (a disclosure ahead of a
+  feature is not a false capability claim; nothing on the homepage sells Bank). Re-check 0638 is live next run.
+- Administrator time-clock events no longer written to the audit log (past rows deleted, Jose's instruction); Monday
+  sync writes now attributed to "Monday sync". `/privacy/` says only "audit entries showing who changed what" and
+  makes no every-action claim, so neither moves it.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python, on the
+box) over the 10 LIVE pages ok - 4 terms, none present (control term `ezbizi` hit all 10). Stores: Play `200`; Apple
+`resultCount` 1, 0.0.0559.
+
+**Desk (11-24, ~23:20 UTC), recorded as given** (`docs/agents/done/website-daily-2026-11-24-desk-reply.md`):
+Training 59/83/12, `phone_ring_groups` 6, numbers resolving to a group 6 of 15, Scheduled Jobs Triplex Group 80 / 0
+elsewhere (all unchanged; scheduling row stays unwritten). LSA leads 56,215 all with `remote_id`. No new publisher.
+
+## 2026-11-25 (daily): 0.0.0636-0.0.0650 live, `/privacy/` now lists Chat messages
+
+Production web is 0.0.0650 at `46bdaea54`; `/download/windows.json` reads 0.0.0650 at `46bdaea54`. Before the edit all
+10 live pages contained their WP post_content (method of 11-15); page 8 had the 11-25 Chat-calls edit (6479e4937,
+`post_modified_gmt` 2026-11-25 18:37). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+- **Plaid is live** (`af8f6b65d` is an ancestor of `46bdaea54`; desk: 0 bank accounts, 0 connections). The 11-25
+  Plaid section now describes shipped code; the 11-24 "re-check 0638" item is closed.
+- **One edit, WP page 8 `/privacy/`** (pre-edit copies `~/ezb-wp-bak-20261125/page-8-before-chat.html` and
+  `page-8-head-before-chat.html` on the websites box; live on bare and www): Chat (0647/0649) stores staff-to-staff
+  text, photos, files and voice notes (`chat_messages`, 24-month window). "What your organization enters" now reads
+  "...and their interviews, **the messages, photos, files and voice notes colleagues send each other in Chat**, and
+  files and photos attached to any of them." Deliberately **no retention sentence**: the sweep deletes rows by query
+  and a swept message's attachment file stays on disk (`ChatMessage::retention()` ponytail note), so "deleted after
+  two years" would be false for photos/files. Write it the day an attachment orphan sweep exists.
+  Also fixed the stale dates: visible "Last updated" 24 → 25 November 2026, `_ezb_head` `dateModified` 2026-11-23 →
+  2026-11-25 (the 11-24/11-25 edits had not moved them together).
+- No sentence moves for: sent-report bodies now kept (`whatsapp_messages.body` for report templates, new
+  `report_emails`) — `/privacy/` already says automation rules send reports by email/WhatsApp and makes no
+  "not kept" claim; per-kind notification email switches (existing mail path); public `GET v1/chat/call` (static page,
+  token in the fragment, no data); `sdk.twilio.com` (Twilio, already named for Chat calls); `x.monday.com` is a parsing
+  pattern, not a call. No new OAuth scope, Google/Meta write or publisher.
+- **EzChat** (`com.ezbizi.ezchat`, sister app, same backend): not in any store yet (Play 404, Apple `resultCount` 0).
+  **Trigger:** the day it lists, its store privacy URL points at `/privacy/`, which names only "EzBizi" — check the
+  page still reads true for an app called EzChat (the camera/mic Chat-call sentences already cover it).
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python, on the
+box) over the 10 LIVE pages ok - 4 terms, none present (control `ezbizi` hit all 10), re-run on `/privacy/` after the
+edit ok. Stores: Play `200`; Apple `resultCount` 1, **0.0631** (was 0.0.0559).
+
+**Desk (11-25, ~23:45 UTC), recorded as given** (`docs/agents/done/website-daily-2026-11-25-desk-reply.md`):
+0638, 0640-0644, 0646, 0649, 0650 live (0636/0637/0639/0645/0647/0648 folded after failed gates), nothing rolled back.
+Training 59/83/12, `phone_ring_groups` 6, numbers resolving to a group 6 of 15, Scheduled Jobs Triplex Group 80 / 0
+elsewhere (all unchanged; scheduling row stays unwritten). LSA leads 56,434 all with `remote_id`. No new publisher.
+chats 2, chat_messages 2 (test accounts).
+
+## 2026-11-26: 0.0.0651-0.0.0655 live, nothing on the site went false
+
+Production web is 0.0.0655 at `60a987b3b`; `/download/windows.json` reads 0.0.0655 at `60a987b3b`. No WP page modified
+since the 11-25 Chat edit (page 8, `post_modified_gmt` 2026-11-26 00:07); all 10 live pages contain their WP
+post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+`46bdaea54..60a987b3b` is 44 files: Task Board archive (2 authenticated routes, `tasks.archived_at`),
+`users.hours_type`, review auto-replies skip Google-removed reviews, monitoring-route deadlock retry, Monday off
+(connection removed 06:34 UTC, 352 webhooks deleted, `MONDAY_ENABLED` unset). 0 new hosts, scopes, processors, public
+routes, Google/Meta writes or `app/Support/Social` lines. No sentence moves.
+- **Monday off moves nothing:** no live page names Monday.com; the only `monday` on any page is `/privacy/`'s
+  "Each Monday" weekly-summary weekday. Do not "fix" it.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python, on the
+box) over the 10 LIVE pages ok - 4 terms, none present (control `ezbizi` hit all 10). Stores: Play `200`; Apple
+`resultCount` 1, 0.0631. EzChat: Play 404, Apple `resultCount` 0 (builds in App Store Connect, not submitted).
+
+**Desk (11-26, ~14:30 UTC), recorded as given** (`docs/agents/done/website-daily-2026-11-26-desk-reply.md`):
+0651-0655 live, 0 folded or rolled back. Training 59/83/12, `phone_ring_groups` 6, numbers resolving to a group 6 of
+15, Scheduled Jobs Triplex Group 80 / 0 elsewhere (all unchanged; scheduling row stays unwritten). LSA leads 56,465
+all with `remote_id`. No new publisher. chats 8, chat_messages 22.

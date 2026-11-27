@@ -102,6 +102,8 @@ void main() {
     await _pump(tester, server);
     expect(server.notesAsked, 0);
 
+    await tester.ensureVisible(find.text('Notes from Workiz'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Notes from Workiz'));
     await tester.pump();
     expect(find.byKey(const Key('workiz-notes-loading')), findsOneWidget);
@@ -120,6 +122,8 @@ void main() {
   // under the job it was left on, EzBizi's number and Workiz's.
   testWidgets('each note sits under its job', (tester) async {
     await _pump(tester, _Server());
+    await tester.ensureVisible(find.text('Notes from Workiz'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Notes from Workiz'));
     await tester.pumpAndSettle();
 
@@ -141,6 +145,8 @@ void main() {
   // says why in the server's words, with nothing to try again.
   testWidgets('a branch that cannot be read says why, plainly', (tester) async {
     await _pump(tester, _Server());
+    await tester.ensureVisible(find.text('Notes from Workiz'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Notes from Workiz'));
     await tester.pumpAndSettle();
 

@@ -305,6 +305,43 @@ class DemoFillTest extends TestCase
         $this->assertSame(0, $later);
     }
 
+    /**
+     * Chat for the store screenshots (Apple, 2026-11-25): the App Review login
+     * in six chats with the invented staff, a photo, a voice message, call
+     * lines, one chat unread. Once, however often it runs.
+     */
+    public function test_it_fills_chat_for_the_review_login_once(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake(config('filesystems.default'));
+        $tenant = $this->demoTenant();
+        $reviewer = app(TenantContext::class)->run($tenant['org'], fn () => User::query()->create([
+            'organization_id' => $tenant['org']->id,
+            'name' => 'Apple Review',
+            'email' => 'apple@ezbizi.com',
+            'password' => 'a-real-password',
+            'is_active' => true,
+        ]));
+
+        $this->artisan('demo:fill')->assertSuccessful();
+
+        $chats = \App\Models\ChatMember::query()->withoutGlobalScopes()->where('user_id', $reviewer->id)->pluck('chat_id');
+        $this->assertCount(6, $chats);
+        $messages = \App\Models\ChatMessage::query()->withoutGlobalScopes()->whereIn('chat_id', $chats);
+        $this->assertSame(1, (clone $messages)->where('kind', 'image')->count());
+        $this->assertSame(1, (clone $messages)->where('kind', 'voice')->count());
+        $this->assertSame(3, (clone $messages)->where('kind', 'call')->count());
+        $this->assertSame(2, \App\Models\Attachment::query()->withoutGlobalScopes()->where('attachable_type', 'chat_messages')->count());
+        $this->assertSame(1, \App\Models\ChatMember::query()->withoutGlobalScopes()->where('user_id', $reviewer->id)->whereNull('read_at')->count(),
+            'one chat, Priya\'s, is left unread');
+        // Nobody else in the organization is touched.
+        $this->assertSame(0, \App\Models\ChatMember::query()->withoutGlobalScopes()->where('user_id', '!=', $reviewer->id)
+            ->whereNotIn('chat_id', $chats)->count());
+
+        $before = $this->counts();
+        $this->artisan('demo:fill')->assertSuccessful();
+        $this->assertSame($before, $this->counts(), 'a second run adds no chats');
+    }
+
     /** @return array<string, int> */
     private function emptyCounts(): array
     {
@@ -321,6 +358,8 @@ class DemoFillTest extends TestCase
             'assignments' => VehicleAssignment::query()->withoutGlobalScopes()->count(),
             'visits' => VehicleServiceVisit::query()->withoutGlobalScopes()->count(),
             'shifts' => TimeClockShift::query()->withoutGlobalScopes()->count(),
+            'chats' => \App\Models\Chat::query()->withoutGlobalScopes()->count(),
+            'chat_messages' => \App\Models\ChatMessage::query()->withoutGlobalScopes()->count(),
         ];
     }
 

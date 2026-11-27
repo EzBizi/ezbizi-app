@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Models\WhatsAppNumber;
 use App\Support\Ai\ReportFileRequest;
+use App\Support\Reports\ReportSource;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\PeriodReport;
 use App\Support\Scoping\ViewScope;
@@ -42,6 +43,18 @@ class SendRequestedReport implements ShouldQueue
 
     public function handle(TenantContext $tenant, WhatsAppCloud $cloud): void
     {
+        try {
+            $this->send($tenant, $cloud);
+        } finally {
+            // The report runs as the asker (Auth::setUser below). A worker runs
+            // job after job, any tenant's: forget them, as InternalRequest does,
+            // or the next job's actor and "created by" are this person.
+            app('auth')->forgetGuards();
+        }
+    }
+
+    private function send(TenantContext $tenant, WhatsAppCloud $cloud): void
+    {
         $number = WhatsAppNumber::query()->withoutGlobalScopes()->findOrFail($this->numberId);
 
         $tenant->run(Organization::withoutGlobalScopes()->findOrFail($number->organization_id), function () use ($number, $cloud) {
@@ -55,7 +68,7 @@ class SendRequestedReport implements ShouldQueue
                 ->keyBy(fn ($b) => BranchName::of($b));
 
             try {
-                $ask = ReportFileRequest::read($this->text, $branches->keys()->all(), CarbonImmutable::now('America/New_York'));
+                $ask = ReportFileRequest::read($this->text, $branches->keys()->all(), CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of()));
             } catch (RuntimeException) {
                 $say("\u{26A0}\u{FE0F} I couldn't read that just now. Try again in a minute.");
 
@@ -87,8 +100,29 @@ class SendRequestedReport implements ShouldQueue
 
             preg_match('/filename="([^"]+)"/', (string) $file->headers->get('Content-Disposition'), $m);
             $name = $m[1] ?? 'report.'.$ask['format'];
+            $title = pathinfo($name, PATHINFO_FILENAME);
+            // The figures as text first, then the file (Jose, 2026-11-10: every report, both).
+            $text = ($ask['report'] ?? 'period') === 'period'
+                ? app(PeriodReport::class)->summaryText($title, $ask['branch'] === null ? $branches->values() : [$branches[$ask['branch']]], $ask['from'], $ask['to'])
+                : "\u{1F4CA} *{$title}*";
+
+            // Reports come from the Reports number (Jose, 2026-11-09); this chat says where.
+            // No phone on their profile and it comes here instead.
+            $reports = WhatsAppNumber::forPurpose('reports');
+            if ($reports !== null && $reports->isNot($number) && ReportSource::during('requested', fn () => app(WhatsAppGroups::class)->deliverDocumentsToUser($reports, $user, $title, [[
+                'title' => $title, 'pdf' => (string) $file->getContent(), 'filename' => $name,
+                'type' => (string) $file->headers->get('Content-Type'), 'text' => $text,
+            ]])) > 0) {
+                $say("\u{1F4C4} Sent from the Reports number, {$reports->display_number}.");
+
+                return;
+            }
+
             $id = app(WhatsAppGroups::class)->upload($number, (string) $file->getContent(), $name, (string) $file->headers->get('Content-Type'));
-            $cloud->replyFreeForm($number, $this->to, ['type' => 'document', 'document' => ['id' => $id, 'filename' => $name, 'caption' => "\u{1F4C4} *".pathinfo($name, PATHINFO_FILENAME).'*']], $name);
+            ReportSource::during('requested', function () use ($say, $text, $cloud, $number, $id, $name) {
+                $say($text);
+                $cloud->replyFreeForm($number, $this->to, ['type' => 'document', 'document' => ['id' => $id, 'filename' => $name, 'caption' => "\u{1F4C4} *".pathinfo($name, PATHINFO_FILENAME).'*']], $name);
+            });
         });
     }
 }

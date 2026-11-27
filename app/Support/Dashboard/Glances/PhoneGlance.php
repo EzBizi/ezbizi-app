@@ -135,7 +135,7 @@ final class PhoneGlance extends DescribedGlance
             $data['figures'] = [
                 GlancePayload::figure('answered', 'answered '.$period->phrase(), $answered, $this->answered($previous)),
                 GlancePayload::figure('missed', 'missed', $missed, $this->missed($previous)),
-                GlancePayload::figure('voicemail', 'waiting', $waiting),
+                GlancePayload::figure('voicemail', 'to deal with', $waiting),
             ];
 
             return $this->payload($data);
@@ -191,8 +191,8 @@ final class PhoneGlance extends DescribedGlance
     private function voicemailSentence(int $waiting): string
     {
         return $waiting === 1
-            ? '1 voicemail is waiting.'
-            : "{$waiting} voicemails are waiting.";
+            ? '1 voicemail to deal with.'
+            : "{$waiting} voicemails to deal with.";
     }
 
     /**

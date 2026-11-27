@@ -47,9 +47,10 @@ class _ColourFieldState extends State<ColourField> {
   bool _open = false;
 
   /// The common ones: brand-like oranges, blues, greens, and the neutrals.
+  /// No purple (house rule; UI pass 11-16): brown took its place.
   static const _ready = [
     Color(0xFFE55300), Color(0xFFD62828), Color(0xFFF2B705), Color(0xFF2E9D4F),
-    Color(0xFF0B5CAD), Color(0xFF1877F2), Color(0xFF6F42C1), Color(0xFF00897B),
+    Color(0xFF0B5CAD), Color(0xFF1877F2), Color(0xFF7F5347), Color(0xFF00897B),
     Color(0xFF1B1B1B), Color(0xFF555555), Color(0xFFF1F3F5), Color(0xFFFFFFFF),
   ];
 

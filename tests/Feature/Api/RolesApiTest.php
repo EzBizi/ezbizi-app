@@ -130,7 +130,31 @@ class RolesApiTest extends TestCase
             ->pluck('key');
 
         $this->assertContains('roles', $keys, 'control: a Settings module is still offered');
-        $this->assertContains('audit', $keys);
+        $this->assertNotContains('audit', $keys, 'Activity moved to Monitoring (2026-11-25); audit.view opens nothing');
+    }
+
+    public function test_an_unknown_permission_is_refused_by_name_not_dropped(): void
+    {
+        // Desk, 2026-11-23: `reviews.reply` came back 200 and was ignored.
+        $alpha = $this->provisionTenant('Alpha');
+        $role = $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/roles', ['name' => 'Desk', 'permissions' => ['customers.view']])
+            ->assertCreated()->json('data');
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/roles/{$role['id']}", ['permissions' => ['customers.view', 'reviews.reply']])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('permissions')
+            ->assertJsonFragment(['permissions' => ['These are not permissions EzBizi has, so nothing was saved: reviews.reply.']]);
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/roles', ['name' => 'Other', 'permissions' => ['nope.view']])
+            ->assertUnprocessable();
+
+        // Nothing was saved, and a real key still saves (control).
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/roles/{$role['id']}", ['permissions' => ['customers.view', 'jobs.view']])
+            ->assertOk();
     }
 
     public function test_no_shipped_module_declares_a_requirement_by_accident(): void
@@ -179,7 +203,13 @@ class RolesApiTest extends TestCase
         //            Other people's recordings are listed and played only in
         //            the Recordings tab, so listen without the tab is a grant
         //            nothing can spend; the requirement describes the product.
-        $argued = ['estimates', 'field', 'reports', 'work_hours'];
+        // Roles audit 2026-11-09: the screens' own hidden requirements, declared.
+        // Roles audit 2026-11-24 (docs/agents/roles-permissions-audit-2026-11-24.md):
+        //   ai_assistance  WhatsApp groups and Staff bot are editors whose every
+        //            endpoint asks for `manage`; the screen drew neither without it.
+        //   memberships  the Dashboard counts the members list, which is
+        //            `memberships.members.view` on the server.
+        $argued = ['ai_assistance', 'company', 'estimates', 'field', 'guidelines', 'inspection', 'leads', 'memberships', 'organizations', 'project_board', 'reports', 'work_hours'];
 
         $declaring = [];
 
@@ -192,6 +222,39 @@ class RolesApiTest extends TestCase
         sort($declaring);
 
         $this->assertSame($argued, $declaring);
+    }
+
+    public function test_a_requirement_declared_later_blocks_only_a_new_tick(): void
+    {
+        // Roles audit 2026-11-24: Staff bot gained `requires manage`. A role
+        // that already held the tab without manage must still save other
+        // edits; ticking the tab anew without manage is still refused.
+        $alpha = $this->provisionTenant('Alpha');
+
+        $roleId = $this->inTenant($alpha['org'], function () {
+            $role = Role::create(['name' => 'Bot desk']);
+            $role->syncPermissionKeys(['ai_assistance.view', 'ai_assistance.staff_bot.view']);
+
+            return $role->getKey();
+        });
+
+        // An unrelated edit to the role as stored: accepted, the tab kept.
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/roles/{$roleId}", ['permissions' => [
+                'ai_assistance.view', 'ai_assistance.staff_bot.view', 'customers.view',
+            ]])
+            ->assertOk();
+
+        // The same tick on a role that never held it: refused, naming why.
+        $fresh = $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/roles', ['name' => 'New desk', 'permissions' => ['customers.view']])
+            ->assertCreated()->json('data.id');
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/roles/{$fresh}", ['permissions' => [
+                'customers.view', 'ai_assistance.view', 'ai_assistance.staff_bot.view',
+            ]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('permissions');
     }
 
     public function test_a_role_payload_cannot_make_itself_administrator(): void

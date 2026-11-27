@@ -150,6 +150,40 @@ class LabelCallTranscriptsTest extends TestCase
         $this->assertSame($row->lead_id, $event->subject_id);
     }
 
+    /** Jose's list, 2026-11-03: a call that did not book raises lead.call_not_booked, once per lead a day. */
+    public function test_a_call_that_did_not_book_raises_lead_call_not_booked_once(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'turns' => [['speaker' => 'Customer', 'text' => self::RAW]],
+            'summary' => 'Asked the price, will think about it.', 'next_step' => '',
+            'complaint' => false, 'asked_price' => true, 'asked_availability' => false, 'booked' => false,
+        ]]))]);
+        $first = $this->aCall();
+        $this->inTenant($this->t['org'], fn () => $first->replicate()->fill(['remote_id' => uniqid()])->save());
+
+        $this->artisan('ezbizi:label-call-transcripts')->assertSuccessful();
+
+        $event = \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.call_not_booked')->sole();
+        $this->assertSame($first->lead_id, $event->subject_id);
+        $this->assertSame(0, \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.call_complaint')->count());
+    }
+
+    /** Desk, 2026-11-02: a transferred call is two transcripts on one lead, and alerted twice. */
+    public function test_one_call_in_two_transcripts_alerts_once(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'turns' => [['speaker' => 'Customer', 'text' => self::RAW]],
+            'summary' => 'Unhappy.', 'next_step' => '',
+            'complaint' => true, 'asked_price' => false, 'asked_availability' => false, 'booked' => false,
+        ]]))]);
+        $first = $this->aCall();
+        $this->inTenant($this->t['org'], fn () => $first->replicate()->fill(['remote_id' => uniqid()])->save());
+
+        $this->artisan('ezbizi:label-call-transcripts')->assertSuccessful();
+
+        $this->assertSame(1, \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.call_complaint')->count());
+    }
+
     /** AI item 4: asked side by side, and one failure leaves only its own call for later. */
     public function test_calls_are_asked_together_and_a_failure_stays_with_its_call(): void
     {

@@ -193,6 +193,12 @@ class _ItemPaneState extends State<ItemPane> {
   bool _loading = true;
   bool _stockFailed = false;
 
+  /// Whether this item's own reads have landed. Until then `_item` is the
+  /// list row it was opened from, which carries no company and no shelves, so
+  /// drawing it as the record would state "None on hand" and the org's name
+  /// as facts (UI/UX phone audit, 2026-11-04).
+  bool _fresh = false;
+
   /// What happened to this item, newest first (`GET /inventory/items/{id}/
   /// movements`, Inventory 6cbdc919; UI queue 43, option 1's History). Asked
   /// only with `inventory.stock.view`, the same gate as on-hand.
@@ -225,6 +231,7 @@ class _ItemPaneState extends State<ItemPane> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.itemId != widget.itemId) {
       _item = widget.seed;
+      _fresh = false;
       _adjustLocationId = null;
       _countedAs.clear();
       _reason.clear();
@@ -295,6 +302,7 @@ class _ItemPaneState extends State<ItemPane> {
       _item = item;
       _balances = balances;
       _stockFailed = stockFailed;
+      _fresh = true;
       _locations = locRes.ok ? inventoryRows(locRes.data) : const [];
       _adjustLocationId ??= balances.isEmpty
           ? null
@@ -461,10 +469,11 @@ class _ItemPaneState extends State<ItemPane> {
                           [
                             item['number'],
                             item['sku'],
-                            inventoryOwnerLabel(
-                              item,
-                              widget.session.me!.organization.name,
-                            ),
+                            if (_fresh)
+                              inventoryOwnerLabel(
+                                item,
+                                widget.session.me!.organization.name,
+                              ),
                             inventoryPlaceLabel(item),
                           ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
                           style: theme.textTheme.bodyMedium,
@@ -489,7 +498,9 @@ class _ItemPaneState extends State<ItemPane> {
                         const SizedBox(height: 16),
                         Text('On-hand', style: theme.textTheme.titleMedium),
                         const SizedBox(height: 8),
-                        if (_balances.isEmpty)
+                        if (!_fresh)
+                          const Text('Loading…')
+                        else if (_balances.isEmpty)
                           _stockFailed
                               ? const SizedBox.shrink()
                               : const Text(

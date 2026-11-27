@@ -7,8 +7,11 @@ use App\Models\Organization;
 use App\Support\Files\HardenedPdf;
 use App\Support\Reports\Airtable\AirtablePnl;
 use App\Support\Reports\Airtable\ReportSources;
+use App\Support\Reports\LocationOrder;
 use App\Support\Reports\ReportJobs;
+use App\Support\Settings\OrgTimezone;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The weekly and monthly PDF, per branch and consolidated, for any
@@ -55,15 +58,52 @@ final class PeriodReport
         return $this->page($this->title(BranchName::of($branch), $from, $to), $this->branch($branch, $from, $to));
     }
 
-    /** Every branch with Workiz jobs, after a company summary. */
-    public function consolidated(Organization $organization, string $from, string $to): string
+    /**
+     * The period as people read it on WhatsApp, sent before its file (Jose,
+     * 2026-11-10: the text with the data, then the PDF): each branch's jobs
+     * created, done and canceled and its done sales, in the location order,
+     * and the total.
+     *
+     * @param  iterable<Franchise>  $branches
+     */
+    public function summaryText(string $title, iterable $branches, string $from, string $to): string
+    {
+        $money = fn (float $v) => ($v < 0 ? '-$' : '$').number_format(abs($v), 2);
+        $lines = ["\u{1F4CA} *{$title}*", '_'.CarbonImmutable::parse($from)->format('M j').' – '.CarbonImmutable::parse($to)->format('M j, Y').'_', ''];
+        $all = ['created' => 0, 'done' => 0, 'canceled' => 0, 'gross' => 0.0];
+        foreach (LocationOrder::sort(collect($branches)) as $branch) {
+            $f = $this->figures($branch, $from, $to);
+            $n = ['created' => array_sum(array_column($f['created'], 'all')), 'done' => array_sum(array_column($f['closed'], 'done')),
+                'canceled' => array_sum(array_column($f['closed'], 'canceled')), 'gross' => (float) array_sum(array_column($f['closed'], 'gross'))];
+            if ($n['created'] + $n['done'] + $n['canceled'] === 0 && $n['gross'] == 0) {
+                continue;
+            }
+            $lines[] = '• *'.BranchName::of($branch).'*: '.$n['created'].' created · '.$n['done'].' done · '.$n['canceled'].' canceled · '.$money($n['gross']).' sales';
+            foreach ($n as $k => $v) {
+                $all[$k] += $v;
+            }
+        }
+        $lines[] = '';
+        $lines[] = '*TOTAL: '.$all['created'].' created · '.$all['done'].' done · '.$all['canceled'].' canceled · '.$money($all['gross']).' sales*';
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Every branch with Workiz jobs, after a company summary. $only: a rule's branches.
+     *
+     * @param  list<string>|null  $only
+     */
+    public function consolidated(Organization $organization, string $from, string $to, ?array $only = null): string
     {
         $branches = Franchise::query()->withoutGlobalScopes()
             ->where('organization_id', $organization->getKey())
-            ->where('is_active', true)
+            ->switchedOn()
             ->whereIn('id', ReportJobs::branchesWithJobs((string) $organization->getKey()))
+            ->when($only !== null, fn ($q) => $q->whereIn('id', $only))
             ->orderBy('name')
             ->get();
+        $branches = LocationOrder::sort($branches);
 
         // A draft's company order; any branch it does not name keeps its place after.
         if (($order = $this->options['company_order'] ?? []) !== []) {
@@ -120,15 +160,39 @@ final class PeriodReport
 
         $airtable = app(AirtableSections::class);
 
-        return '<h2>Ad sources - created</h2>'
+        // Jose's list, 2026-11-03: "ADD KPI's".
+        $created = ['all' => array_sum(array_column($f['created'], 'all')), 'done' => array_sum(array_column($f['created'], 'done'))];
+        $done = array_sum(array_column($f['closed'], 'done'));
+        $canceled = array_sum(array_column($f['closed'], 'canceled'));
+        $gross = array_sum(array_column($f['closed'], 'gross'));
+        $kpis = '<h2>Key figures</h2>'.self::table(
+            ['Jobs created', 'Close rate', 'Done', 'Canceled', 'Canc%', 'Gross', 'Avg sale', 'Deposits', 'Net margin'],
+            [[(string) $created['all'], e(self::share($created['done'], $created['all'])), (string) $done, (string) $canceled,
+                $cancel($canceled, $done + $canceled), e(self::money($gross)), $avg($gross, $done),
+                e(self::money(array_sum(array_column($f['techs'], 'deposits')))),
+                $pnl['income'] ? e(self::percent($pnl['net'] / $pnl['income'])) : '—']],
+            raw: true,
+        ).'<p class="na">Close rate: jobs created in the dates that are done. Canc%: of the jobs closed in the dates.</p>';
+        $reasons = $f['reasons'] ?? [];
+        $breakdown = '<h2>Cancellation breakdown</h2>'.($reasons === [] ? '<p class="na">No jobs were canceled.</p>' : self::table(
+            ['Reason', 'Canceled', 'Share'],
+            array_map(fn ($why, $n) => [e($why), (string) $n, e(self::share($n, $canceled))], array_keys($reasons), $reasons),
+            raw: true,
+        ));
+
+        return $kpis.'<h2>Ad sources - created</h2>'
             .self::table(['Source', 'All', 'Done', 'Open', 'Canc', 'Canc%', 'Gross', 'Avg sale'], $sourceRows($f['created'], true), raw: true)
             .'<h2>Ad sources - closed</h2>'
             .self::table(['Source', 'Done', 'Canc', 'Canc%', 'Gross', 'Avg sale'], $sourceRows($f['closed'], false), raw: true)
+            .$breakdown
+            // Jose's list, 2026-11-03: "Add Tech KPI's breakdown".
             .'<h2>Field performance (by tech)</h2>'
-            .self::table(['Technician', 'Done', 'Canc', 'Canc%', 'Gross', 'Avg sale', 'Deposits'], array_map(fn ($t) => [
+            .self::table(['Technician', 'Done', 'Canc', 'Canc%', 'Tech-caused canc', 'Gross', 'Share of gross', 'Avg sale', 'Deposits'], array_map(fn ($t) => [
                 e($t['name']), (string) $t['done'], (string) $t['canceled'],
                 $cancel($t['canceled'], $t['done'] + $t['canceled']),
-                e(self::money($t['gross'])), $avg($t['gross'], $t['done']), e(self::money($t['deposits'])),
+                (string) ($t['tech_canceled'] ?? 0),
+                e(self::money($t['gross'])), e($gross > 0 ? self::percent($t['gross'] / $gross) : '—'),
+                $avg($t['gross'], $t['done']), e(self::money($t['deposits'])),
             ], $f['techs']), raw: true)
             .($branchId === null ? '' : '<h2>Repair teams</h2>'.$airtable->repairTeams($org, $branchId, $from, $to, $this->options['goals'] ?? [])
                 .'<h2>Refunds, disputes and returned checks</h2>'.$airtable->refunds($org, $branchId, $from, $to))
@@ -191,9 +255,12 @@ final class PeriodReport
     }
 
     /**
+     * $scheduled: the closed jobs are those SCHEDULED in the period, as Workiz's technician report
+     * counts them (report_by=2, Rodrigo's daily); the weekly keeps the closed date (desk, 2026-11-11).
+     *
      * @return array{created: array, closed: array, techs: list<array>}
      */
-    public function figures(Franchise $branch, string $from, string $to): array
+    public function figures(Franchise $branch, string $from, string $to, bool $scheduled = false): array
     {
         $range = [$from.' 00:00:00', $to.' 23:59:59'];
         $jobs = fn () => ReportJobs::jobs((string) $branch->getKey());
@@ -206,7 +273,7 @@ final class PeriodReport
         $excluded = array_flip(array_map('strval', $this->options['exclude_jobs'] ?? []));
         $kept = fn ($job) => $excluded === [] || ! (isset($excluded[(string) $job->ref]) || isset($excluded[(string) $job->serial]));
 
-        foreach ($jobs()->whereBetween('j.booked_at', $range)->get()->filter($kept) as $job) {
+        foreach (ReportJobs::created($jobs()->whereBetween('j.booked_at', $range)->get())->filter($kept) as $job) {
             $s = $source($job->job_source);
             $created[$s] ??= $row();
             $created[$s]['all']++;
@@ -217,42 +284,59 @@ final class PeriodReport
             }
         }
 
-        // Closed: done or canceled in the period, whenever booked. ponytail:
-        // last_status_update is the latest change, Workiz's API has no
-        // "completed at".
+        // Closed: done or canceled in the period, whenever booked: when the sweep
+        // first saw it closed (closed_at), else its latest change for a row
+        // closed before that was kept.
         $closed = [];
         $techs = [];
-        foreach ($jobs()->whereBetween('j.last_status_update', $range)->whereIn('j.status', ['Done', 'Canceled'])->get()->filter($kept) as $job) {
+        $reasons = [];
+        $when = $scheduled ? 'j.scheduled_for' : DB::raw('coalesce(j.closed_at, j.last_status_update)');
+        foreach ($jobs()->whereBetween($when, $range)->whereIn('j.status', ['Done', 'Canceled'])->get()->filter($kept) as $job) {
             $s = $source($job->job_source);
             $kind = self::kind($job->status);
             $price = $kind === 'done' ? (float) $job->total : 0.0;
             $closed[$s] ??= $row();
             $closed[$s][$kind]++;
             $closed[$s]['gross'] += $price;
+            // Jose's list, 2026-11-03: "Add Cancellation Breakdown". Workiz's
+            // sub-status is the reason; most cancels carry none.
+            $techFault = false;
+            if ($kind === 'canceled') {
+                $why = trim((string) ($job->sub_status ?? '')) ?: 'No reason given';
+                $reasons[$why] = ($reasons[$why] ?? 0) + 1;
+                $techFault = self::techFault($why);
+            }
 
             $team = ReportJobs::team($job);
             foreach ($team as $tech) {
                 $id = (string) ($tech['id'] ?? $tech['Name'] ?? 'none');
-                $techs[$id] ??= ['name' => trim((string) ($tech['Name'] ?? 'Unassigned')), 'done' => 0, 'canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
+                $techs[$id] ??= ['name' => trim((string) ($tech['Name'] ?? 'Unassigned')), 'done' => 0, 'canceled' => 0, 'tech_canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
                 $techs[$id][$kind]++;
+                $techs[$id]['tech_canceled'] += (int) $techFault;
                 // A job worked by two shares its price, so totals stay the job's.
                 $techs[$id]['gross'] += $price / count($team);
             }
         }
 
+        // A deposit is the job's team's, split like its price; whoever keyed it in only when the job has no
+        // team (Nov 10: 46.6% had gone to someone not on the job, desk 2026-11-11).
         $names = ReportJobs::people((string) $branch->getKey());
-        foreach (ReportJobs::paidBy((string) $branch->getKey(), ...$range) as $id => $amount) {
-            $id = (string) $id;
-            $techs[$id] ??= ['name' => self::collector($names[$id] ?? null, $id), 'done' => 0, 'canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
-            $techs[$id]['deposits'] += $amount;
+        foreach (ReportJobs::paidFor((string) $branch->getKey(), ...$range) as $payment) {
+            $team = json_decode((string) $payment->team, true) ?: [['id' => (string) $payment->user_ref]];
+            foreach ($team as $tech) {
+                $id = (string) ($tech['id'] ?? $tech['Name'] ?? 'none');
+                $techs[$id] ??= ['name' => trim((string) ($tech['Name'] ?? '')) ?: self::collector($names[$id] ?? null, $id), 'done' => 0, 'canceled' => 0, 'tech_canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
+                $techs[$id]['deposits'] += (float) $payment->amount / count($team);
+            }
         }
 
         $byAll = fn ($a, $b) => [$b['all'] + $b['done'] + $b['canceled'], $b['gross']] <=> [$a['all'] + $a['done'] + $a['canceled'], $a['gross']];
         uasort($created, $byAll);
         uasort($closed, $byAll);
         usort($techs, fn ($a, $b) => [$b['gross'], $b['deposits']] <=> [$a['gross'], $a['deposits']]);
+        arsort($reasons);
 
-        return ['created' => $created, 'closed' => $closed, 'techs' => $techs];
+        return ['created' => $created, 'closed' => $closed, 'techs' => $techs, 'reasons' => $reasons];
     }
 
     /**
@@ -321,7 +405,7 @@ final class PeriodReport
             .'.na{color:#b45309;margin:2pt 0}.foot{color:#666;font-size:7pt;margin-top:14pt}'
             .'</style></head><body><h1>'.e($title).'</h1>'.$body
             .'<p class="foot">Internal management report. From EzBizi\'s copy of Workiz and the Airtable P&amp;L, made '
-            .e(CarbonImmutable::now('America/New_York')->format('M j, Y g:i A T')).'.</p></body></html>';
+            .e(CarbonImmutable::now(OrgTimezone::of())->format('M j, Y g:i A T')).'.</p></body></html>';
     }
 
     /**
@@ -348,6 +432,12 @@ final class PeriodReport
     public static function collector(?string $name, string $id): string
     {
         return trim((string) $name) ?: "Not in Workiz's API ({$id})";
+    }
+
+    /** A cancel the technician caused, by Workiz's reason ("Tech No Call No Show", "Technician Fault"). */
+    private static function techFault(string $reason): bool
+    {
+        return (bool) preg_match('/\btech(nician)?\b/i', $reason);
     }
 
     private static function kind(?string $status): string

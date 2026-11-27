@@ -25,6 +25,10 @@ final class ThreadsOAuth extends MetaLoginOAuth
 
     protected const LONG_GRANT = 'th_exchange_token';
 
+    protected const REFRESH_URL = 'https://graph.threads.net/refresh_access_token';
+
+    protected const REFRESH_GRANT = 'th_refresh_token';
+
     protected const ME_URL = 'https://graph.threads.net/v1.0/me';
 
     protected const ME_FIELDS = 'id,username,name';

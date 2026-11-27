@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/jobs/estimates_tab.dart';
 import 'package:ezbizi_client/screens/jobs_screen.dart';
+import 'package:ezbizi_client/widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -36,6 +37,42 @@ void main() {
       expect(find.text('Chimney Sweep'), findsNothing);
     });
 
+    // Design 197 (Jose, 2026-11-17): booking as its own Jobs tab.
+    testWidgets('Book is a tab for whoever may add a job, and opens the page', (
+      tester,
+    ) async {
+      await _jobs(tester, _all);
+      expect(find.text('Book'), findsNothing, reason: 'no jobs.create');
+
+      await _jobs(tester, [..._all, 'jobs.create']);
+      await tester.tap(find.text('Book'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('book-page')), findsOneWidget);
+      expect(find.byKey(const ValueKey('book-submit')), findsOneWidget);
+    });
+
+    // UI pass 2026-11-17: on Estimates the header still said "Add job"
+    // (the Jobs tab, offstage, kept the slot) beside an inline "New
+    // estimate". Only the tab in front fills the header.
+    testWidgets('the header action belongs to the tab in front', (
+      tester,
+    ) async {
+      final header = ValueNotifier<Widget?>(null);
+      await _jobs(tester, _all, header: header);
+      expect(find.byKey(const ValueKey('tour-jobs-add')), findsOneWidget);
+      expect(find.byKey(const ValueKey('estimate-new')), findsNothing);
+
+      await tester.tap(find.text('Estimates'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('tour-jobs-add')), findsNothing);
+      expect(find.byKey(const ValueKey('estimate-new')), findsOneWidget);
+
+      await tester.tap(find.text('Jobs').first);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('tour-jobs-add')), findsOneWidget);
+      expect(find.byKey(const ValueKey('estimate-new')), findsNothing);
+    });
+
     testWidgets("a look at the estimates keeps a job's unsaved edits", (
       tester,
     ) async {
@@ -57,6 +94,77 @@ void main() {
         'Chimney Sweep, both flues',
       );
     });
+  });
+
+  // Design 172, option 1 with phone 4 (Jose, 2026-11-03: "as u recommend").
+  group('the board', () {
+    testWidgets('a column per status, Archived shut, a card dragged across', (
+      tester,
+    ) async {
+      await _estimates(tester);
+      await tester.tap(find.text('Board'));
+      await tester.pumpAndSettle();
+
+      expect(_server.preferences['jobs.estimates.view'], 'board');
+      for (final s in ['draft', 'sent', 'accepted', 'declined']) {
+        expect(find.byKey(ValueKey('estimate-column-$s')), findsOneWidget);
+      }
+      expect(find.text('▸ Archived · 1,954'), findsOneWidget);
+      expect(
+        find.text('Paula Grant'),
+        findsNothing,
+        reason: 'Archived is shut',
+      );
+
+      // Brian Moss is sent: Draft is not somewhere it can go.
+      final drag = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('estimate-card-e-1'))),
+      );
+      await drag.moveBy(const Offset(20, 0));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('estimate-column-draft-refused')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('estimate-column-accepted')),
+        findsOneWidget,
+      );
+
+      await drag.moveTo(
+        tester.getCenter(
+          find.byKey(const ValueKey('estimate-column-accepted')),
+        ),
+      );
+      await tester.pump();
+      await drag.up();
+      await tester.pumpAndSettle();
+      expect(_server.patches.last, {'status': 'accepted'});
+      expect(_server.estimates['e-1']!['status'], 'accepted');
+    });
+
+    testWidgets(
+      'a phone shows one status, and Move to lists only the allowed',
+      (tester) async {
+        await _estimates(tester, size: const Size(400, 860));
+        await tester.tap(find.text('Board'));
+        await tester.pumpAndSettle();
+        expect(_server.lastList?['status'], 'draft');
+
+        await tester.tap(find.byKey(const ValueKey('estimate-chip-sent')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('estimate-move-to-e-1')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('estimate-move-draft')), findsNothing);
+        for (final s in ['accepted', 'declined', 'archived']) {
+          expect(find.byKey(ValueKey('estimate-move-$s')), findsOneWidget);
+        }
+        await tester.tap(find.byKey(const ValueKey('estimate-move-declined')));
+        await tester.pumpAndSettle();
+        expect(_server.patches.last, {'status': 'declined'});
+      },
+    );
   });
 
   group('the list', () {
@@ -513,6 +621,11 @@ class _Server {
     final id = path.split('/').last;
 
     if (path.endsWith('/me')) return _json({'data': _me});
+    if (path.endsWith('/me/preferences')) {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      preferences.addAll(body['preferences'] as Map<String, dynamic>);
+      return _json({'data': preferences});
+    }
     if (path.endsWith('/services')) {
       return _json({
         'data': [
@@ -530,12 +643,25 @@ class _Server {
     if (path.endsWith('/estimates') && request.method == 'GET') {
       lastList = request.url.queryParameters;
       final nobody = lastList!['search'] == 'nobody';
+      // A board column asks for one status a page at a time.
+      final column = lastList!.containsKey('per_page')
+          ? lastList!['status']
+          : null;
       return _json({
         'data': [
           if (!nobody)
-            for (final e in estimates.values) {...e}..remove('lines'),
+            for (final e in estimates.values)
+              if (column == null || e['status'] == column)
+                {...e}..remove('lines'),
         ],
         'meta': {
+          'transitions': {
+            'draft': ['sent', 'archived'],
+            'sent': ['accepted', 'declined', 'archived'],
+            'accepted': ['archived'],
+            'declined': ['archived'],
+            'archived': <String>[],
+          },
           'total': 2388,
           'current_page': 1,
           'last_page': 1,
@@ -629,6 +755,7 @@ class _Server {
   }
 
   List<String> permissions = _writes;
+  final preferences = <String, dynamic>{};
 
   Map<String, dynamic> get _me => {
     'id': 'u-1',
@@ -636,7 +763,7 @@ class _Server {
     'email': 'jose@example.com',
     'role': {'name': 'Dispatcher'},
     'has_avatar': false,
-    'preferences': <String, dynamic>{},
+    'preferences': preferences,
     'organization': {
       'id': 'org-1',
       'name': 'A1-Group',
@@ -739,18 +866,40 @@ Future<void> _estimates(
   await tester.pumpAndSettle();
 }
 
-Future<void> _jobs(WidgetTester tester, List<String> permissions) async {
+Future<void> _jobs(
+  WidgetTester tester,
+  List<String> permissions, {
+  ValueNotifier<Widget?>? header,
+}) async {
   tester.view.physicalSize = const Size(1280, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
   final session = await _session(tester, permissions);
+  final screen = JobsScreen(api: session.api, session: session);
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: JobsScreen(api: session.api, session: session),
+        // As the shell draws it: the module header's action slot above the
+        // screen, filled through ModuleAction.
+        body: header == null
+            ? screen
+            : ModuleToolbarScope(
+                slot: ValueNotifier<Widget?>(null),
+                action: header,
+                child: Column(
+                  children: [
+                    ValueListenableBuilder<Widget?>(
+                      valueListenable: header,
+                      builder: (_, action, _) =>
+                          action ?? const SizedBox.shrink(),
+                    ),
+                    Expanded(child: screen),
+                  ],
+                ),
+              ),
       ),
     ),
   );

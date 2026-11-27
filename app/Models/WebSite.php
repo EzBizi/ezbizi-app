@@ -26,6 +26,14 @@ use Illuminate\Support\Str;
 class WebSite extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'web_sites';
+
+    /** Stamped on every plugin fetch (about every five minutes): not news; connecting and going quiet are. */
+    protected static array $changeFeedIgnores = ['last_seen_at'];
+
     use HasUuids;
 
     protected $table = 'web_sites';
@@ -45,6 +53,8 @@ class WebSite extends Model implements StatesRetention
             'service_area_ids' => 'array',
             // Whether its pages carry the booking widget, as the plugin reports; null until it has.
             'has_booking' => 'boolean',
+            // General fields marked "Not needed for this site": never counted missing.
+            'not_needed_fields' => 'array',
         ];
     }
 

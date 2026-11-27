@@ -131,6 +131,27 @@ class MailboxesApiTest extends TestCase
 
     // ── the credential ───────────────────────────────────────────
 
+    /** Whoever connects an inbox can read it (Jose 11-12); nobody else is added. */
+    public function test_the_person_who_adds_an_inbox_is_given_it(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $manager = $this->userWithRole($t, 'Office', ['email.view', 'email.create', 'email.settings.view'], 'office@a1.test');
+
+        $created = $this->signedInAs($manager)->postJson(self::ENDPOINT, [
+            'scope_type'   => 'organization',
+            'scope_id'     => $t['org']->id,
+            'address'      => 'info@a-1chimney.com',
+            'display_name' => 'Info',
+            'provider'     => 'imap',
+            'mail_server'  => ['imap_host' => self::REACHABLE_HOST, 'imap_port' => 993],
+        ])->assertCreated()->json('data');
+
+        $people = $this->inTenant($t['org'], fn () => \App\Models\MailboxGrant::query()
+            ->where('mailbox_id', $created['id'])->whereNotNull('user_id')->pluck('user_id')->all());
+
+        $this->assertSame([$manager->id], $people);
+    }
+
     /**
      * The secret goes in and never comes back out, through any route here.
      *
@@ -492,7 +513,7 @@ class MailboxesApiTest extends TestCase
     }
 
     /** A Gmail mailbox carries no host at all — there is nothing for it to name. */
-    public function test_a_gmail_mailbox_stores_no_host(): void
+    public function test_a_sign_in_mailbox_stores_no_host(): void
     {
         $t = $this->provisionTenant('A1-Group');
 
@@ -501,7 +522,7 @@ class MailboxesApiTest extends TestCase
             'scope_id'     => $t['org']->id,
             'address'      => 'info@a-1chimney.com',
             'display_name' => 'Info',
-            'provider'     => 'gmail_oauth',
+            'provider'     => 'microsoft_oauth',
             'mail_server'  => ['imap_host' => self::REACHABLE_HOST],
         ])->assertCreated()->json('data');
 
@@ -534,7 +555,7 @@ class MailboxesApiTest extends TestCase
             'scope_id'     => $t['company']->id,
             'address'      => 'info@a-1chimney.com',
             'display_name' => 'Info',
-            'provider'     => 'gmail_oauth',
+            'provider'     => 'microsoft_oauth',
         ])->assertForbidden();
 
         // The control.
@@ -543,7 +564,7 @@ class MailboxesApiTest extends TestCase
             'scope_id'     => $t['franchise']->id,
             'address'      => 'connecticut@a-1chimney.com',
             'display_name' => 'Connecticut',
-            'provider'     => 'gmail_oauth',
+            'provider'     => 'microsoft_oauth',
         ])->assertCreated();
     }
 
@@ -659,6 +680,7 @@ class MailboxesApiTest extends TestCase
             // that collapsed them would draw a switch it cannot honour.
             'mark_read_at_source', 'can_mark_read_at_source',
             'scope_type', 'scope_id', 'status', 'status_reason', 'last_reached_at',
+            'send_checked_at', 'send_problem',
             'can_be_opened', 'unavailable_reason', 'mail_server',
             'may_read', 'unread', 'may_read_reason', 'may_manage',
             'read_state_shared', 'read_state_note',
@@ -765,7 +787,7 @@ class MailboxesApiTest extends TestCase
 
         $this->assertNull($byValue['gmail_oauth']['caution']);
         $this->assertStringContainsString('account password', $byValue['imap']['caution']);
-        $this->assertStringContainsString('recommended', $byValue['gmail_oauth']['label']);
+        $this->assertStringContainsString('retired', $byValue['gmail_oauth']['label']);
     }
 
     // ── §2.2: audit ──────────────────────────────────────────────

@@ -31,6 +31,8 @@ use App\Models\Role;
 use App\Models\SavedReport;
 use App\Models\SocialConnection;
 use App\Models\Task;
+use App\Models\TaskColumn;
+use App\Models\TaskColumnValue;
 use App\Models\TaskBoard;
 use App\Models\TimeClockReport;
 use App\Models\TrainingAssignment;
@@ -56,6 +58,7 @@ use App\Support\Hr\InvitationActions;
 use App\Support\Inspection\ReportPdf;
 use App\Support\Inventory\InventoryItemStatus;
 use App\Support\Inventory\InventoryUnit;
+use App\Support\Leads\BookingBot;
 use App\Support\Leads\LeadReplies;
 use App\Support\Leads\LeadTexts;
 use App\Support\Mail\CannotSendMail;
@@ -67,8 +70,10 @@ use App\Support\Newsletter\NewsletterSendFailed;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Phone\TwilioGateway;
+use App\Support\Reports\ReportSource;
 use App\Support\Reports\SendSavedReport;
 use App\Support\Reports\Texts\DailyTexts;
+use App\Support\Reports\Texts\ReportPdf as ReportTextPdf;
 use App\Support\Reviews\ReviewReplyWriter;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
@@ -176,7 +181,7 @@ class ActionRunner
             // column directly, so calling it "Price" here would invite exactly
             // that mistake through the other door.
             'amount_minor' => 'Amount in cents',
-            // Jose's Project Management rules (Jobs, cff7eceae, 2026-10-20).
+            // Jobs, cff7eceae, 2026-10-20.
             'job_type' => 'Job type',
             'sub_status' => 'Sub-status',
             // One tag in or out, never replace-all, so two rules cannot erase each other's.
@@ -272,6 +277,7 @@ class ActionRunner
                 'ringcentral' => 'RingCentral call',
                 'ez_calls' => 'EZ call',
                 'ez_texts' => 'EZ text',
+                'promotions' => 'promotion reply',
             ],
             'status' => [
                 'new' => 'New',
@@ -481,7 +487,16 @@ class ActionRunner
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Not connected: '.$notConnected];
         }
 
-        return match ($type) {
+        // The enquiry is gone before its queued run: a RingCentral call lead
+        // withdrawn when Google's copy arrived (prod 11-15, five a day). That
+        // copy raises its own event, so this one is a skip, not a failure.
+        if ($subject === null && $event->subject_type === Lead::class) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Skipped: the enquiry was removed as a duplicate before this ran.'];
+        }
+
+        // Whatever the step writes speaks as the rule, never its creator (Adeline 11-24).
+        // A step sending staff a report names its rule on what it sends (Reports › Reports, Jose 2026-11-25).
+        return ReportSource::during(self::reportKey($type, $action, $automation), fn () => AutomationVoice::speak($automation, fn () => match ($type) {
             'update_field' => $this->updateField($action, $event, $subject),
             'change_status' => $this->changeStatus($action, $event, $subject, $automation),
             'webhook' => $this->callWebhook($action, $event, $subject, $idempotencyKey),
@@ -507,7 +522,8 @@ class ActionRunner
             'unassign' => $this->unassign($subject),
             'resend' => $this->resendInvitation($subject),
             'revoke' => $this->revokeInvitation($subject),
-            'reply' => $this->replyToLead($action, $event, $subject),
+            'reply' => $this->replyToLead($action, $event, $subject, $automation),
+            'book_by_chat' => $this->bookByChat($action, $event, $subject),
             'report.send' => $this->sendReport($action, $event, $automation),
             'email.send' => $this->sendEmail($action, $event, $automation, $subject),
             'whatsapp.send' => $this->sendWhatsApp($action, $event, $subject),
@@ -521,10 +537,14 @@ class ActionRunner
             'inspection_report.workiz' => $this->putInspectionReportOnWorkiz($subject),
             'workiz.job_update' => $this->updateWorkizJob($action, $subject),
             'job.set' => $this->setJob($action, $event, $subject),
+            'job.source_from_dialed' => $this->sourceFromDialed($automation),
 
             'task.create' => $this->createTask($action, $event, $subject, $automation),
+            'task.complete_matching' => $this->completeMatching($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
-            'task.move_group' => $this->moveTaskToGroup($action, $subject, $automation),
+            'task.move_group' => $this->moveTaskToGroup($action, $subject, $automation, $event),
+            'task.shift_date' => $this->shiftTaskDate($action, $subject, $automation, $event),
+            'task.set_value' => $this->setTaskValue($action, $subject, $automation, $event),
             'alert.send' => $this->sendAlert($action, $event, $subject, $automation),
             'report.text' => $this->reportText($action, $automation),
             'lead.text' => $this->textLead($action, $event, $subject, $automation),
@@ -533,8 +553,35 @@ class ActionRunner
                 "Unknown automation action '{$type}'. Actions are declared by modules "
                 .'in code (§5.5) — a rule cannot invent one.'
             ),
-        };
+        }));
     }
+
+    /**
+     * The report a step sends, "automation:<rule>", when it sends one: a report
+     * step, or a message to staff (a person, the branch's managers, a typed
+     * address). A message to the customer is not a report. Null otherwise.
+     */
+    public static function reportKey(string $type, array $action, ?Automation $automation): ?string
+    {
+        if ($automation === null) {
+            return null;
+        }
+        // A step's `to` can be a list (notify); only a single recipient field is read here.
+        $to = $action['to_field'] ?? $action['to'] ?? '';
+        $to = is_string($to) ? $to : '';
+        $staff = str_starts_with($to, self::RECIPIENT_USER) || str_starts_with($to, self::RECIPIENT_BRANCH_MANAGERS)
+            || (str_contains($to, '@') && ! str_contains($to, '{{'));
+
+        return in_array($type, self::REPORT_STEPS, true) || (in_array($type, self::MESSAGE_STEPS, true) && $staff)
+            ? 'automation:'.$automation->id
+            : null;
+    }
+
+    /** Steps that are a report whoever they go to. */
+    public const REPORT_STEPS = ['report.text', 'report.send', 'send_report', 'whatsapp.group_send'];
+
+    /** Steps that are a report when they go to staff. */
+    public const MESSAGE_STEPS = ['whatsapp.send', 'email.send', 'sms.send'];
 
     /**
      * The actor and scope an automation action runs as — its own creator,
@@ -721,7 +768,7 @@ class ActionRunner
      * not have, is left alone.
      */
     /**
-     * Jose's Project Management rules (2026-10-21): status, sub-status and
+     * Jose, 2026-10-21: status, sub-status and
      * "set tags to" on the job's Workiz copy, through WorkizJobWriter, which
      * resolves each account's own names and ids and audits what it removed.
      */
@@ -770,6 +817,7 @@ class ActionRunner
                 $this->audit->log(action: 'job.updated_by_automation', target: $job, changes: $payload,
                     metadata: ['caused_by_event' => $event->getKey(), 'trigger' => $event->event_key]);
                 $this->emitter->emit(eventKey: $this->updateEventFor($job), subject: $job, payload: $payload, causedBy: $event);
+                $this->emitter->emit(eventKey: 'job.tags_changed', subject: $job, payload: $payload, causedBy: $event);
             }
             $done[] = 'tags '.implode(', ', $tags);
         }
@@ -855,10 +903,23 @@ class ActionRunner
             $link,
         );
 
+        // The PDF too, once per report: only when the link was newly written,
+        // so a re-run does not attach a second copy. Queued; never blocks this.
+        if ($result['written'] && $result['refused'] === null && ($job = \App\Models\Job::withTrashed()->find($subject->job_id)) !== null) {
+            $path = 'inspection-reports/'.$subject->organization_id.'/'.$subject->id.'.pdf';
+            \Illuminate\Support\Facades\Storage::disk('local')->put($path, $this->reportPdf->render($subject));
+            \App\Jobs\AttachFileToWorkiz::for($job, 'local', $path, 'Inspection report '.($subject->submitted_at ?? now())->format('Y-m-d').'.pdf');
+
+            // A finished-job report also sends its after photos (the befores went up on arrival's PDF).
+            foreach (\App\Support\Inspection\BeforeAfter::pairs($subject) as $pair) {
+                \App\Jobs\AttachFileToWorkiz::for($job, $pair['after']->disk, $pair['after']->path, 'After - '.$pair['label'].'.'.pathinfo($pair['after']->original_name, PATHINFO_EXTENSION));
+            }
+        }
+
         return match (true) {
             $result['refused'] !== null => ['type' => $type, 'ok' => false, 'detail' => 'Workiz did not take it: '.$result['refused']],
             ! $result['written'] => ['type' => $type, 'ok' => true, 'detail' => 'The report was already on the Workiz job.'],
-            default => ['type' => $type, 'ok' => true, 'detail' => 'The report link was added to the Workiz job.'],
+            default => ['type' => $type, 'ok' => true, 'detail' => 'The report link was added to the Workiz job, and the PDF is being attached.'],
         };
     }
 
@@ -1022,6 +1083,19 @@ class ActionRunner
      * after five weeks while four people were reading it fine. `ok()` is false
      * only when NOTHING left the building.
      */
+    /** Jose, 2026-11-16: a job's source from the line its client dialed, in EzBizi and Workiz. */
+    private function sourceFromDialed(?Automation $automation): array
+    {
+        $type = 'job.source_from_dialed';
+        if ($automation === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step runs only as part of a saved rule.'];
+        }
+        [$changed, $refused] = app(\App\Support\Jobs\SourceFromDialed::class)->apply($automation);
+
+        return ['type' => $type, 'ok' => $refused === [], 'skipped' => $changed === 0 && $refused === [],
+            'detail' => trim("Changed the source of {$changed} job".($changed === 1 ? '' : 's').'. '.implode(' ', $refused))];
+    }
+
     private function sendReport(array $action, AutomationEvent $event, ?Automation $automation): array
     {
         $type = 'report.send';
@@ -1168,7 +1242,7 @@ class ActionRunner
      * deep and every link has a default, so it compiled perfectly while dropping
      * the flag at one call site - see docs/AUTOMATION-COVERAGE.md.
      */
-    private function replyToLead(array $action, AutomationEvent $event, ?Model $subject): array
+    private function replyToLead(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation = null): array
     {
         $type = 'reply';
         $message = trim((string) ($action['message'] ?? ''));
@@ -1202,6 +1276,10 @@ class ActionRunner
             ];
         }
 
+        if (($skip = self::notBookedSkip($event, $subject)) !== null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $skip];
+        }
+
         if (! $this->leadReplies->allowsUnattendedReply($subject)) {
             return [
                 'type' => $type, 'ok' => false,
@@ -1215,9 +1293,20 @@ class ActionRunner
             ];
         }
 
-        if (! $this->leadReplies->canReply($subject)) {
+        // Google takes no text against a call, so the reply goes by SMS from
+        // the cleared line instead: skipping left 71 of 125 not-booked
+        // customers with nothing (Jose via Desk, 2026-11-04).
+        $bySms = ! $this->leadReplies->canReply($subject)
+            && $subject->source === Lead::SOURCE_LOCAL_SERVICES
+            && $subject->lead_type !== 'MESSAGE'
+            && Lead::e164($subject->phone) !== null;
+
+        // A channel gone: the enquiry is the wrong kind, not the rule broken,
+        // so it skips like Not connected does and the failure count cannot
+        // switch the rule off.
+        if (! $bySms && ! $this->leadReplies->canReply($subject)) {
             return [
-                'type' => $type, 'ok' => false,
+                'type' => $type, 'ok' => true, 'skipped' => true,
                 'detail' => $this->leadReplies->whyNot($subject)
                     ?? 'This enquiry cannot be replied to just now.',
             ];
@@ -1225,10 +1314,37 @@ class ActionRunner
 
         $text = $this->interpolate($message, $event, $subject);
 
+        // Skips, not failures, so the count cannot switch the rule off: a lead
+        // with no online booking drops a one-line "book here" message whole,
+        // and a company with no cleared line has nothing to text from (health
+        // sweep 2026-11-06: 15 such failures in a day on Triplex's rule).
+        $skip = trim($text) === ''
+            ? 'Every line of this message needs a field this enquiry does not have (a '
+                .'booking link, with no booking page or open area for their ZIP), so nothing was sent.'
+            : ($bySms && app(LeadTexts::class)->line($subject) === null
+                ? "No texting line is cleared to send for this lead's company, so nothing was sent."
+                : null);
+        if ($skip !== null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $skip];
+        }
+
         try {
-            $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
+            $sent = $bySms
+                ? app(LeadTexts::class)->send($subject, $text, automatic: true, capped: true)
+                : $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
+        } catch (\App\Support\Phone\SmsCapped|\App\Support\Phone\SmsOptedOut $capped) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        // "Automatic · <rule>" on the thread, and Leads › Recovery holds the lead
+        // a win-back text went to, so a reply to it is answered (Jose, 2026-11-16).
+        if ($automation !== null) {
+            $sent instanceof \App\Models\LeadConversation && $sent->forceFill(['automation_name' => mb_substr((string) $automation->name, 0, 150)])->saveQuietly();
+            if (\App\Http\Controllers\Api\LeadsRecoveryController::isRecovery($automation)) {
+                $subject->forceFill(['recovery_at' => now()])->saveQuietly();
+            }
         }
 
         $this->audit->log('automation.lead_replied', $subject);
@@ -1246,9 +1362,26 @@ class ActionRunner
         return [
             'type' => $type,
             'ok' => true,
-            'detail' => 'Replied in the chat. It is recorded as automatic, so the enquiry still '
-                .'shows as awaiting a reply.',
+            'detail' => ($bySms ? 'Texted the customer, as Google takes no reply to a call.' : 'Replied in the chat.')
+                .' It is recorded as automatic, so the enquiry still shows as awaiting a reply.',
         ];
+    }
+
+    /** The booking bot's next line, sent as an automatic reply (BookingBot). */
+    private function bookByChat(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        if (! $subject instanceof Lead) {
+            return ['type' => 'book_by_chat', 'ok' => false, 'detail' => 'This step can only answer an enquiry.'];
+        }
+
+        $next = app(BookingBot::class)->next($subject);
+        if ($next['reply'] === null) {
+            return ['type' => 'book_by_chat', 'ok' => true, 'skipped' => true, 'detail' => $next['why']];
+        }
+
+        $sent = $this->replyToLead(['message' => $next['reply']] + $action, $event, $subject);
+
+        return ['type' => 'book_by_chat'] + ($sent['ok'] ? ['detail' => $next['why']] : []) + $sent;
     }
 
     /**
@@ -1559,6 +1692,10 @@ class ActionRunner
         $template = trim((string) ($action['template'] ?? ''));
         $field = trim((string) ($action['to_field'] ?? ''));
 
+        if ($fanned = $this->toBranchManagers($action, $event, $subject, $type, fn (array $one) => $this->sendWhatsApp($one, $event, $subject))) {
+            return $fanned;
+        }
+
         if ($template === '' || $field === '') {
             return [
                 'type' => $type, 'ok' => false,
@@ -1586,11 +1723,34 @@ class ActionRunner
             return ['type' => $type, 'ok' => true, 'detail' => "Handed the \"{$template}\" template to WhatsApp for the customer; it is on the enquiry."];
         }
 
+        // A person here hears from the Reports number, as a report; Main is for the assistant and customers (Jose, 2026-11-11).
+        $reports = str_starts_with($field, self::RECIPIENT_USER) ? \App\Models\WhatsAppNumber::forPurpose('reports') : null;
+        if ($reports !== null) {
+            $user = $this->userFromStored($field);
+            if ($user === null) {
+                return ['type' => $type, 'ok' => false, 'detail' => 'The person this step sends to no longer works here.'];
+            }
+            $parts = array_map(fn ($value) => $this->interpolate((string) $value, $event, $subject), array_values((array) ($action['parameters'] ?? [])));
+            $title = trim((string) array_shift($parts)) ?: 'EzBizi alert';
+            try {
+                $sent = app(\App\Support\Social\WhatsAppGroups::class)->deliverTextToUser($reports, $user, $title, implode("\n", $parts));
+            } catch (RuntimeException $refusal) {
+                return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+            }
+
+            return $sent
+                ? ['type' => $type, 'ok' => true, 'detail' => "Sent \"{$title}\" to {$user->name} from the Reports number."]
+                : ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => "{$user->name} has no phone number, so nothing was sent."];
+        }
+
         $to = $this->contactFromStored($field, $event, 'phone', $subject);
 
         if (! is_string($to) || trim($to) === '') {
+            // A customer with no number is nothing to fix: skipped, not failed (sweep 11-17).
+            $skip = $field === self::RECIPIENT_CUSTOMER;
+
             return [
-                'type' => $type, 'ok' => false,
+                'type' => $type, 'ok' => $skip, 'skipped' => $skip,
                 'detail' => $field === self::RECIPIENT_CUSTOMER
                     ? $this->noCustomerContact('phone number')
                     : (str_starts_with($field, self::RECIPIENT_USER)
@@ -1601,8 +1761,8 @@ class ActionRunner
             ];
         }
 
-        // Passed as written. Their `send()` normalises "(305) 724-2199" and
-        // "+1 305 724 2199" alike, and refuses what it cannot be sure of rather
+        // Passed as written. Their `send()` normalises "(305) 555-0107" and
+        // "+1 305 555 0107" alike, and refuses what it cannot be sure of rather
         // than guessing - so cleaning it here would only give it worse input.
         $parameters = array_map(
             fn ($value) => $this->interpolate((string) $value, $event, $subject),
@@ -1697,6 +1857,10 @@ class ActionRunner
         $field = trim((string) ($action['to_field'] ?? ''));
         $subject = trim((string) ($action['subject'] ?? ''));
 
+        if ($fanned = $this->toBranchManagers($action, $event, $record, $type, fn (array $one) => $this->sendEmail($one, $event, $automation, $record))) {
+            return $fanned;
+        }
+
         if ($field === '' || $subject === '' || trim((string) ($action['body'] ?? '')) === '') {
             return [
                 'type' => $type, 'ok' => false,
@@ -1707,8 +1871,10 @@ class ActionRunner
         $to = $this->emailRecipient($field, $event, $record);
 
         if (! is_string($to) || filter_var($to, FILTER_VALIDATE_EMAIL) === false) {
+            $skip = ($to === null || $to === '') && $field === self::RECIPIENT_CUSTOMER;
+
             return [
-                'type' => $type, 'ok' => false,
+                'type' => $type, 'ok' => $skip, 'skipped' => $skip,
                 // Names the field, because "no address" and "that field held
                 // something that is not an address" send somebody to two
                 // different places - the rule, or the record.
@@ -1725,15 +1891,26 @@ class ActionRunner
             return ['type' => $type, 'ok' => false, 'detail' => $refusal];
         }
 
+        $issuer = $this->scopeModelFor($automation) ?? $event->organization()->withoutGlobalScopes()->firstOrFail();
+        // $record, not $subject: in THIS arm `$subject` is the email's
+        // subject line. The record the rule fired on is the other one.
+        $subjectLine = $this->interpolate($subject, $event, $record);
+        // A report's subject says whose it is, as its WhatsApp title does (Jose, 2026-11-10).
+        if (in_array($event->event_key, self::REPORT_EVENTS, true) && ! str_contains($subjectLine, (string) ($issuer->name ?? ''))) {
+            $subjectLine = $issuer->name.' · '.$subjectLine;
+        }
+        $body = $this->interpolate((string) $action['body'], $event, $record, forMarkdown: AutomationMessage::RENDERS_MARKDOWN);
+        // A report to staff carries its formatted copy, as on WhatsApp (Jose, 2026-11-10); never to a customer.
+        $pdf = in_array($event->event_key, self::REPORT_EVENTS, true) && $field !== self::RECIPIENT_CUSTOMER
+            ? ReportTextPdf::render('*'.$subjectLine."*\n\n".AutomationMessage::plain($body), $issuer, CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of()))
+            : null;
+
         try {
             $this->mail->platformForTenant(
-                $this->scopeModelFor($automation) ?? $event->organization()->withoutGlobalScopes()->firstOrFail(),
+                $issuer,
                 new AutomationMessage(
-                    // $record, not $subject: in THIS arm `$subject` is the email's
-                    // subject line. The record the rule fired on is the other one.
-                    subjectLine: $this->interpolate($subject, $event, $record),
-                    body: $this->interpolate((string) $action['body'], $event, $record,
-                        forMarkdown: AutomationMessage::RENDERS_MARKDOWN),
+                    subjectLine: $subjectLine,
+                    body: $body,
                     businessName: (string) ($event->organization()->withoutGlobalScopes()->value('name') ?? 'this business'),
                     // EzBizi's band only when EzBizi composed the substance: a
                     // trigger that declares composedFields. Never widened to
@@ -1741,6 +1918,7 @@ class ActionRunner
                     kind: ($trigger = app(ModuleRegistry::class)->findTrigger($event->event_key)) !== null
                         && $trigger->composedFields !== [] ? $trigger->label : null,
                     automationName: $automation?->name,
+                    pdf: $pdf,
                 ),
                 $to,
             );
@@ -1759,11 +1937,139 @@ class ActionRunner
         return ['type' => $type, 'ok' => true, 'detail' => "Emailed {$shown}: {$subject}"];
     }
 
+    /** The events whose email is a report: the weekly AI summary, overbooking, empty spots. */
+    private const REPORT_EVENTS = ['reports.ai_summary_ready', 'scheduling.overbooking_found', 'scheduling.area_underfilled'];
+
     /** Prefix marking a stored recipient as a person rather than a field or an address. */
     private const RECIPIENT_USER = 'user:';
 
     /** Whoever a task is given to, read when the rule runs (Jose, 2026-10-13). */
+    /**
+     * One sales text per caller (Jose, 2026-11-17: "2 messages are sent when
+     * it should only be one ... the missed call one is correct"). A Not-booked
+     * text is skipped when the caller had a missed call in the last day (that
+     * rule's text wins), or is a customer with a job in the last 30 days.
+     */
+    public static function notBookedSkip(AutomationEvent $event, Lead $lead): ?string
+    {
+        if ($event->event_key === 'lead.missed_call') {
+            // Desk for Jose, 2026-11-17: answered-not-booked by day, missed later the same day, is still one text.
+            $texted = \App\Models\AutomationRun::query()->where('started_at', '>=', now()->subDay())->where('status', 'succeeded')
+                ->whereIn('event_id', AutomationEvent::query()->whereIn('event_key', ['lead.call_not_booked', 'lead.follow_up_due', 'lead.missed_call'])
+                    ->where('subject_type', $lead->getMorphClass())->where('subject_id', $lead->getKey())->whereKeyNot($event->getKey())->select('id'))
+                ->get(['action_results'])->contains(fn ($r) => collect((array) $r->action_results)
+                    ->contains(fn ($a) => ($a['type'] ?? null) === 'reply' && ($a['ok'] ?? false) && ! ($a['skipped'] ?? false)));
+
+            return $texted ? 'This caller already had a text from us today.' : null;
+        }
+        if (! in_array($event->event_key, ['lead.call_not_booked', 'lead.follow_up_due'], true)) {
+            return null;
+        }
+        if (AutomationEvent::query()->where('event_key', 'lead.missed_call')->where('subject_type', $lead->getMorphClass())
+            ->where('subject_id', $lead->getKey())->where('occurred_at', '>=', now()->subDay())->exists()) {
+            return 'This caller had a missed call today and gets that text instead.';
+        }
+        $ten = substr((string) preg_replace('/\D+/', '', (string) $lead->phone), -10);
+        if (strlen($ten) === 10 && Job::query()->where('created_at', '>=', now()->subDays(30))
+            ->whereIn('customer_id', Customer::query()->tap(fn ($q) => Customer::phoneLike($q, $ten))->select('id'))->exists()) {
+            return 'This caller is a customer with a job in the last 30 days, so no sales text was sent.';
+        }
+
+        return null;
+    }
+
+    /** The newest open task in the board's group naming this phone (last 10 digits) in its title or a column. */
+    public static function openTaskForPhone(TaskBoard $board, string $group, string $ten, int $days = 0): ?Task
+    {
+        $digits = fn (string $col) => "REGEXP_REPLACE(COALESCE({$col}, ''), '[^0-9]', '') LIKE ?";
+        // A dispatcher's task often has only the customer's name and job
+        // number, no phone (Eric via Jose, 11-20): the caller's own jobs and
+        // name match too. Groups by contains: every "Customer Relations ..." group.
+        $customers = \App\Models\Customer::query()->tap(fn ($q) => \App\Models\Customer::phoneLike($q, $ten))->get(['id', 'name']);
+        $jobs = \App\Models\Job::query()->whereIn('customer_id', $customers->pluck('id'))->get(['id', 'number']);
+        $needles = $jobs->pluck('number')->merge(\App\Models\WorkizJob::query()->whereIn('job_id', $jobs->pluck('id'))->pluck('serial_id'))
+            ->map(fn ($v) => trim((string) $v))->filter(fn ($v) => strlen($v) >= 4)->unique()->values();
+        // ponytail: a name matches only when it has two words; "Joe" alone would match strangers.
+        $names = $customers->pluck('name')->map(fn ($n) => trim(preg_replace('/\s+/', ' ', (string) $n)))->filter(fn ($n) => str_contains($n, ' '))->unique()->values();
+
+        return Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
+            ->when($group !== '', fn ($q) => $q->whereHas('group', fn ($g) => $g->whereRaw('LOWER(name) LIKE ?', ['%'.mb_strtolower($group).'%'])))
+            ->when($days > 0, fn ($q) => $q->where('created_at', '>=', now()->subDays($days)))
+            ->where(fn ($q) => $q->whereRaw($digits('title'), ['%'.$ten.'%'])
+                ->orWhereHas('values', fn ($v) => $v->whereRaw($digits('value_text'), ['%'.$ten.'%']))
+                ->when($needles->isNotEmpty(), fn ($q) => $q->orWhereHas('values', fn ($v) => $v->whereIn('value_text', $needles->all())))
+                ->when($names->isNotEmpty(), fn ($q) => $q->orWhereIn('title', $names->all())->orWhereHas('values', fn ($v) => $v->whereIn('value_text', $names->all()))))
+            ->oldest()->first();
+    }
+
+    /**
+     * task.complete_matching: the open tasks a rule made for this phone, not
+     * yet touched (Not started), marked Done with a note (desk for Jose,
+     * 2026-11-17: the caller replied or booked, so the call-back is done).
+     */
+    private function completeMatching(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        $type = 'task.complete_matching';
+        $ten = substr((string) preg_replace('/\D+/', '', $this->interpolate((string) ($action['phone'] ?? '{{phone}}'), $event, $subject)), -10);
+        $board = TaskBoard::query()->find($action['board'] ?? null);
+        if (strlen($ten) !== 10 || $board === null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $board === null ? 'The board this step names no longer exists.' : 'No phone number to match.'];
+        }
+        $tasks = Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
+            ->where('status', Task::STATUS_NOT_STARTED)
+            ->when(($action['made_by'] ?? '') !== '', fn ($q) => $q->where('created_by_automation_id', $action['made_by']))
+            ->where(fn ($q) => $q->whereRaw("REGEXP_REPLACE(COALESCE(title, ''), '[^0-9]', '') LIKE ?", ['%'.$ten.'%'])
+                ->orWhereHas('values', fn ($v) => $v->whereRaw("REGEXP_REPLACE(COALESCE(value_text, ''), '[^0-9]', '') LIKE ?", ['%'.$ten.'%'])))->get();
+        if ($tasks->isEmpty()) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'No untouched open task for this number.'];
+        }
+        $note = trim($this->interpolate((string) ($action['note'] ?? 'Closed automatically: the caller got back to us.'), $event, $subject));
+
+        return $this->onTaskBoard($type, $automation, $board, function (User $actor) use ($tasks, $note) {
+            foreach ($tasks as $task) {
+                app(TaskWriter::class)->update($task->load('board'), ['status' => 'Done'], $actor);
+                app(TaskWriter::class)->comment($task, $actor, $note);
+            }
+
+            return 'Closed '.$tasks->count().' task(s): '.$tasks->pluck('title')->implode(', ').'.';
+        });
+    }
+
     private const RECIPIENT_ASSIGNEE = 'assignee:';
+
+    /** Whoever holds work_hours.approve at the subject person's branch, read when the rule runs (Clock In, 2026-11-13). */
+    private const RECIPIENT_BRANCH_MANAGERS = 'branch_managers:';
+
+    /**
+     * A branch-managers step, sent once per manager as a step to that person.
+     * Null when the step names anybody else, so the caller carries on.
+     */
+    private function toBranchManagers(array $action, AutomationEvent $event, ?Model $subject, string $type, callable $send): ?array
+    {
+        if (trim((string) ($action['to_field'] ?? '')) !== self::RECIPIENT_BRANCH_MANAGERS) {
+            return null;
+        }
+        $id = $subject instanceof User ? $subject->getKey() : data_get($event->payload, 'user_id');
+        $person = is_string($id) ? User::query()->find($id) : null;
+        if ($person === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This event is not about a person, so there is no branch to send to.'];
+        }
+        $clock = app(\App\Support\TimeClock\TimeClock::class);
+        $place = $clock->placeOf($person);
+        // ponytail: loads every active user of the tenant; a permission query if tenants grow large.
+        $managers = User::query()->where('is_active', true)->whereKeyNot($person->getKey())->get()
+            ->filter(fn (User $u) => $u->hasPermission('work_hours.approve') && $clock->placeOf($u)->is($place));
+        if ($managers->isEmpty()) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => "Nobody approves hours at {$person->name}'s branch, so nothing was sent."];
+        }
+        $results = $managers->map(fn (User $m) => $send(['to_field' => self::RECIPIENT_USER.$m->getKey()] + $action))->values();
+
+        return [
+            'type' => $type,
+            'ok' => $results->every(fn ($r) => $r['ok']),
+            'detail' => $results->pluck('detail')->join(' '),
+        ];
+    }
 
     /**
      * The customer the rule is about — the job's, the report's, or the
@@ -1985,6 +2291,16 @@ class ActionRunner
         $to = trim((string) $this->contactFromStored(
             trim((string) ($action['to'] ?? '')), $event, 'phone', $subject,
         ));
+        // Stored as typed ("860.329.1234"): normalised to E.164 here, and a
+        // number that is still not one is skipped with a sentence, not sent to
+        // Twilio to fail (health sweep 11-24).
+        if ($to !== '') {
+            $to = (string) \App\Models\Lead::e164($to);
+            if (preg_match('/^\+[1-9]\d{7,14}$/', $to) !== 1) {
+                return ['type' => $type, 'ok' => true, 'skipped' => true,
+                    'detail' => "\"{$to}\" is not a complete phone number, so nothing was sent. Fix it on the record."];
+            }
+        }
         // INTERPOLATED LIKE EVERY OTHER MESSAGE. This arm was the last one
         // sending {{...}} out as braces: a missed-call text that cannot name the
         // number that called is the rule Jose has been running for two weeks.
@@ -1993,9 +2309,12 @@ class ActionRunner
         $body = trim($this->interpolate((string) ($action['body'] ?? ''), $event, $subject));
 
         if ($to === '' || $body === '') {
+            $skip = $to === '' && ($action['to'] ?? '') === self::RECIPIENT_CUSTOMER;
+
             return [
                 'type' => $type,
-                'ok' => false,
+                'ok' => $skip,
+                'skipped' => $skip,
                 'detail' => $to === ''
                     ? ($action['to'] ?? '') === self::RECIPIENT_CUSTOMER
                         ? $this->noCustomerContact('phone number')
@@ -2024,17 +2343,32 @@ class ActionRunner
             ];
         }
 
+        // A text to a person here is not capped; one to a customer is.
+        try {
+            $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, automated: true,
+                capped: ! str_starts_with(trim((string) ($action['to'] ?? '')), self::RECIPIENT_USER));
+        } catch (\App\Support\Phone\SmsCapped $capped) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
+        }
+        if ($body === null) {
+            // The customer said STOP: honouring it is correct, not a failure (sweep 11-13).
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
+        }
+
         try {
             $sent = $this->twilio->sendMessage($connection, (string) $number->e164, $to, $body, $number->account_sid);
         } catch (Throwable $e) {
+            if (\App\Support\Phone\SmsConsent::absorbCarrierRefusal((string) $connection->organization_id, $to, $e)) {
+                return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
+            }
             // Twilio's own sentence, because a code we have never seen still
             // explains itself and a rewrite of it does not.
             return [
                 'type' => $type,
                 'ok' => false,
-                'detail' => $e->getMessage() !== ''
+                'detail' => \App\Support\Phone\PhoneTexts::refusal($e) ?? ($e->getMessage() !== ''
                     ? 'Twilio refused it: '.$e->getMessage()
-                    : 'Twilio refused to send from this phone line.',
+                    : 'Twilio refused to send from this phone line.'),
             ];
         }
 
@@ -2359,7 +2693,7 @@ class ActionRunner
         }
 
         $job = DB::transaction(function () use ($subject, $caller, $franchise, $status, $event) {
-            $customer = Customer::query()->where('phone', $caller)->first();
+            $customer = Customer::query()->where(fn ($q) => Customer::phoneLike($q, $caller))->first();
 
             if ($customer === null) {
                 $customer = Customer::create([
@@ -2711,7 +3045,11 @@ class ActionRunner
 
         // Meta's limit for one message.
         $body = mb_substr($body, 0, 4096);
+        // Whose and when, as every report's title says (Jose, 2026-11-10): "A1-Group · Weekly AI summary · Nov 9".
+        $org = $automation === null ? null : Organization::query()->find($automation->organization_id);
+        $whose = $automation?->scope_type === 'company' ? Company::query()->find($automation->scope_id)?->name : $org?->name;
         $title = mb_substr((string) ($automation?->name ?? 'EzBizi alert'), 0, 60);
+        $title = ($whose === null ? '' : $whose.' · ').$title.' · '.CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of())->format('M j');
 
         $reached = app(WhatsAppGroups::class)->deliver($purpose, $title, $body);
 
@@ -3055,6 +3393,29 @@ class ActionRunner
         return trim($this->interpolate((string) $message, $event, $review));
     }
 
+    /** One more try at a reply Google was not ready for, an hour on; a second refusal is a failure. */
+    public static function retryLater(string $replyId, string $organizationId, string $authorId): void
+    {
+        dispatch(function () use ($replyId, $organizationId, $authorId) {
+            $org = \App\Models\Organization::query()->withoutGlobalScopes()->find($organizationId);
+            $org && app(\App\Support\Tenancy\TenantContext::class)->run($org, function () use ($replyId, $authorId) {
+                $reply = ReviewReply::query()->find($replyId);
+                if ($reply === null || $reply->isPublished()) {
+                    return;
+                }
+                try {
+                    app(BusinessProfileReviews::class)->publish($reply);
+                    $reply->forceFill(['status' => ReviewReply::STATUS_PUBLISHED, 'published_by_user_id' => $authorId,
+                        'published_at' => now(), 'failure_reason' => null])->save();
+                    app(AuditLogger::class)->log('review.reply_published', $reply->review, metadata: ['by' => 'automation', 'retry' => true]);
+                } catch (RuntimeException $e) {
+                    $reply->forceFill(['status' => ReviewReply::STATUS_FAILED, 'failure_reason' => $e->getMessage()])->save();
+                    app(AuditLogger::class)->log('review.reply_failed', $reply->review, metadata: ['reason' => $e->getMessage(), 'by' => 'automation', 'retry' => true]);
+                }
+            });
+        })->delay(now()->addHour());
+    }
+
     /**
      * Publish a reply on Google by itself (A1 Leads takeover, 2026-10-20).
      *
@@ -3095,7 +3456,15 @@ class ActionRunner
             ? User::query()->find($automation->activeVersion->created_by)
             : null;
 
-        if ($author === null || ! Gate::forUser($author)->allows('publish', $subject)) {
+        // The author's grant and reach, not the view they last stood in: a rule runs from a
+        // queue, and the policy's write check reads the saved view, so a rule made by someone
+        // looking at one company refused every other company's reviews (sweep, 2026-11-04).
+        $reaches = $author !== null && $author->hasPermission('reviews.publish') && match (true) {
+            $subject->franchise_id !== null => ($f = \App\Models\Franchise::query()->find($subject->franchise_id)) !== null && $author->canActOnFranchise($f),
+            $subject->company_id !== null => ($c = \App\Models\Company::query()->find($subject->company_id)) !== null && $author->canActOnCompany($c),
+            default => $author->canActOnOrganization($author->organization),
+        };
+        if (! $reaches) {
             return ['type' => $type, 'ok' => false,
                 'detail' => 'The person who built this rule may not publish replies to this review, so nothing '
                     .'was posted. Somebody who can should open the rule and save it again.'];
@@ -3129,6 +3498,22 @@ class ActionRunner
         try {
             app(BusinessProfileReviews::class)->publish($reply);
         } catch (RuntimeException $e) {
+            // A listing Google says is unclaimed takes no replies until somebody re-verifies it on Google:
+            // keep the draft and say so, not a failure that switches the rule off (health sweep 2026-11-23).
+            if (str_contains($e->getMessage(), 'unclaimed location')) {
+                $reply->forceFill(['failure_reason' => $e->getMessage()])->save();
+
+                return ['type' => $type, 'ok' => true, 'skipped' => true,
+                    'detail' => 'Google says this listing is unclaimed, so it takes no replies until it is verified again on Google. The draft is kept.'];
+            }
+            // Google answers 404 for a review it has not finished indexing, and 503 when busy
+            // (11-09, 11-12): keep the draft and try once more an hour later, not a failure.
+            if (preg_match('/HTTP (404|503)/', $e->getMessage()) && ! ($action['retried'] ?? false)) {
+                $reply->forceFill(['failure_reason' => 'Google was not ready ('.$e->getMessage().'); trying again in an hour.'])->save();
+                self::retryLater($reply->getKey(), (string) $subject->organization_id, $author->getKey());
+
+                return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Google was not ready; the reply will be sent again in an hour.'];
+            }
             DB::transaction(function () use ($reply, $subject, $e) {
                 $reply->forceFill(['status' => ReviewReply::STATUS_FAILED, 'failure_reason' => $e->getMessage()])->save();
                 app(AuditLogger::class)->log('review.reply_failed', $subject, metadata: ['reason' => $e->getMessage(), 'by' => 'automation']);
@@ -3530,7 +3915,7 @@ class ActionRunner
         // booking page it is dropped and the rest still goes (Leads, 2026-10-13).
         // The same for an offered slot with no open window (2026-10-19).
         // "If it's urgent, call us at {{office_phone}}." likewise, where a place has no phone (2026-10-20).
-        foreach (['booking_link', 'offered_slot', 'office_phone'] as $field) {
+        foreach (['booking_link', 'offered_slot', 'office_phone', 'price_list', 'open_windows', 'missing_info'] as $field) {
             if (preg_match('/\{\{\s*'.$field.'\s*\}\}/i', $template)
                 && blank($subject?->getAttribute($field))
                 && blank($event->payload['after'][$field] ?? $event->payload[$field] ?? null)) {
@@ -3548,11 +3933,36 @@ class ActionRunner
             : [];
 
         return preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', function ($m) use ($subject, $event, $forMarkdown, $composed) {
-            $value = $subject?->getAttribute($m[1]) ?? $this->valueFromEvent($m[1], $event);
+            $value = self::readable($subject, $m[1]) ?? $this->valueFromEvent($m[1], $event)
+                // {{branch}} on a record's event: the record's branch (its Area on a task, 2026-11-17).
+                ?? ($m[1] === 'branch' && filled($subject?->getAttribute('franchise_id'))
+                    ? Franchise::query()->whereKey($subject->getAttribute('franchise_id'))->value('name') : null);
             $text = is_scalar($value) ? (string) $value : '';
+            // {{note}} / {{notes}}: the bold/italic/underline tags never leave the app (Jose 11-25).
+            if (preg_match('/notes?$/i', $m[1])) {
+                $text = \App\Support\NotesMarkup::plain($text);
+            }
 
             return $forMarkdown && ! in_array($m[1], $composed, true) ? self::escapeMarkdown($text) : $text;
         }, $template);
+    }
+
+    /**
+     * A record attribute a template may print: never a $hidden one, nor one
+     * cast encrypted or hashed. getAttribute decrypts and ignores $hidden, so
+     * {{totp_secret}} printed a 2FA seed into a dry run (audit 2026-11-27).
+     */
+    public static function readable(?Model $subject, string $key): mixed
+    {
+        if ($subject === null || in_array($key, $subject->getHidden(), true)) {
+            return null;
+        }
+        $cast = (string) ($subject->getCasts()[$key] ?? '');
+        if (str_starts_with($cast, 'encrypted') || $cast === 'hashed') {
+            return null;
+        }
+
+        return $subject->getAttribute($key);
     }
 
     /** Backslash every Markdown control character, so the text renders as itself. */
@@ -3605,7 +4015,15 @@ class ActionRunner
 
         try {
             if (! app(TaskBoards::class)->canEdit($actor, $board)) {
-                return ['type' => $type, 'ok' => false, 'detail' => 'The person who made this rule cannot change that task board.'];
+                // Which gate refused, and on which board (health sweep 11-24: 3 refusals that would not reproduce).
+                $tb = app(TaskBoards::class);
+                $why = match (true) {
+                    ! $actor->hasPermission('tasks.edit') => 'no tasks.edit',
+                    ! $tb->canView($actor, $board) => 'cannot see the board',
+                    default => 'no write reach from view '.$request->header('X-EzBizi-View'),
+                };
+
+                return ['type' => $type, 'ok' => false, 'detail' => "The person who made this rule cannot change that task board ({$board->name}, {$board->getKey()}: {$why})."];
             }
 
             return ['type' => $type, 'ok' => true, 'detail' => $write($actor)];
@@ -3634,23 +4052,99 @@ class ActionRunner
         // was refused on theirs. Their own board only when there is no place.
         $owner = (($scope['type'] ?? null) === 'franchise' ? Franchise::query()->find($scope['id'] ?? null) : null)
             ?? (($scope['type'] ?? null) === 'company' ? Company::query()->find($scope['id'] ?? null) : null)
-            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null)
-            ?? $assignee;
+            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null);
+        // A Sub Company and its franchises have no board (Jose, 2026-11-06).
+        // Its parent company's board then, not the first assignee's personal
+        // board, which refuses every other owner (Complaint call on AngiSweep, 11-10).
+        if ($owner !== null && ! TaskBoards::hasPlaceBoard($owner)) {
+            $owner = collect($scope['company_chain'] ?? [])->map(fn ($id) => Company::query()->find($id))
+                ->first(fn (?Company $c) => $c !== null && TaskBoards::hasPlaceBoard($c));
+        }
+        $owner ??= $assignee;
+        // A named board wins over the place's (desk 11-16: missed calls onto "Outgoing Calls"); canEdit still decides.
+        $named = trim((string) ($action['board'] ?? '')) !== '' ? TaskBoard::query()->find($action['board']) : null;
+        if (trim((string) ($action['board'] ?? '')) !== '' && $named === null) {
+            return ['type' => 'task.create', 'ok' => false, 'detail' => 'The board this step names no longer exists.'];
+        }
 
-        if ($owner === null) {
+        if ($owner === null && $named === null) {
             return ['type' => 'task.create', 'ok' => false, 'detail' => 'No board to put the task on: give it to somebody, or use a trigger about a place.'];
         }
 
         $about = $subject ? array_search($subject::class, Task::ABOUT, true) : false;
-        $board = app(TaskBoards::class)->ensureFor($owner);
+        $record = $about === false ? null : $subject;
+        // A call with no record (a missed call): the caller's lead, by phone, so
+        // the task opens it (Jose 11-17). The newest lead with that number.
+        if ($record === null && ($digits = substr(preg_replace('/\D/', '', (string) ($event->payload['from'] ?? $event->payload['phone'] ?? '')), -10)) !== '' && strlen($digits) === 10) {
+            // Leads keep the country code: 1 + ten digits, as prod's rows read (11-17).
+            $record = Lead::query()->whereIn('phone_digits', [$digits, '1'.$digits])->latest('received_at')->first();
+            $about = $record === null ? false : 'lead';
+        }
+
+        // One task per rule per record per 10 minutes (review 2026-11-02): one
+        // phone call read as two transcripts raised two complaints 3 seconds
+        // apart, and one payment twice, each a second identical task.
+        if ($about !== false && $automation !== null && Task::query()
+            ->where('created_by_automation_id', $automation->getKey())
+            ->where('about_type', $about)->where('about_id', $record->getKey())
+            ->where('created_at', '>=', now()->subMinutes(10))->exists()) {
+            return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => 'This rule already added a task about this record in the last 10 minutes.'];
+        }
+
+        $board = $named ?? app(TaskBoards::class)->ensureFor($owner);
+        // Owners who cannot be on this board (another company's: desk for Jose,
+        // 11-19, open question B5) give way to the board's General Manager group
+        // person, else the task is made unassigned. Never a failed run.
+        $assignable = app(TaskBoards::class)->assignable($board)->pluck('id')->all();
+        $owners = $owners->filter(fn (User $u) => in_array($u->getKey(), $assignable, true))->values();
+        if ($owners->isEmpty() && (! empty($action['assignees']) || ! empty($action['assignee']))) {
+            $gm = $board->groups()->get()->first(fn ($g) => str_starts_with(mb_strtolower(trim($g->name)), 'general manager'));
+            $name = $gm ? trim((string) \Illuminate\Support\Str::after($gm->name, '-')) : '';
+            $owners = collect([$name !== '' ? User::query()->whereIn('id', $assignable)->where('name', 'like', $name.'%')->first() : null])->filter()->values();
+        }
 
         // The board's own columns by name, and its group by name (Task Board, 60f643812).
         $values = array_map(fn ($v) => $this->interpolate((string) $v, $event, $subject), (array) ($action['values'] ?? []));
         $group = trim((string) ($action['group'] ?? ''));
+        // No group of exactly that name: the board's group that contains it
+        // ("Customer Relations" finds "🤝 Customer Relations Board - Adeline";
+        // Jose, 2026-11-17: the rule made a duplicate group on every board).
+        if ($group !== '' && ! $board->groups()->get()->contains(fn ($g) => mb_strtolower(trim($g->name)) === mb_strtolower($group))) {
+            $group = (string) ($board->groups()->orderBy('position')->get()
+                ->first(fn ($g) => str_contains(mb_strtolower($g->name), mb_strtolower($group)))?->name ?? $group);
+        }
 
-        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $subject, $automation, $values, $group) {
+        // Skip while an open task in that group has this title, or carries the
+        // dedupe value (e.g. {{phone}}) in its title: one call-back per caller.
+        $dedupe = trim($this->interpolate((string) ($action['dedupe'] ?? ''), $event, $subject));
+        // A phone dedupe finds the caller in any open task of the group, in its
+        // title or any column, by the last 10 digits, within dedupe_days; with
+        // on_duplicate=comment the match gets an update instead (desk for Jose,
+        // 2026-11-17: a dispatcher's complaint and the AI's are one task).
+        $ten = substr((string) preg_replace('/\D+/', '', $dedupe), -10);
+        if (strlen($ten) === 10 && ($match = self::openTaskForPhone($board, trim((string) ($action['group'] ?? '')) ?: $group, $ten, (int) ($action['dedupe_days'] ?? 0))) !== null) {
+            if (($action['on_duplicate'] ?? '') === 'comment') {
+                $note = trim($this->interpolate((string) ($action['duplicate_note'] ?? 'This rule also flagged this caller.'), $event, $subject));
+
+                return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($match, $note) {
+                    app(TaskWriter::class)->comment($match, $actor, $note);
+
+                    return "Added an update to the open task \"{$match->title}\" for this caller.";
+                });
+            }
+
+            return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => "An open task \"{$match->title}\" for this caller is already on that board."];
+        }
+        if (($action['dedupe'] ?? '') !== '' && Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
+            ->when($group !== '', fn ($q) => $q->whereHas('group', fn ($g) => $g->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($group)])))
+            ->where(fn ($q) => $q->where('title', mb_substr($title, 0, 255))->when($dedupe !== '' && $dedupe !== 'title', fn ($q) => $q->orWhere('title', 'like', '%'.addcslashes($dedupe, '%_').'%')))
+            ->exists()) {
+            return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => "An open task \"{$title}\" is already on that board."];
+        }
+
+        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $record, $subject, $automation, $values, $group, $action) {
             // A rule's group is made on the branch's board the first time it is
-            // needed (2026-10-22: PM Action 1's "Project Management" group was on
+            // needed (2026-10-22: a rule's group was on
             // no board). By name, any case; a person's API call still refuses an unknown one.
             if ($group !== '' && ! $board->groups()->get()->contains(fn ($g) => mb_strtolower(trim($g->name)) === mb_strtolower($group))) {
                 $board->groups()->create(['organization_id' => $board->organization_id, 'name' => $group,
@@ -3668,23 +4162,63 @@ class ActionRunner
                         'type' => in_array($value, $people, true) ? 'person' : 'text', 'position' => (int) $board->columns()->max('position') + 1]);
                 }
             }
-            app(TaskWriter::class)->create($board, [
-                'title' => mb_substr($title, 0, 255),
+            // A rule's timestamp ("{{started_at}}") into a date column is that day where the business is (2026-11-17: it crashed the task).
+            foreach ($board->columns()->where('type', 'date')->get() as $c) {
+                foreach ($values as $name => $v) {
+                    if (mb_strtolower(trim((string) $name)) === mb_strtolower(trim($c->name)) && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $v)) {
+                        try {
+                            $values[$name] = \Carbon\CarbonImmutable::parse((string) $v)->setTimezone((string) (\App\Support\Settings\SettingsResolver::forOrganization('timezone') ?: 'America/New_York'))->toDateString();
+                        } catch (\Throwable) {
+                        }
+                    }
+                }
+            }
+            // A label for a column with options ("Ohio" for Area) is that option;
+            // a label the column lacks is left blank and said, never guessed (2026-11-17).
+            $unmatched = [];
+            foreach ($board->columns()->get() as $c) {
+                $options = $c->type === 'tags' ? [] : (array) $c->options();
+                foreach ($values as $name => $v) {
+                    if ($options === [] || mb_strtolower(trim((string) $name)) !== mb_strtolower(trim($c->name))
+                        || in_array($v, array_column($options, 'id'), true)) {
+                        continue;
+                    }
+                    $hit = collect($options)->first(fn ($o) => mb_strtolower(trim((string) ($o['label'] ?? ''))) === mb_strtolower(trim((string) $v)));
+                    if ($hit !== null) {
+                        $values[$name] = $hit['id'];
+                    } else {
+                        unset($values[$name]);
+                        $unmatched[] = "{$c->name} \"{$v}\"";
+                    }
+                }
+            }
+            // A long title (a whole review) is cut on a word and kept whole as the
+            // first update: the New-task bell's title has no room for it (11-18).
+            $short = mb_strlen($title) <= 120 ? $title : rtrim(preg_replace('/\s+\S*$/u', '', mb_substr($title, 0, 120)) ?: mb_substr($title, 0, 120), " ,.;:-").'…';
+            $made = app(TaskWriter::class)->create($board, [
+                'title' => $short,
                 'assignee_user_ids' => $owners->map->getKey()->all(),
                 ...($values === [] ? [] : ['values' => $values]),
                 ...($group === '' ? [] : ['group' => $group]),
                 'about_type' => $about === false ? null : $about,
-                'about_id' => $about === false ? null : $subject->getKey(),
+                'about_id' => $about === false ? null : $record->getKey(),
             ], $actor, $automation?->getKey());
+            if ($short !== $title) {
+                app(TaskWriter::class)->comment($made, $actor, $title);
+            }
+            // The board's own Area/Reason/Address/Client/Phone from the lead's job (Jose, 11-19).
+            if (! empty($action['fill_from_record'])) { // no lead (a missed call): the number in the title finds the job
+                app(\App\Support\Tasks\TaskRecordFill::class)->fill($made, $subject instanceof Lead ? $subject : null, $actor);
+            }
 
-            return 'Added the task "'.$title.'".';
+            return 'Added the task "'.$short.'".'.($unmatched === [] ? '' : ' Left blank, no such option: '.implode(', ', $unmatched).'.');
         });
     }
 
     private function assignTask(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
     {
         if (! $subject instanceof Task) {
-            return ['type' => 'task.assign', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+            return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => 'task.assign', 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => 'task.assign', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
         }
 
         $stored = (string) ($action['user_field'] ?? '');
@@ -3694,18 +4228,27 @@ class ActionRunner
             return ['type' => 'task.assign', 'ok' => false, 'detail' => 'Nobody to give the task to.'];
         }
 
-        return $this->onTaskBoard('task.assign', $automation, $subject->board, function (User $actor) use ($subject, $user) {
-            app(TaskWriter::class)->update($subject, ['assignee_user_id' => $user->getKey()], $actor);
+        // Monday's "Add assignee" (add: true) keeps whoever has it; the default makes them the owner.
+        $add = filter_var($action['add'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        return $this->onTaskBoard('task.assign', $automation, $subject->board, function (User $actor) use ($subject, $user, $add) {
+            $owners = $subject->owners()->orderBy('position')->pluck('user_id')->all();
+            if ($add && in_array($user->getKey(), $owners, true)) {
+                return $user->name.' already has the task.';
+            }
+            app(TaskWriter::class)->update($subject, $add && $owners !== []
+                ? ['assignee_user_ids' => [...$owners, $user->getKey()]]
+                : ['assignee_user_id' => $user->getKey()], $actor);
 
             return 'Gave the task to '.$user->name.'.';
         });
     }
 
     /** Task Board recipes (Jose, 2026-10-13): "when status becomes Done, move it to Finished". TaskWriter checks the group is on the task's board. */
-    private function moveTaskToGroup(array $action, ?Model $subject, ?Automation $automation): array
+    private function moveTaskToGroup(array $action, ?Model $subject, ?Automation $automation, AutomationEvent $event): array
     {
         if (! $subject instanceof Task) {
-            return ['type' => 'task.move_group', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+            return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => 'task.move_group', 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => 'task.move_group', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
         }
         $groupId = (string) ($action['group_id'] ?? '');
         if ($subject->group_id === $groupId) {
@@ -3716,6 +4259,88 @@ class ActionRunner
             app(TaskWriter::class)->update($subject, ['group_id' => $groupId], $actor);
 
             return 'Moved the task to another group.';
+        });
+    }
+
+    /**
+     * Monday's "push Date by 1 month" (parity audit 2026-11-13): the task's
+     * due date (column_id "due") or a date column, later by days/weeks/months.
+     * A date that is empty stays empty.
+     */
+    private function shiftTaskDate(array $action, ?Model $subject, ?Automation $automation, AutomationEvent $event): array
+    {
+        $type = 'task.shift_date';
+        if (! $subject instanceof Task) {
+            return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+        }
+        $column = (string) ($action['column_id'] ?? 'due');
+        $amount = (int) ($action['amount'] ?? 0);
+        $unit = (string) ($action['unit'] ?? 'days');
+        if ($amount === 0 || ! in_array($unit, ['days', 'weeks', 'months'], true)) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'Say how far to push the date: days, weeks or months.'];
+        }
+        $current = $column === 'due'
+            ? $subject->due_on
+            : TaskColumnValue::query()->where('task_id', $subject->id)->where('column_id', $column)->value('value_date');
+        if ($current === null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'The date is empty, so there is nothing to push.'];
+        }
+        $date = CarbonImmutable::parse($current);
+        $next = (match ($unit) {
+            'days' => $date->addDays($amount),
+            'weeks' => $date->addWeeks($amount),
+            'months' => $date->addMonthsNoOverflow($amount),
+        })->toDateString();
+
+        return $this->onTaskBoard($type, $automation, $subject->board, function (User $actor) use ($subject, $column, $next) {
+            app(TaskWriter::class)->update($subject, $column === 'due' ? ['due_on' => $next] : ['values' => [$column => $next]], $actor);
+
+            return 'Moved the date to '.$next.'.';
+        });
+    }
+
+    /**
+     * Monday's "set Reminder to Done" / "set Date to today" (parity audit
+     * 2026-11-13): one of the task's own columns. A status/dropdown by the
+     * label's name, a date or due date to "today" (the organization's day) or
+     * a date, a checkbox to true/false, anything else as written.
+     */
+    private function setTaskValue(array $action, ?Model $subject, ?Automation $automation, AutomationEvent $event): array
+    {
+        $type = 'task.set_value';
+        if (! $subject instanceof Task) {
+            return $subject === null && $event->subject_type === (new Task)->getMorphClass() ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'The task was deleted before this ran.'] : ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+        }
+        $columnId = (string) ($action['column_id'] ?? '');
+        $raw = $action['value'] ?? null;
+        $today = fn () => CarbonImmutable::now((string) (app(SettingsResolver::class)->get('timezone', Organization::query()->findOrFail($subject->organization_id)) ?: config('app.timezone')))->toDateString();
+        if ($columnId === 'due') {
+            $value = $raw === 'today' ? $today() : $raw;
+
+            return $this->onTaskBoard($type, $automation, $subject->board, function (User $actor) use ($subject, $value) {
+                app(TaskWriter::class)->update($subject, ['due_on' => $value], $actor);
+
+                return 'Set the due date to '.$value.'.';
+            });
+        }
+        $column = TaskColumn::query()->where('board_id', $subject->board_id)->find($columnId);
+        if ($column === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'That column is not on the task\'s board.'];
+        }
+        $value = match ($column->type) {
+            'status', 'dropdown' => collect($column->options())->first(fn ($o) => mb_strtolower((string) $o['label']) === mb_strtolower(trim((string) $raw)))['id'] ?? null,
+            'date' => $raw === 'today' ? $today() : $raw,
+            'checkbox' => filter_var($raw, FILTER_VALIDATE_BOOLEAN),
+            default => $raw,
+        };
+        if ($value === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => '"'.$raw.'" is not one of '.$column->name.'\'s labels.'];
+        }
+
+        return $this->onTaskBoard($type, $automation, $subject->board, function (User $actor) use ($subject, $column, $value, $raw) {
+            app(TaskWriter::class)->update($subject, ['values' => [$column->id => $value]], $actor);
+
+            return 'Set '.$column->name.' to '.(is_scalar($raw) ? $raw : json_encode($raw)).'.';
         });
     }
 
@@ -3741,18 +4366,24 @@ class ActionRunner
         // A company's sub-companies are in it too (desk review, 2026-10-27).
         $branches = $automation->scope_type === null ? null
             : ViewScope::forStoredAutomationScope($creator, $automation->scope_type, $automation->scope_id)->franchiseIds();
-        $text = app(DailyTexts::class)->render($kind, $org, $day, $branches);
-        $title = DailyTexts::KINDS[$kind].' · '.$day->format('M j');
+        // A company's rule says whose report it is (Ace Fireplace's daily beside A-1's, 2026-11-09).
+        $company = $automation->scope_type === 'company' ? Company::query()->find($automation->scope_id)?->name : null;
+        [$title, $text] = app(DailyTexts::class)->headed($kind, $company ?? $org->name, $org, $day, $branches);
+        if (trim($text) === '') {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nothing to report today, so nothing was sent.'];
+        }
 
         // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
         $sent = self::deliverReportText((string) ($action['from'] ?? ''), self::idList($action['user_ids'] ?? []),
-            $automation->scope_type, $automation->scope_id, $title, $text, "report.text:{$automation->id}:{$kind}:{$day->toDateString()}");
+            $automation->scope_type, $automation->scope_id, $title, $text, "report.text:{$automation->id}:{$kind}:{$day->toDateString()}",
+            app(DailyTexts::class)->attachment($kind, $org, $day, $branches));
         if (is_string($sent)) {
             return ['type' => $type, 'ok' => false, 'detail' => $sent];
         }
 
         return $sent === 0
-            ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nobody chosen has a phone number, so nothing was sent.']
+            // Mostly the hourly repeat after it went (2026-11-11 read "nobody has a phone" all afternoon after the morning send).
+            ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nothing sent: everyone chosen already got it today, has no phone number, or cannot see reports here.']
             : ['type' => $type, 'ok' => true, 'detail' => "Handed \"{$title}\" to WhatsApp for {$sent} ".($sent === 1 ? 'person' : 'people').'.'];
     }
 
@@ -3764,9 +4395,11 @@ class ActionRunner
      * @param  list<string>  $userIds
      * @return int|string how many it went to, or why nothing could go
      */
-    public static function deliverReportText(string $from, array $userIds, ?string $scopeType, ?string $scopeId, string $title, string $text, ?string $once = null): int|string
+    public static function deliverReportText(string $from, array $userIds, ?string $scopeType, ?string $scopeId, string $title, string $text, ?string $once = null, ?string $pdf = null): int|string
     {
-        $number = WhatsAppNumber::query()->when($from !== '', fn ($q) => $q->where('display_number', $from))->first();
+        // The Reports number when there is one, whatever the rule names (Jose, 2026-11-09).
+        $number = WhatsAppNumber::forPurpose('reports')
+            ?? WhatsAppNumber::query()->when($from !== '', fn ($q) => $q->where('display_number', $from))->first();
         if ($number === null) {
             return 'This organization has no WhatsApp number to send from.';
         }
@@ -3780,13 +4413,21 @@ class ActionRunner
                 continue;
             }
             try {
-                $sent += app(WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text) ? 1 : 0;
+                // The key names the rule, so ReportDeliveryCheck can tell its maker one did not arrive.
+                $sent += app(WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text, $once === null ? null : "{$once}:{$user->id}",
+                    $scopeType === 'company' ? Company::query()->find($scopeId) : null, $pdf) ? 1 : 0;
             } catch (RuntimeException $refusal) {
-                return $refusal->getMessage();
+                // Not sent, so a retry may try again rather than report "nobody has a phone".
+                if ($once !== null) {
+                    Cache::forget("{$once}:{$user->id}");
+                }
+
+                // One refusal no longer stops everyone after them (audit 2026-11-27).
+                $refused ??= $refusal->getMessage();
             }
         }
 
-        return $sent;
+        return $sent === 0 && isset($refused) ? $refused : $sent;
     }
 
     /** Holds reports.view and reaches the rule's place (the organization when unscoped). */
@@ -3798,7 +4439,7 @@ class ActionRunner
 
     /**
      * A notification reads as written, not as its blanks (Jose, 2026-10-21:
-     * "Missed call: +12196706463 ()"): a US number reads (219) 670-6463,
+     * "Missed call: +12195550101 ()"): a US number reads (219) 555-0101,
      * brackets a missing value left empty go, and spaces are tidied.
      */
     public static function tidyNotice(string $text): string
@@ -3867,8 +4508,9 @@ class ActionRunner
         $told = 0;
         foreach ($people as $person) {
             $told += $this->notifications->dispatch(
-                title: $alert->message,
-                body: 'From the automation "'.($automation?->name ?? 'a rule').'"',
+                // notifications.title is 255; a long {{comment}} failed "Sad review" 11 times (review 2026-11-02).
+                title: \Illuminate\Support\Str::limit($alert->message, 250),
+                body: (mb_strlen($alert->message) > 250 ? $alert->message."\n\n" : '').'From the automation "'.($automation?->name ?? 'a rule').'"',
                 subject: $alert,
                 onlyTo: $person,
                 source: 'alert',
@@ -3898,7 +4540,11 @@ class ActionRunner
         [$actor] = $this->taskContext($automation);
 
         try {
-            app(LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor, automatic: true);
+            // A booking confirmation is always sent; other rule texts count toward the daily cap.
+            app(LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor,
+                automatic: true, capped: $event->event_key !== 'lead.booking_approved');
+        } catch (\App\Support\Phone\SmsCapped|\App\Support\Phone\SmsOptedOut $capped) {
+            return ['type' => 'lead.text', 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
         } catch (RuntimeException $e) {
             return ['type' => 'lead.text', 'ok' => false, 'detail' => $e->getMessage()];
         }

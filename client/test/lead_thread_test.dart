@@ -1,14 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ezbizi_client/widgets/call_text.dart';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/phone/recording_player.dart';
+import 'package:ezbizi_client/widgets/formatted_notes.dart';
 import 'package:ezbizi_client/widgets/lead_thread.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -84,6 +87,39 @@ void main() {
         reason: 'the lead now has its job');
   });
 
+  // Jose, 2026-11-11: "make it so address email etc can be copied too".
+  testWidgets('the email copies like the phone', (tester) async {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      email: 'marcus@example.com',
+      size: const Size(1200, 1400),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('copy-email')));
+    await tester.pump();
+
+    expect(copied, ['marcus@example.com']);
+    expect(find.text('Email copied'), findsOneWidget);
+  });
+
   testWidgets('on a phone the details fold away and the header stays short', (
     tester,
   ) async {
@@ -96,8 +132,8 @@ void main() {
       details: {
         'account': 'A1 Chimney - Cleveland',
         'google_status': 'Active',
-        'name': 'Dave Malkowski',
-        'address': '215 Lakeview Dr Michigan City Indiana',
+        'name': 'Dave Mapleford',
+        'address': '215 Sampleview Dr Michigan City Indiana',
         'zip': '46360',
       },
     );
@@ -116,6 +152,84 @@ void main() {
 
     expect(find.byKey(const ValueKey('lead-address')), findsOneWidget);
     expect(find.text('A1 Chimney - Cleveland'), findsOneWidget);
+    // Design 171: copy and the note are in the details, not lost with the
+    // old header.
+    expect(find.byKey(const ValueKey('copy-name')), findsOneWidget);
+  });
+
+  /// Design 171: a phone's header is one bar - name, status, Book, ... - and
+  /// the messages get the rest.
+  testWidgets('on a phone the thread header is two short lines', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(390, 844),
+    );
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('thread-header'))).height,
+      lessThan(110),
+    );
+    expect(find.byKey(const ValueKey('thread-details-toggle')), findsOneWidget);
+    expect(find.byKey(const ValueKey('copy-name')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  /// Mobile review 11-24: typing, the status / Book / details row folds away,
+  /// so the conversation keeps the room. Read from the window: a Scaffold body
+  /// sees no keyboard inset, which is why the details rule never fired.
+  testWidgets('on a phone the moves row folds while the keyboard is up', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(390, 844),
+    );
+    final moves = find.byKey(const ValueKey('phone-bar-moves'));
+    expect(moves, findsOneWidget);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+    expect(moves, findsNothing);
+    expect(find.byKey(const ValueKey('phone-bar-title')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    tester.view.resetViewInsets();
+    await tester.pumpAndSettle();
+    expect(moves, findsOneWidget);
+  });
+
+  /// Jose, 2026-11-19: "+1 (267) 55..." cut by status, Book and ... on one
+  /// line, and no copy. The number has its own line, whole, with a copy
+  /// button; the controls sit under it.
+  testWidgets('on a phone the whole number shows, copies, and the controls sit under it', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      bookable: true,
+      size: const Size(375, 812),
+    );
+
+    final title = find.byKey(const ValueKey('phone-bar-title'));
+    final words = tester.widget<Text>(title).data!;
+    expect(tester.renderObject<RenderParagraph>(find.descendant(of: title, matching: find.byType(RichText))).didExceedMaxLines, isFalse);
+    expect(tester.widget<Text>(title).overflow, isNot(TextOverflow.ellipsis));
+    expect(find.byKey(const ValueKey('phone-bar-copy')), findsOneWidget);
+    expect(words, isNotEmpty);
+
+    // Status, Book and ... are under the name, not beside it.
+    final nameBottom = tester.getRect(title).bottom;
+    for (final key in ['book-open', 'thread-details-toggle']) {
+      expect(tester.getRect(find.byKey(ValueKey(key))).top, greaterThanOrEqualTo(nameBottom - 1), reason: key);
+    }
+    expect(tester.takeException(), isNull);
   });
 
   /// Jose, 2026-10-08: a website booking waits for a dispatcher's answer.
@@ -167,10 +281,40 @@ void main() {
       find.text('Requested: Sunday, Oct 11 · 8:00 AM - 11:00 AM'),
       findsOneWidget,
     );
+    // Audit 11-27: a double tap booked two jobs. Two taps, one request.
+    _approvals = 0;
+    await tester.tap(find.byKey(const ValueKey('booking-approve')));
     await tester.tap(find.byKey(const ValueKey('booking-approve')));
     await tester.pumpAndSettle();
 
+    expect(_approvals, 1);
     expect(find.byKey(const ValueKey('booking-approve')), findsNothing);
+    expect(find.text('Approved by Mia'), findsOneWidget);
+  });
+
+  /// Jose, 2026-11-16: another window instead, the asked-for one given back.
+  testWidgets('Another date picks an open window and approves it', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      booking: const {
+        'date': '2026-10-11',
+        'start_time': '08:00',
+        'end_time': '11:00',
+        'status': 'pending',
+        'decided_by': null,
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('booking-move')));
+    await tester.pumpAndSettle();
+    expect(find.text('Monday, Oct 12 · 11:00 AM - 2:00 PM'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('booking-move-2026-10-12-11:00')));
+    await tester.pumpAndSettle();
+
+    expect(_booked.last, {'date': '2026-10-12', 'start_time': '11:00'});
+    expect(find.text('Requested: Monday, Oct 12 · 11:00 AM - 2:00 PM'), findsOneWidget);
     expect(find.text('Approved by Mia'), findsOneWidget);
   });
 
@@ -265,7 +409,7 @@ void main() {
 
     expect(find.text('Customer called · 2:05'), findsOneWidget);
     // The number they dialled and its line (Jose, 2026-10-20).
-    expect(find.text('to +1 (732) 659-1055 · NJ - GMB · answered by Sasha'), findsOneWidget);
+    expect(find.text('to +1 (732) 555-0104 · NJ - GMB · answered by Sasha'), findsOneWidget);
     expect(find.textContaining('Customer called'), findsOneWidget);
     expect(find.textContaining('PHONE_CALL'), findsNothing);
     expect(find.byKey(const Key('recording-play')), findsOneWidget);
@@ -297,11 +441,13 @@ void main() {
       recordingGate: Completer()..complete(),
       callTranscript: long,
     );
-    final text = find.byWidgetPredicate((w) => w is Text && w.data == long);
+    final text = find.byWidgetPredicate((w) => w is Text && w.textSpan?.toPlainText() == long);
     expect(tester.widget<Text>(text).maxLines, 4);
     await tester.tap(find.byKey(const ValueKey('transcript-toggle-c-call')));
     await tester.pumpAndSettle();
-    expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == long), findsOneWidget);
+    // Open, it is the app's one transcript widget (CallTranscriptText).
+    expect(find.byWidgetPredicate((w) => w is SelectableText && w.textSpan?.toPlainText() == long),
+        findsOneWidget);
   });
 
   /// Jose, 2026-10-12: "summary should show first with the option to see
@@ -350,8 +496,10 @@ void main() {
     expect(find.byKey(const ValueKey('followed-up-c-call')), findsNothing);
   });
 
-  /// Jose, 2026-10-12: "IVR Menu: / Dispatcher: / Customer:", the labels bold.
-  testWidgets('a transcript divided by speaker shows each label in bold', (
+  /// Jose, 2026-10-12: "IVR Menu: / Dispatcher: / Customer:", the labels set
+  /// apart; since 2026-11-02 coloured as everywhere else (CallTranscriptText):
+  /// Dispatcher and Customer bold, the IVR menu muted italic.
+  testWidgets('a transcript divided by speaker sets each label apart', (
     tester,
   ) async {
     const labelled =
@@ -363,19 +511,25 @@ void main() {
       recordingGate: Completer()..complete(),
       callTranscript: labelled,
     );
-    final text = tester.widget<Text>(
+    final text = tester.widget<SelectableText>(
       find.byWidgetPredicate(
-        (w) => w is Text && w.textSpan?.toPlainText() == labelled,
+        (w) => w is SelectableText && w.textSpan?.toPlainText() == labelled,
       ),
     );
     final bold = <String>[];
+    final italic = <String>[];
     text.textSpan!.visitChildren((span) {
       if (span is TextSpan && span.style?.fontWeight == FontWeight.w700) {
         bold.add(span.text!);
       }
+      if (span is TextSpan && span.style?.fontStyle == FontStyle.italic) {
+        italic.add(span.text!);
+      }
       return true;
     });
-    expect(bold, ['IVR menu: ', 'Dispatcher: ', 'Customer: ']);
+    expect(bold, ['Dispatcher: ', 'Customer: ']);
+    expect(italic, ['IVR menu: ']);
+    expect(find.byType(CallTranscriptText), findsOneWidget);
   });
 
   // The dispatchers, via Jose, 2026-09-29: copy and paste.
@@ -404,7 +558,7 @@ void main() {
   test('a lead with no name, or a number for one, reads as Customer', () {
     expect(typingLine('Marcus Hill'), 'Marcus is typing…');
     expect(typingLine(null), 'Customer is typing…');
-    expect(typingLine('+1 (914) 325-8137'), 'Customer is typing…');
+    expect(typingLine('+1 (914) 555-0100'), 'Customer is typing…');
   });
 
   /// A text lead's customer never sees "typing" (only a website chat shows
@@ -492,6 +646,31 @@ void main() {
     expect(find.byKey(const ValueKey('attachment-outside-1')), findsNothing);
   });
 
+  // The reply reader (Jose, 2026-11-13): what the customer said, and a
+  // one-tap "Use …?" for a different number they gave.
+  testWidgets('the reading shows what the customer said and offers their number', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(1200, 900),
+      reading: {
+        'suggest': {'phone': '(516) 555-0100'},
+        'availability': 'not Tue',
+        'deadline': 'before Fri 11/20',
+        'source': 'My cell is (516)555-0100. Off Tuesdays.',
+      },
+    );
+
+    expect(find.text('not Tue · before Fri 11/20'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('reading-use-phone')));
+    await tester.pumpAndSettle();
+
+    expect(_booked, [{'use': 'phone'}]);
+    expect(find.byKey(const ValueKey('reading-use-phone')), findsNothing, reason: 'used, the offer goes');
+    expect(find.byKey(const ValueKey('reading-said')), findsNothing, reason: 'the reply carried no source');
+  });
+
   testWidgets('a message copies in one press', (tester) async {
     String? copied;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -511,7 +690,7 @@ void main() {
     await tester.pump();
 
     expect(copied, 'Is Saturday ok?');
-    expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == 'Is Saturday ok?'), findsOneWidget,
+    expect(find.byWidgetPredicate((w) => w is SelectableText && (w.data ?? w.textSpan?.toPlainText()) == 'Is Saturday ok?'), findsOneWidget,
         reason: 'part of a message can be selected too');
   });
 
@@ -775,6 +954,40 @@ void main() {
     expect(_sent, isEmpty, reason: 'a draft is not a send');
   });
 
+  /// Jose, 2026-11-05: "Yes, I call you right away". The fix is offered
+  /// under the box and goes in only when tapped; nothing is sent.
+  testWidgets('a clear mistake is offered as "Did you mean", never sent', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      proofread: "Yes, I'll call you right away",
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('reply-box')),
+      'Yes, I call you right away',
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('reply-proofread')), findsNothing);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('reply-proofread')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('reply-proofread')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('reply-box')))
+          .controller!
+          .text,
+      "Yes, I'll call you right away",
+    );
+    expect(_sent, isEmpty);
+  });
+
   // UI queue 77: what AI wrote says so, until a person changes it.
   testWidgets("a suggestion is marked as AI's until the words change", (
     tester,
@@ -937,15 +1150,15 @@ void main() {
       details: {
         'account': 'A1 Chimney - Cleveland',
         'google_status': 'Active',
-        'name': 'Dave Malkowski',
-        'address': '215 Lakeview Dr Michigan City Indiana',
+        'name': 'Dave Mapleford',
+        'address': '215 Sampleview Dr Michigan City Indiana',
         'zip': '46360',
       },
     );
 
     expect(find.text('A1 Chimney - Cleveland'), findsOneWidget);
     expect(find.text('Google: Active'), findsOneWidget);
-    expect(find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'), findsOneWidget);
+    expect(find.text('215 Sampleview Dr Michigan City Indiana · ZIP 46360'), findsOneWidget);
   });
 
   // UI/UX tour, 2026-10-14: a Workiz lead's status read "Google: ...".
@@ -972,10 +1185,10 @@ void main() {
       player: FakeRecordingPlayer(),
       recordingGate: Completer()..complete(),
       details: {
-        'address': '215 Lakeview Dr Michigan City Indiana',
+        'address': '215 Sampleview Dr Michigan City Indiana',
         'zip': '46360',
         'checked_address': {
-          'address': '215 Lakeview Dr, Michigan City, IN 46360, USA',
+          'address': '215 Sampleview Dr, Michigan City, IN 46360, USA',
           'zip': '46360',
           'exact': true,
         },
@@ -983,8 +1196,8 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('lead-address-checked')), findsOneWidget);
-    expect(find.text('215 Lakeview Dr, Michigan City, IN 46360, USA'), findsOneWidget);
-    expect(find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'), findsNothing);
+    expect(find.text('215 Sampleview Dr, Michigan City, IN 46360, USA'), findsOneWidget);
+    expect(find.text('215 Sampleview Dr Michigan City Indiana · ZIP 46360'), findsNothing);
   });
 
   // Jose, 2026-09-28: a number that is already a customer shows who they are
@@ -1058,6 +1271,11 @@ void main() {
       ],
     );
 
+    // Design 171: behind + on a phone, until the box is focused and empty.
+    expect(find.byKey(const ValueKey('reply-templates')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('reply-tools')));
+    await tester.pumpAndSettle();
+
     final first = tester.getTopLeft(find.byKey(const ValueKey('reply-template-Thank you')));
     final second = tester.getTopLeft(find.byKey(const ValueKey('reply-template-Inspection prices')));
     expect(second.dy, first.dy);
@@ -1075,6 +1293,92 @@ void main() {
     expect(
       tester.widget<TextField>(find.byKey(const ValueKey('reply-box'))).controller!.text,
       'Text for We service your area.',
+    );
+  });
+
+  /// Design 171: a phone's composer is + / the box / Send. The quick replies
+  /// show by themselves while the box is focused and empty; Suggest and
+  /// emoji are behind +.
+  testWidgets('on a phone the quick replies show on focus and go once typing', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(390, 900),
+      templates: [
+        {'name': 'Thank you', 'text': 'Thanks!'},
+      ],
+    );
+
+    expect(find.byKey(const ValueKey('reply-templates')), findsNothing);
+    expect(find.byKey(const ValueKey('reply-emoji')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('reply-box')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('reply-templates')), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('reply-box')), 'Hi');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('reply-templates')), findsNothing);
+
+    // The box takes the row: wider than half the screen.
+    expect(
+      tester.getSize(find.byKey(const ValueKey('reply-box'))).width,
+      greaterThan(390 / 2),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('reply-tools')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('reply-emoji')), findsOneWidget);
+    expect(find.byKey(const ValueKey('reply-templates')), findsOneWidget);
+  });
+
+  // The unfolded Duo: 951 wide, the thread a 330 pane beside the list. The
+  // desktop row (box, Suggest, emoji, Send) left the box 30 wide; the pane,
+  // not the screen, picks the phone row. 400 here: the test font draws the
+  // recording bar's "0:00 / 1:23" twice as wide as the phone does.
+  testWidgets('a narrow pane on a wide screen gets the phone reply row', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(951, 669),
+      paneWidth: 400,
+    );
+    expect(find.byKey(const ValueKey('reply-tools')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('reply-box'))).width,
+      greaterThan(400 / 2),
+    );
+  });
+
+  // The same pane with the keyboard up, as on the Duo: 281 tall. Laid out
+  // for a desktop, Call, Edit and Book stacked in the header and pushed the
+  // reply box 66 px off the bottom.
+  testWidgets('a narrow pane keeps the reply box above the keyboard', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(951, 545),
+      paneWidth: 400,
+    );
+    tester.view.viewInsets = const FakeViewPadding(bottom: 264);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    // The phone's one-line header, its moves row folded while typing.
+    expect(find.byKey(const ValueKey('phone-bar-title')), findsOneWidget);
+    expect(find.byKey(const ValueKey('phone-bar-moves')), findsNothing);
+    expect(
+      tester.getBottomLeft(find.byKey(const ValueKey('reply-box'))).dy,
+      lessThanOrEqualTo(545 - 264),
     );
   });
 
@@ -1096,7 +1400,7 @@ void main() {
   });
 
   test('the number shows under any name, the customer one included', () {
-    expect(showsNumberLine({'phone': '+12155550101', 'customer': {'name': 'Mark Morrow'}}), isTrue);
+    expect(showsNumberLine({'phone': '+12155550101', 'customer': {'name': 'Mark Mercer'}}), isTrue);
     expect(showsNumberLine({'phone': '+12155550101', 'contact_name': 'Mark'}), isTrue);
     expect(showsNumberLine({'phone': '+12155550101'}), isFalse, reason: 'the title is the number');
   });
@@ -1248,6 +1552,21 @@ void main() {
     // On the label line, who then what: "Note · Maya · just now".
     expect(find.textContaining('Note · Maya · '), findsOneWidget);
     expect(find.byKey(const ValueKey('note-edit')), findsOneWidget);
+
+    // Jose 11-25: bold in the note box is saved as <b>, shown bold.
+    await tester.tap(find.byKey(const ValueKey('note-edit')));
+    await tester.pumpAndSettle();
+    final box = find.byKey(const ValueKey('note-box'));
+    expect(tester.widget<TextField>(box).controller!.text, 'Wants Saturday.');
+    tester.widget<TextField>(box).controller!.selection =
+        const TextSelection(baseOffset: 6, extentOffset: 14);
+    await tester.pump();
+    await tester.tap(find.byKey(ValueKey('notes-format-${NotesMarkup.bold}')));
+    await tester.tap(find.byKey(const ValueKey('note-save')));
+    await tester.pumpAndSettle();
+    expect(saved, 'Wants <b>Saturday</b>.');
+    expect(find.text('Wants Saturday.'), findsOneWidget);
+    expect(find.textContaining('<b>'), findsNothing);
   });
 
   testWidgets('messages read as a thread: theirs left, yours right, with who '
@@ -1267,6 +1586,300 @@ void main() {
     expect(find.textContaining('CONSUMER'), findsNothing);
     expect(find.textContaining('ADVERTISER'), findsNothing);
   });
+
+  // Design lead-header A (Jose, 2026-11-16: "this is still terrible ui-ux
+  // ... lots of wasted space and things all around").
+  group('the header, design lead-header A', () {
+    const details = {
+      'address': '14 Orchard Ln, Doylestown, PA 18901',
+      'zip': '18901',
+      'account': 'A1 Chimney - Bucks County',
+      'google_status': 'Active',
+    };
+    const reading = {
+      'scope': 'wants the fireplace swept and checked before the holidays',
+      'availability': 'weekday mornings',
+      'deadline': 'before Dec 20',
+      'source':
+          'Our fireplace smokes. Can you sweep and check it before the '
+          'holidays? Weekday mornings are best.',
+    };
+    const summary =
+        'Smoky fireplace; wants it swept and checked before the holidays.';
+
+    Future<void> pumpFull(WidgetTester tester, Size size) => _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: size,
+      company: const {'id': 'co-1', 'name': 'A-1 Chimney'},
+      email: 'dana.whitfield@example.com',
+      details: details,
+      reading: reading,
+      classification: 'BOOK',
+      summary: summary,
+      starrable: true,
+      onNote: (_) async => null,
+      viewers: const ['Gino Russo-Fernandez'],
+      customer: const {
+        'id': 'cu-1',
+        'name': 'Marcus Bell',
+        'number': 'C-03394',
+        'jobs_total': 1,
+        'jobs': <Map>[],
+      },
+    );
+
+    testWidgets('the facts are a grid on the right, each with its copy button', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(1200, 900));
+
+      final facts = find.byKey(const ValueKey('thread-facts'));
+      expect(find.byKey(const ValueKey('thread-columns')), findsOneWidget);
+      // Its own column on the right half, beside what they asked.
+      expect(tester.getTopLeft(facts).dx, greaterThan(1200 / 2));
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('lead-asked'))).dx,
+        lessThan(tester.getTopLeft(facts).dx),
+      );
+
+      for (final (row, copy) in const [
+        ('fact-phone', 'copy-phone'),
+        ('fact-email', 'copy-email'),
+        ('fact-address', 'copy-address'),
+      ]) {
+        expect(
+          find.descendant(
+            of: find.byKey(ValueKey(row)),
+            matching: find.byKey(ValueKey(copy)),
+          ),
+          findsOneWidget,
+          reason: '$row carries $copy',
+        );
+      }
+      // One label column: every row's label starts at the same x, and every
+      // value at the same x after it.
+      final labels = {
+        for (final l in const ['Phone', 'Email', 'Address', 'Job', 'Branch', 'Source'])
+          tester
+              .getTopLeft(find.descendant(of: facts, matching: find.text(l)))
+              .dx,
+      };
+      expect(labels, hasLength(1), reason: 'labels share one column');
+      final values = {
+        tester.getTopLeft(find.byKey(const ValueKey('lead-address'))).dx,
+        tester.getTopLeft(find.byKey(const ValueKey('details-service'))).dx,
+        tester.getTopLeft(find.byKey(const ValueKey('details-branch'))).dx,
+      };
+      expect(values, hasLength(1), reason: 'values share one column');
+
+      // Company, branch and source each said once.
+      expect(find.text('A-1 Chimney'), findsOneWidget);
+      expect(find.text('Connecticut'), findsOneWidget);
+      expect(find.text('Google Ads'), findsOneWidget);
+      expect(find.textContaining('Fireplace chimney ·'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('fact-source')),
+          matching: find.byKey(const ValueKey('lead-account')),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('what they asked says the customer and the AI once', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(1200, 900));
+
+      final card = find.byKey(const ValueKey('lead-asked'));
+      expect(card, findsOneWidget);
+      expect(
+        find.descendant(of: card, matching: find.text(summary)),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Looks like work to book'), findsOneWidget);
+      // The AI line already says the scope, so the customer's part adds
+      // only when and by when.
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('reading-said'))).data,
+        'weekday mornings · before Dec 20',
+      );
+      expect(find.textContaining(reading['scope']!), findsNothing);
+      expect(find.textContaining('Smoky fireplace'), findsOneWidget);
+    });
+
+    test('sameGist: a restatement is the same, a new fact is not', () {
+      expect(sameGist(reading['scope']!, summary), isTrue);
+      expect(sameGist('needs a new damper and a cap', summary), isFalse);
+    });
+
+    testWidgets('the chips sit in one row beside the name', (tester) async {
+      await pumpFull(tester, const Size(1200, 900));
+
+      final rows = {
+        for (final k in const [
+          'copy-name',
+          'thread-company',
+          'thread-status',
+          'thread-star',
+          'lead-viewers',
+          'note-add',
+        ])
+          tester.getCenter(find.byKey(ValueKey(k))).dy.round(),
+      };
+      expect(rows, hasLength(1), reason: 'one row: $rows');
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('thread-company'))).dy,
+        lessThan(
+          tester.getTopLeft(find.byKey(const ValueKey('status-moves'))).dy,
+        ),
+      );
+    });
+
+    testWidgets('More appears only when the AI line is cut, and opens it', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(1200, 900));
+      expect(find.byKey(const ValueKey('lead-summary')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('lead-summary-more')),
+        findsNothing,
+        reason: 'one line fits: nothing to open',
+      );
+
+      final long = List.filled(
+        12,
+        'Smoky fireplace that backs up into the living room when lit',
+      ).join('; ');
+      await _pump(
+        tester,
+        player: FakeRecordingPlayer(),
+        recordingGate: Completer()..complete(),
+        size: const Size(1200, 900),
+        details: details,
+        reading: reading,
+        classification: 'BOOK',
+        summary: long,
+      );
+      final text = find.byKey(const ValueKey('lead-summary'));
+      final more = find.byKey(const ValueKey('lead-summary-more'));
+      expect(more, findsOneWidget);
+      expect(find.descendant(of: more, matching: find.text('More')), findsOneWidget);
+      expect(tester.widget<Text>(text).maxLines, 3);
+      final cut = tester.getSize(text).height;
+
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: more, matching: find.text('Less')), findsOneWidget);
+      expect(tester.widget<Text>(text).maxLines, isNull);
+      expect(tester.getSize(text).height, greaterThan(cut));
+
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(text).maxLines, 3);
+      expect(tester.getSize(text).height, cut);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final size in const [Size(1440, 400), Size(390, 640)]) {
+      testWidgets('at ${size.width.toInt()}x${size.height.toInt()} the '
+          'thread keeps at least half the pane', (tester) async {
+        await pumpFull(tester, size);
+        expect(tester.takeException(), isNull);
+
+        final list = find.byKey(const ValueKey('thread-list'));
+        expect(list, findsOneWidget);
+        expect(
+          tester.getSize(list).height,
+          greaterThanOrEqualTo(size.height / 2),
+        );
+        // Who it is stays in view; the rest waits behind one control.
+        expect(find.text('Marcus Bell'), findsWidgets);
+        for (final k in const [
+          'lead-asked',
+          'thread-facts',
+          'lead-customer',
+        ]) {
+          expect(find.byKey(ValueKey(k)), findsNothing, reason: k);
+        }
+      });
+    }
+
+    testWidgets('a short desktop pane opens its details without overflow', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(1440, 400));
+      final toggle = find.byKey(const ValueKey('thread-short-details'));
+      expect(toggle, findsOneWidget);
+      expect(find.byKey(const ValueKey('status-moves')), findsNothing);
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      for (final k in const [
+        'status-moves',
+        'lead-asked',
+        'thread-facts',
+        'lead-customer',
+      ]) {
+        expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
+      }
+      // Open, the details scroll inside their share of the pane.
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('thread-details-scroll')))
+            .height,
+        lessThanOrEqualTo(400 * 0.3),
+      );
+      expect(
+        tester.getSize(find.byKey(const ValueKey('thread-list'))).height,
+        greaterThan(0),
+      );
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('lead-asked')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a tall desktop pane draws no Details line', (tester) async {
+      await pumpFull(tester, const Size(1440, 900));
+      expect(find.byKey(const ValueKey('thread-short-details')), findsNothing);
+      expect(find.byKey(const ValueKey('lead-asked')), findsOneWidget);
+    });
+
+    testWidgets('a phone at 390 opens every piece without overflow', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(390, 844));
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const ValueKey('thread-details-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      for (final k in const [
+        'thread-facts',
+        'lead-asked',
+        'lead-customer',
+        'copy-phone',
+        'copy-email',
+        'copy-address',
+        'thread-company',
+        'note-add',
+      ]) {
+        expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
+        expect(
+          tester.getRect(find.byKey(ValueKey(k))).right,
+          lessThanOrEqualTo(390),
+          reason: k,
+        );
+      }
+    });
+  });
 }
 
 final _sent = <String>[];
@@ -1274,6 +1887,7 @@ final _typingPosts = <String>[];
 final _forced = <bool>[];
 final _creditPosts = <String>[];
 final _followUpPosts = <String>[];
+var _approvals = 0;
 
 Future<void> _pump(
   WidgetTester tester, {
@@ -1296,17 +1910,24 @@ Future<void> _pump(
   Future<void> Function()? onRead,
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
   Size size = const Size(600, 900),
+  double? paneWidth,
   Map<String, dynamic>? company,
   String? source,
   bool visitorTyping = false,
   Map<String, dynamic>? booking,
   List<String>? ai,
   String? postalCode,
+  String? email,
   Map<String, dynamic>? credit,
   String? replying,
   String? conflictOnce,
   bool bookable = false,
   Map<String, dynamic>? offer,
+  String? proofread,
+  Map<String, dynamic>? reading,
+  String? classification,
+  String? summary,
+  bool starrable = false,
 }) async {
   _sent.clear();
   _booked.clear();
@@ -1319,6 +1940,16 @@ Future<void> _pump(
 
   final api = ApiClient(
     client: MockClient((request) async {
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/proofread')) {
+        return http.Response(
+          jsonEncode({
+            'data': {'suggestion': proofread},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
       if (request.method == 'POST' &&
           request.url.path.endsWith('/suggest-reply')) {
         return http.Response(
@@ -1387,8 +2018,38 @@ Future<void> _pump(
         );
       }
 
+      if (request.url.path.endsWith('/booking/days')) {
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {
+                'date': '2026-10-12',
+                'windows': [
+                  {'start_time': '11:00', 'end_time': '14:00'},
+                ],
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/booking/move')) {
+        _booked.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response(
+          jsonEncode({
+            'data': {...?booking, 'date': '2026-10-12', 'start_time': '11:00', 'end_time': '14:00', 'status': 'approved', 'decided_by': 'Mia'},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       if (request.method == 'POST' &&
           request.url.path.endsWith('/booking/approve')) {
+        _approvals++;
         return http.Response(
           jsonEncode({
             'data': {...?booking, 'status': 'approved', 'decided_by': 'Mia'},
@@ -1450,6 +2111,7 @@ Future<void> _pump(
               'can_reply': canReply,
               'cannot_reply_because': cannotReplyBecause,
               'can_suggest': suggestion != null,
+              'can_proofread': proofread != null,
               'customer': customer,
               'details': details,
               'viewers': viewers,
@@ -1466,7 +2128,7 @@ Future<void> _pump(
                   'from': 'CONSUMER',
                   'occurred_at': '2026-09-06T10:00:00Z',
                   'duration_ms': 125000,
-                  'line_number': '+17326591055',
+                  'line_number': '+17325550104',
                   'line_name': 'NJ - GMB',
                   'answered_by': 'Sasha',
                   'text': null,
@@ -1520,6 +2182,12 @@ Future<void> _pump(
           },
         });
       }
+      if (request.url.path.endsWith('/reading/use')) {
+        _booked.add({'use': (jsonDecode(request.body) as Map)['field']});
+        return _ok({
+          'data': {'phone': '+15165550100', 'reading': {'availability': 'not Tue'}},
+        });
+      }
       if (bookable &&
           request.method == 'POST' &&
           request.url.path.endsWith('/jobs/book')) {
@@ -1551,7 +2219,9 @@ Future<void> _pump(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: LeadThread(
+        body: _pane(
+          paneWidth,
+          LeadThread(
           api: api,
           player: player,
           lead: {
@@ -1565,14 +2235,20 @@ Future<void> _pump(
             'source': ?source,
             'ai': ?ai,
             'postal_code': ?postalCode,
+            'email': ?email,
             'credit': ?credit,
+            'reading': ?reading,
+            'classification': ?classification,
+            'summary': ?summary,
             if (offer != null) 'lead_type': 'Reschedule',
           },
           onStatusChanged: (_) async {},
+          onStar: starrable ? (_) async => null : null,
           onRead: onRead,
           onNote: onNote,
           session: session,
           onBooked: bookable ? (result) async => result['lead'] as Map<String, dynamic>? : null,
+          ),
         ),
       ),
     ),
@@ -2042,3 +2718,11 @@ void _statusTests() {
     expect(tester.takeException(), isNull);
   });
 }
+
+/// The thread as one pane of a wider screen (the Leads list beside it).
+Widget _pane(double? width, Widget child) => width == null
+    ? child
+    : Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(width: width, child: child),
+      );

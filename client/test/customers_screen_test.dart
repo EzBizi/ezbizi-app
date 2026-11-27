@@ -161,11 +161,15 @@ void main() {
 
     expect(find.textContaining('C-1001'), findsWidgets);
 
-    // The WHOLE subtitle, number first. The list row already reads
-    // "Everdoors · Connecticut" and so does the org name in the fixture, so
-    // asserting only the owner tag would pass against the row behind the panel
-    // and prove nothing about the panel. Only the panel prefixes the number.
-    expect(find.text('C-1001 · Everdoors · Connecticut'), findsOneWidget);
+    // Design 196: Company · Branch in the panel's facts grid. Scoped to the
+    // fact, because the list row behind the panel reads the same words.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('fact-Branch')),
+        matching: find.text('Everdoors · Connecticut'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Find an address'), findsOneWidget);
     expect(find.text('Street'), findsOneWidget);
     expect(find.text('Deactivate'), findsOneWidget);
@@ -181,6 +185,50 @@ void main() {
       isTrue,
       reason: 'Deactivate is a save of is_active, not a missing control.',
     );
+  });
+
+  // customers.email_opt_out_at had no writer: the record's own switch.
+  testWidgets('No marketing email saves at once, and needs customers.edit', (
+    tester,
+  ) async {
+    Map<String, dynamic>? patched;
+    await _pump(
+      tester,
+      customers: [_alice],
+      onRequest: (request) {
+        if (request.method == 'PATCH' &&
+            request.url.path.endsWith('/customers/c-1')) {
+          patched = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {..._aliceDetail, 'email_opt_out': true},
+          });
+        }
+        return null;
+      },
+    );
+    await tester.tap(find.text('Alice Roofing'));
+    await tester.pumpAndSettle();
+
+    final toggle = find.byKey(const ValueKey('customer-email-opt-out'));
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(patched, {'email_opt_out': true});
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+  });
+
+  testWidgets('without customers.edit the switch cannot be turned', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      customers: [_alice],
+      permissions: const ['customers.view'],
+    );
+    await tester.tap(find.text('Alice Roofing'));
+    await tester.pumpAndSettle();
+    final toggle = find.byKey(const ValueKey('customer-email-opt-out'));
+    expect(tester.widget<SwitchListTile>(toggle).onChanged, isNull);
   });
 
   testWidgets('a customer shows every Workiz client number beside ours', (
@@ -204,7 +252,13 @@ void main() {
     await tester.tap(find.text('Alice Roofing'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('C-1001 · Workiz #4512, #4600'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('fact-Workiz')),
+        matching: find.text('#4512, #4600'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('with no Workiz client loaded there is no Workiz column', (
@@ -296,6 +350,9 @@ void main() {
       },
     );
 
+    // Design 195: on a phone it is in the search line's ⋯.
+    await tester.tap(find.byKey(const ValueKey('data-transfer-more')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Possible duplicates'));
     await tester.pumpAndSettle();
 
@@ -434,6 +491,9 @@ void main() {
       },
     );
 
+    // Design 195: on a phone the pickers are in Filters.
+    await tester.tap(find.byKey(const ValueKey('customers-filters')));
+    await tester.pumpAndSettle();
     // The only non-nullable picker on the screen; Show and the franchise
     // picker are String?.
     await tester.tap(find.byType(SearchPickerField<String>));
@@ -472,6 +532,118 @@ void main() {
     expect(find.text('Sort'), findsOneWidget);
   });
 
+  // UI queue 174 (Jose 2026-11-03: newsletters and automations "by tag").
+  // The Tags cell is ~95 px at this size: two pills there were the empty grey
+  // ovals seen in the 11-03 video, so a narrow cell shows one, then +N.
+  testWidgets('a narrow row shows one tag, then +N', (tester) async {
+    await _pump(tester, customers: [
+      {..._alice, 'tags': ['VIP', 'Annual sweep', 'Referral', 'Gas']},
+    ]);
+
+    expect(find.text('VIP'), findsOneWidget);
+    expect(find.text('Annual sweep'), findsNothing);
+    expect(find.text('+3'), findsOneWidget);
+  });
+
+  testWidgets('the Tag picker filters the list with tag=', (tester) async {
+    final tags = <String?>[];
+    await _pump(
+      tester,
+      customers: [
+        {..._alice, 'tags': ['VIP']},
+      ],
+      onRequest: (request) {
+        if (request.method == 'GET' && request.url.path.endsWith('/customers')) {
+          tags.add(request.url.queryParameters['tag']);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('customers-tag-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('VIP').last);
+    await tester.pumpAndSettle();
+
+    expect(tags.last, 'VIP');
+  });
+
+  testWidgets('the Tag picker offers the organization tags, most used first', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      customers: [_alice],
+      onRequest: (request) => request.url.path.endsWith('/customers/tags')
+          ? _json({
+              'data': [
+                {'tag': 'Annual sweep', 'customers': 40},
+                {'tag': 'VIP', 'customers': 12},
+              ],
+            })
+          : null,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('customers-tag-filter')));
+    await tester.pumpAndSettle();
+
+    final sweep = tester.getTopLeft(find.text('Annual sweep').last).dy;
+    final vip = tester.getTopLeft(find.text('VIP').last).dy;
+    expect(sweep, lessThan(vip));
+  });
+
+  testWidgets('adding and removing a tag sends the whole list', (tester) async {
+    final bodies = <Object?>[];
+    var current = <String>['VIP'];
+    await _pump(
+      tester,
+      customers: [_alice],
+      onRequest: (request) {
+        final path = request.url.path;
+        if (path.endsWith('/customers/c-1') && request.method == 'PATCH') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          bodies.add(body);
+          current = List<String>.from(body['tags'] as List);
+          return _json({
+            'data': {..._aliceDetail, 'tags': current},
+          });
+        }
+        if (path.endsWith('/customers/c-1')) {
+          return _json({
+            'data': {..._aliceDetail, 'tags': current},
+          });
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Alice Roofing'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('customer-tag-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('customer-tag-input')),
+      'Gas fireplace',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(bodies.last, {
+      'tags': ['VIP', 'Gas fireplace'],
+    });
+
+    final remove = find.descendant(
+      of: find.byKey(const ValueKey('customer-tag-VIP')),
+      matching: find.byType(Icon),
+    );
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+
+    expect(bodies.last, {
+      'tags': ['Gas fireplace'],
+    });
+  });
 }
 
 const _alice = {
@@ -583,6 +755,10 @@ Future<void> _pump(
             'inventory_refusal': null,
           },
         });
+      }
+
+      if (path.endsWith('/customers/tags')) {
+        return _json({'data': const []});
       }
 
       if (path.endsWith('/customers/c-1')) {

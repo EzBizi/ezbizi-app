@@ -4,13 +4,13 @@ namespace App\Console\Commands;
 
 use App\Models\CallReportLabel;
 use App\Models\CallReportTranscript;
+use App\Support\Ai\AiProvider;
+use App\Support\Ai\ClaudeProvider;
 use App\Support\Ai\GrokCli;
+use App\Support\Ai\GrokCliProvider;
 use App\Support\Ai\TranscriptSpeakers;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Tagging\CallLabels;
-use App\Support\Reports\Tagging\CallTagger;
-use App\Support\Reports\Tagging\ClaudeTagger;
-use App\Support\Reports\Tagging\GrokTagger;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -23,8 +23,9 @@ use Throwable;
  * calls get why they did not book (CallLabels).
  *
  * OFF until REPORT_CALL_TAGGING is on: it sends transcripts to Anthropic and
- * xAI, and the privacy page has to say so first. Each provider runs only
- * with its own key. Runs after transcription in deploy/ezbizi-transcribe.service.
+ * xAI, and the privacy page has to say so first. Each AiProvider labels only
+ * when it is set up, and each label is stored under that provider's name.
+ * Runs after transcription in deploy/ezbizi-transcribe.service.
  */
 class LabelReportCalls extends Command
 {
@@ -55,10 +56,10 @@ class LabelReportCalls extends Command
             return self::SUCCESS;
         }
 
-        /** @var list<CallTagger> $taggers */
+        /** @var list<AiProvider> $taggers */
         $taggers = array_values(array_filter(
-            [app(ClaudeTagger::class), app(GrokTagger::class)],
-            fn (CallTagger $t) => $t->configured(),
+            [app(ClaudeProvider::class), app(GrokCliProvider::class)],
+            fn (AiProvider $t) => $t->configured(),
         ));
 
         if ($taggers === [] || ! $calls->configured()) {
@@ -127,7 +128,7 @@ class LabelReportCalls extends Command
                     }
 
                     try {
-                        $label = $tagger->tag((string) $row->transcript, $ask['question'], $ask['labels']);
+                        $label = self::label($tagger, (string) $row->transcript, $ask['question'], $ask['labels']);
                     } catch (Throwable $e) {
                         // Left unlabelled and tried again next run; logged, never stored.
                         report($e);
@@ -151,6 +152,30 @@ class LabelReportCalls extends Command
         $this->info('Labelled: '.json_encode($done ?: (object) []).", split by speaker: {$split}");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * One label from the list, pinned by the schema. An answer off the list is
+     * null, never invented; a failure (an expired sign-in) throws, so the call
+     * is left unlabelled and asked again next run.
+     *
+     * @param  array<string, string>  $labels  label => what it means
+     */
+    private static function label(AiProvider $ai, string $transcript, string $question, array $labels): ?string
+    {
+        $label = GrokCli::ask(
+            CallLabels::instruction($question, $labels)
+                ."\n\nAnswer with the label only, as the JSON asked for.\n\nTranscript:\n\n".$transcript,
+            [
+                'type' => 'object',
+                'properties' => ['label' => ['type' => 'string', 'enum' => array_keys($labels)]],
+                'required' => ['label'],
+                'additionalProperties' => false,
+            ],
+            provider: $ai,
+        )['label'] ?? null;
+
+        return is_string($label) && array_key_exists($label, $labels) ? $label : null;
     }
 
     /**
@@ -188,7 +213,7 @@ class LabelReportCalls extends Command
                     return;
                 }
 
-                $reads = TranscriptSpeakers::readMany($batch->map(fn ($row) => (string) $row->transcript)->values()->all());
+                $reads = TranscriptSpeakers::readMany($batch->map(fn ($row) => (string) $row->transcript)->values()->all(), $batch->pluck('organization_id')->values()->all());
 
                 foreach ($batch->values() as $n => $row) {
                     if ($reads[$n] instanceof Throwable) {

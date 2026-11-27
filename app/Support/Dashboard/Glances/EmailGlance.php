@@ -80,13 +80,14 @@ final class EmailGlance extends DescribedGlance
 
                 $failedJustNow = false;
 
-                try {
+                $count = $this->unread($user, $mailbox);
+                if ($count === null) {
+                    $failedJustNow = true;
+                } else {
                     $slices[] = [
                         'label' => $this->sliceLabel($mailbox),
-                        'total' => $this->unread($user, $mailbox),
+                        'total' => $count,
                     ];
-                } catch (CannotReadMailbox|CannotReachHost) {
-                    $failedJustNow = true;
                 }
 
                 // Checked AFTER the read, not before, and that ordering is the
@@ -255,32 +256,46 @@ final class EmailGlance extends DescribedGlance
      * last count; a broken or silent inbox is still said from its status and
      * last_reached_at, which WatchMailboxes keeps current.
      */
-    private function unread(User $user, Mailbox $mailbox): int
+    private function unread(User $user, Mailbox $mailbox): ?int
     {
         $key = 'dashboard.email.unread.'.$mailbox->getKey();
         $hit = Cache::get($key);
 
-        if (is_array($hit) && isset($hit['n'], $hit['at'])) {
+        // A failed ask is remembered too. It was not, and on 2026-11-02 every
+        // one of Triplex Group's 54 Workspace inboxes failed ("did not say how
+        // many unread messages there are"), so EVERY load re-asked all 54:
+        // 8.5 s, with the count cache never written.
+        if (is_array($hit) && isset($hit['at'])) {
             if ($hit['at'] < now()->getTimestamp() - self::FRESH_SECONDS && Cache::add($key.'.refreshing', 1, 60)) {
                 $organization = $user->organization;
                 dispatch(function () use ($organization, $mailbox, $key) {
                     try {
-                        app(TenantContext::class)->run($organization, fn () => Cache::forever($key, [
-                            'n' => $this->readers->for($mailbox)->unreadCount($mailbox),
-                            'at' => now()->getTimestamp(),
-                        ]));
+                        app(TenantContext::class)->run($organization, fn () => $this->ask($mailbox, $key));
                     } catch (Throwable) {
-                        // Keep the last count; the next load tries again.
+                        // Keep what was stored; the next load tries again.
                     } finally {
                         Cache::forget($key.'.refreshing');
                     }
                 })->afterResponse();
             }
 
-            return (int) $hit['n'];
+            return isset($hit['n']) ? (int) $hit['n'] : null;
         }
 
-        $count = $this->readers->for($mailbox)->unreadCount($mailbox);
+        return $this->ask($mailbox, $key);
+    }
+
+    /** Ask the provider once and remember the answer, a failure included. Null = could not be asked. */
+    private function ask(Mailbox $mailbox, string $key): ?int
+    {
+        try {
+            $count = $this->readers->for($mailbox)->unreadCount($mailbox);
+        } catch (CannotReadMailbox|CannotReachHost) {
+            Cache::forever($key, ['failed' => true, 'at' => now()->getTimestamp()]);
+
+            return null;
+        }
+
         Cache::forever($key, ['n' => $count, 'at' => now()->getTimestamp()]);
 
         return $count;

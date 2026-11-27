@@ -7,14 +7,13 @@ use App\Models\Franchise;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
 use App\Models\PhoneNumberGrant;
+use App\Models\PhoneRingGroup;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\Access\RoleGrantAccess;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\PermissionCatalogue;
-use App\Support\Scoping\ViewScope;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 /**
  * Phone lines nested under Phone on the roles editor, and the list filter for
@@ -25,17 +24,30 @@ use Illuminate\Validation\ValidationException;
  * (2 Sep — see [isGranted]), so a role with Communication gets its company's
  * numbers without anybody ticking them on one at a time.
  */
-final class PhoneNumberAccess
+final class PhoneNumberAccess extends RoleGrantAccess
 {
-    public function __construct(
-        private readonly PhoneNumberDirectory $directory,
-        private readonly PermissionCatalogue $catalogue,
-        private readonly ModuleRegistry $registry,
-    ) {}
+    protected const GRANT = PhoneNumberGrant::class;
 
-    public function moduleKey(): string
+    protected const COLUMN = 'number_id';
+
+    protected const FIELD = 'phone_numbers';
+
+    protected const PLURAL = 'phone numbers';
+
+    protected const REFUSALS = [
+        'unknown' => '%d of the phone numbers chosen %s no longer in this organization. '
+            .'Reload the roles screen — somebody released one while this was open.',
+        'beyond' => 'You cannot grant %s, because you cannot open %s yourself. Nobody can hand '
+            .'out more than they have.',
+        'no_module' => 'This organization has no Phone tab, so there is no phone number to grant. '
+            .'Nothing has been saved.',
+        'unreachable' => 'This role cannot open %s, so a phone number granted to it would open nothing. '
+            .'Tick %s itself first, then choose which numbers it may use.',
+    ];
+
+    public function __construct(PhoneNumberDirectory $directory, PermissionCatalogue $catalogue, ModuleRegistry $registry)
     {
-        return $this->directory->moduleKey();
+        parent::__construct($directory, $catalogue, $registry);
     }
 
     /**
@@ -107,22 +119,6 @@ final class PhoneNumberAccess
         return $held;
     }
 
-    /** @return string[] */
-    public function labelsHeldBy(Role $role): array
-    {
-        return $this->labels($this->heldBy($role), $this->directory->keyedByIdFor($role->organization_id));
-    }
-
-    /** @return string[] */
-    public function heldByUser(User $user): array
-    {
-        if (! $user->is_active || $user->role === null) {
-            return [];
-        }
-
-        return $this->heldBy($user->role);
-    }
-
     /**
      * Numbers Settings / the desk may list for this person.
      *
@@ -182,6 +178,24 @@ final class PhoneNumberAccess
      * Softphone / presence: phone.view and at least one granted number on
      * this Twilio connection (view-scope ∩ reach ∩ grant).
      */
+    /**
+     * May this person's desk register and take calls on this account: a line
+     * there, or a place in one of its ring groups. Not narrowed by the view, as
+     * calls arrive whichever company the screen shows (EverDoors' Owners: Jose
+     * was a member, viewing A-1, and was refused, 2026-11-11).
+     */
+    public function takesCallsOn(User $user, PhoneConnection $connection): bool
+    {
+        if ($this->hasLineOn($user, $connection)) {
+            return true;
+        }
+
+        return PhoneRingGroup::query()
+            ->where('connection_id', $connection->getKey())
+            ->get()
+            ->contains(fn ($group) => in_array((string) $user->getKey(), DialPlan::memberUserIds($group), true));
+    }
+
     public function hasLineOn(User $user, PhoneConnection $connection): bool
     {
         if (! $user->hasPermission('phone.view')) {
@@ -282,145 +296,8 @@ final class PhoneNumberAccess
         };
     }
 
-    /** @param  string[]  $ids */
-    public function assertGrantable(User $actor, array $ids): void
+    protected function label(object $item): string
     {
-        $ids = array_values(array_unique($ids));
-        $items = $this->directory->keyedByIdFor($actor->organization_id);
-
-        $unknown = array_values(array_filter($ids, fn (string $id) => ! isset($items[$id])));
-        if ($unknown !== []) {
-            throw ValidationException::withMessages(['phone_numbers' => sprintf(
-                '%d of the phone numbers chosen %s no longer in this organization. '
-                .'Reload the roles screen — somebody released one while this was open.',
-                count($unknown),
-                count($unknown) === 1 ? 'is' : 'are',
-            )]);
-        }
-
-        $beyond = array_values(array_diff($ids, $this->heldByUser($actor)));
-        if ($beyond !== []) {
-            throw ValidationException::withMessages(['phone_numbers' => sprintf(
-                'You cannot grant %s, because you cannot open %s yourself. Nobody can hand '
-                .'out more than they have.',
-                $this->asSentence($beyond, $items),
-                count($beyond) === 1 ? 'it' : 'them',
-            )]);
-        }
-    }
-
-    /** @param  string[]  $ids */
-    public function assertReachable(Role $role, array $ids): void
-    {
-        if ($ids === [] || $this->reachesTheModule($role)) {
-            return;
-        }
-
-        $module = $this->registry->get($this->moduleKey());
-
-        throw ValidationException::withMessages(['phone_numbers' => $module === null
-            ? 'This organization has no Phone tab, so there is no phone number to grant. '
-                .'Nothing has been saved.'
-            : sprintf(
-                'This role cannot open %s, so a phone number granted to it would open nothing. '
-                .'Tick %s itself first, then choose which numbers it may use.',
-                $module->label,
-                $module->label,
-            )]);
-    }
-
-    /** @return string[] */
-    public function preservedFor(Role $role, User $actor): array
-    {
-        $mine = $this->heldByUser($actor);
-
-        return array_values(array_filter(
-            $this->heldBy($role),
-            fn (string $id) => ! in_array($id, $mine, true),
-        ));
-    }
-
-    /**
-     * @param  string[]  $ids
-     * @return array{added: string[], removed: string[]}
-     */
-    public function sync(Role $role, array $ids): array
-    {
-        $items = $this->directory->keyedByIdFor($role->organization_id);
-        $wanted = array_values(array_unique(array_filter(
-            $ids,
-            fn (string $id) => isset($items[$id]),
-        )));
-
-        $before = $this->heldBy($role);
-        $added = array_values(array_diff($wanted, $before));
-        $removed = array_values(array_diff($before, $wanted));
-
-        if ($added === [] && $removed === []) {
-            return ['added' => [], 'removed' => []];
-        }
-
-        DB::transaction(function () use ($role, $added, $removed) {
-            if ($removed !== []) {
-                PhoneNumberGrant::query()
-                    ->where('role_id', $role->getKey())
-                    ->whereIn('number_id', $removed)
-                    ->delete();
-            }
-
-            foreach ($added as $id) {
-                PhoneNumberGrant::query()->create([
-                    'organization_id' => $role->organization_id,
-                    'number_id' => $id,
-                    'role_id' => $role->getKey(),
-                ]);
-            }
-        });
-
-        return [
-            'added' => $this->labels($added, $items),
-            'removed' => $this->labels($removed, $items),
-        ];
-    }
-
-    private function reachesTheModule(Role $role): bool
-    {
-        return in_array(
-            $this->moduleKey().'.view',
-            $this->catalogue->keysGrantedBy($role),
-            true,
-        );
-    }
-
-    /**
-     * @param  string[]  $ids
-     * @param  array<string, GrantablePhoneNumber>  $items
-     * @return string[]
-     */
-    private function labels(array $ids, array $items): array
-    {
-        $labels = array_map(
-            fn (string $id) => $items[$id]->label ?: $items[$id]->e164,
-            $ids,
-        );
-        sort($labels);
-
-        return $labels;
-    }
-
-    /**
-     * @param  string[]  $ids
-     * @param  array<string, GrantablePhoneNumber>  $items
-     */
-    private function asSentence(array $ids, array $items): string
-    {
-        $labels = $this->labels($ids, $items);
-
-        return match (count($labels)) {
-            0 => 'those phone numbers',
-            1 => $labels[0],
-            2 => $labels[0].' and '.$labels[1],
-            default => $labels[0].', '.$labels[1].' and '.(count($labels) - 2).' more',
-        };
+        return $item->label ?: $item->e164;
     }
 }

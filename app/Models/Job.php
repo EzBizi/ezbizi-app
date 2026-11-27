@@ -35,7 +35,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'franchise_id', 'customer_id', 'number', 'title', 'description',
     'status', 'scheduled_for', 'duration_minutes', 'amount_minor', 'currency',
     'assigned_role_id', 'performed_by_user_id', 'service_area_id',
-    'job_type', 'sub_status', 'tags', 'review_reason', 'external_company', 'needs_second_visit',
+    'job_type', 'sub_status', 'tags', 'external_company', 'schedule_proposal',
     'job_source', 'custom_fields', 'all_day', 'recurrence', 'created_by_user_id', 'created_by_label',
 ])]
 class Job extends Model implements StatesRetention
@@ -44,6 +44,10 @@ class Job extends Model implements StatesRetention
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'jobs';
     use SoftDeletes;
     /*
      * Photographs, invoices from a supplier, a signed worksheet.
@@ -106,13 +110,19 @@ class Job extends Model implements StatesRetention
             // AutomationEvent::casts() for the same reasoning on delivered_at.
             'earned_at'        => 'datetime',
             'tags'             => 'array',
-            'needs_second_visit' => 'boolean',
             'custom_fields' => 'array',
             'all_day' => 'boolean',
             'recurrence' => 'array',
             // Set only by a person's change; the Workiz projection leaves the
             // area alone once it is (see its migration).
             'service_area_chosen_at' => 'datetime',
+            'schedule_proposal' => 'array',
+            'job_cost_minor' => 'integer',
+            'production_job' => 'boolean',
+            'parts_cost_minor' => 'integer',
+            'labor_price_minor' => 'integer',
+            'labor_days' => 'integer',
+            'labor_helper' => 'boolean',
         ];
     }
 
@@ -248,6 +258,26 @@ class Job extends Model implements StatesRetention
         return $this->hasMany(JobNote::class);
     }
 
+    /**
+     * "Booked by" (Trey Brannan, 2026-11-12): the person who created it, here
+     * or in Workiz (CreatedBy, read live: the first sync often arrives without
+     * it), else "Online booking" when nobody did. Null when nothing says.
+     */
+    public function bookedBy(): ?string
+    {
+        $w = $this->workizJob;
+        $workiz = trim((string) ($w?->created_by_name ?? $w?->payload['CreatedBy'] ?? ''));
+        if ($this->created_by_label !== null || $workiz !== '') {
+            return $this->created_by_label ?? $workiz;
+        }
+        // ponytail: online is the only person-less booking path today; name the AI one when it exists.
+        if ($w === null || preg_match('/reserve with google|online|website|booking/i', (string) $this->job_source)) {
+            return 'Online booking';
+        }
+
+        return null;
+    }
+
     public function workizJob(): HasOne
     {
         return $this->hasOne(WorkizJob::class);
@@ -261,6 +291,36 @@ class Job extends Model implements StatesRetention
     public function performedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'performed_by_user_id');
+    }
+
+    /**
+     * Who the job's technician is, by name (Jose, 2026-11-24: "a lot of
+     * removed account"): its scheduling technicians, else the performer
+     * unless that account was erased. Null for no one.
+     *
+     * @param  list<string>  $ids
+     * @return array<string, string> job id => "Ana Ruiz, Tom Tech"
+     */
+    public static function technicianNames(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $named = \Illuminate\Support\Facades\DB::table('job_technicians')
+            ->join('scheduling_technicians', 'scheduling_technicians.id', '=', 'job_technicians.technician_id')
+            ->whereIn('job_technicians.job_id', $ids)->whereNotNull('scheduling_technicians.name')
+            ->where('scheduling_technicians.name', 'not like', 'Removed %')
+            ->orderBy('scheduling_technicians.name')->get(['job_technicians.job_id', 'scheduling_technicians.name'])
+            ->groupBy('job_id')->map(fn ($r) => $r->pluck('name')->unique()->implode(', '))->all();
+        $performers = self::query()->whereIn('id', array_diff($ids, array_keys($named)))->whereNotNull('performed_by_user_id')
+            ->with('performedBy:id,name')->get(['id', 'performed_by_user_id']);
+        foreach ($performers as $job) {
+            if (! User::isErasedName($job->performedBy?->name)) {
+                $named[$job->id] = $job->performedBy->name;
+            }
+        }
+
+        return $named;
     }
 
     /**

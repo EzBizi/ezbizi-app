@@ -537,6 +537,85 @@ class LeadConversationsTest extends TestCase
         $this->assertCount(2, $detail['conversations']);
     }
 
+    /**
+     * Desk, 2026-11-18: Google accepted Ara's reply without naming it; the next
+     * sync stored Google's copy as a second, "Sent outside EzBizi" row (40 in 7
+     * days). Our row takes Google's id instead.
+     */
+    public function test_a_reply_google_did_not_name_takes_its_id_from_the_next_sync_not_a_second_row(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-07 13:30:16', 'UTC'));   // 09:30:16 in New York
+
+        $this->fakeGoogle([$this->leadRow('111')], array_slice($this->threadRows('111'), 1, 2), append: Http::response(['responses' => [[]]], 200));
+        $lead = $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'connection_id' => $connection->id,
+            'source' => 'local_services', 'remote_id' => '111', 'lead_type' => 'MESSAGE', 'received_at' => now()->subDay(),
+        ]));
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/messages", ['text' => 'Yes, 10am works.'])->assertCreated();
+        $ours = fn () => $this->inTenant($t['org'], fn () => LeadConversation::query()->where('lead_id', $lead->id)->where('participant', 'ADVERTISER')->get());
+        $this->assertStringStartsWith('sent-', $ours()->sole()->remote_id, 'the control: Google named nothing');
+
+        $this->sync($t, $connection);
+
+        $this->assertSame('c-msg-out-111', $ours()->sole()->remote_id, 'one row, with Google\'s id');
+    }
+
+    /** Measured 2026-11-18: every unnamed send repeated words Google already held. Its row is the message. */
+    public function test_an_unnamed_send_of_words_google_already_holds_adds_no_second_row(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+        $this->fakeGoogle([$this->leadRow('111')], array_slice($this->threadRows('111'), 1, 2), append: Http::response(['responses' => [[]]], 200));
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-07 13:20:00', 'UTC'));
+        $this->sync($t, $connection);   // Google's copy, 09:30 New York
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->where('remote_id', '111')->firstOrFail());
+
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-07 13:40:00', 'UTC'));
+        $sent = $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/messages", ['text' => 'Yes, 10am works.'])
+            ->assertCreated()->json('data');
+
+        $ours = $this->inTenant($t['org'], fn () => LeadConversation::query()->where('lead_id', $lead->id)->where('participant', 'ADVERTISER')->get());
+        $this->assertSame(['c-msg-out-111'], $ours->pluck('remote_id')->all());
+        $this->assertSame($ours->sole()->id, $sent['id']);
+    }
+
+    /**
+     * Jose, 2026-11-23: LS texts ~4 minutes late. --messages reads only the
+     * conversations, every minute in its own lane; with that lane on, the
+     * full run leaves them to it.
+     */
+    public function test_the_messages_run_reads_only_conversations_and_the_full_run_leaves_them_to_it(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+        $this->fakeGoogle([$this->leadRow('111')], $this->threadRows('111'));
+        $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'connection_id' => $connection->id,
+            'source' => 'local_services', 'remote_id' => '111', 'lead_type' => 'MESSAGE', 'received_at' => now()->subDay(),
+        ]));
+        $asked = fn (string $from) => collect(Http::recorded())->filter(function ($pair) use ($from) {
+            $query = (string) (((array) $pair[0]->data())['query'] ?? '');
+
+            return $from === 'conversation'
+                ? str_contains($query, 'FROM local_services_lead_conversation')
+                : str_contains($query, 'FROM local_services_lead ') || str_contains($query, "FROM local_services_lead\n");
+        })->count();
+
+        config(['ezbizi.scheduler.leads_lane' => true]);
+        $this->artisan('ezbizi:sync-leads', ['--messages' => true])->assertSuccessful();
+        $this->assertSame(0, $asked('lead'), 'no lead list on the messages run');
+        $this->assertGreaterThan(0, $asked('conversation'));
+        $this->assertSame(3, $this->inTenant($t['org'], fn () => LeadConversation::query()->count()));
+
+        $before = $asked('conversation');
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+        $this->assertGreaterThan(0, $asked('lead'), 'the control: the full run reads leads');
+        $this->assertSame($before, $asked('conversation'), 'and leaves messages to the lane');
+    }
+
     public function test_a_call_lead_cannot_be_replied_to_and_nothing_is_sent(): void
     {
         $t = $this->provisionTenant('A1-Chimney');
@@ -796,6 +875,12 @@ class LeadConversationsTest extends TestCase
         $this->assertFalse($data['customer_created']);
         $this->assertSame($existing->id, $data['customer']['id']);
         $this->assertSame(1, $this->inTenant($t['org'], fn () => \App\Models\Customer::query()->count()), 'no second Jane Doe');
+
+        // Audit 11-27: a second Book (double tap) makes no second job.
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/book", [
+            'franchise_id' => $t['franchise']->id, 'customer_id' => $existing->id, 'title' => 'Sweep', 'status' => $status,
+        ])->assertStatus(409);
+        $this->assertSame(1, $this->inTenant($t['org'], fn () => \App\Models\Job::query()->count()));
     }
 
     public function test_a_company_level_lead_needs_a_franchise_picked_and_a_status_the_tenant_has(): void
@@ -1065,7 +1150,7 @@ class LeadConversationsTest extends TestCase
     }
 
     /**
-     * "609", "(609)" and "609-246" all find +1 216 555 0100's neighbour; the
+     * "609", "(609)" and "609-555" all find +1 216 555 0100's neighbour; the
      * four-digit floor made the short form find nothing (Jose, 2026-09-09).
      * Words in the last message count too.
      */
@@ -1075,11 +1160,11 @@ class LeadConversationsTest extends TestCase
         $connection = $this->connected($t);
 
         $lead = $this->leadRow('111', 'Jane Doe');
-        $lead['localServicesLead']['contactDetails']['phoneNumber'] = '+1 (609) 246-1458';
+        $lead['localServicesLead']['contactDetails']['phoneNumber'] = '+1 (609) 555-0101';
         $this->fakeGoogle([$lead], array_slice($this->threadRows('111'), 1, 1));
         $this->sync($t, $connection);
 
-        foreach (['609', '(609)', '609-246', '609 246 1', '2461458', 'Saturday'] as $needle) {
+        foreach (['609', '(609)', '609-555', '609 555 0', '5550101', 'Saturday'] as $needle) {
             $names = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?search='.urlencode($needle))->assertOk()->json('data.*.contact_name');
             $this->assertSame(['Jane Doe'], $names, "'$needle' must find the lead");
         }

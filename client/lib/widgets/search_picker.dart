@@ -29,6 +29,9 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'side_panel.dart';
+import '../core/soft_keyboard.dart';
+
 /// One choosable thing.
 class SearchOption<T> {
   const SearchOption({
@@ -83,6 +86,7 @@ class SearchPickerField<T> extends StatelessWidget {
     this.errorText,
     this.border,
     this.isDense = false,
+    this.contentPadding,
     this.allowClear = false,
     this.searchFrom = 8,
     this.create,
@@ -124,6 +128,9 @@ class SearchPickerField<T> extends StatelessWidget {
   final InputBorder? border;
   final bool isDense;
 
+  /// Overrides the theme's padding, e.g. to match a toolbar's height.
+  final EdgeInsetsGeometry? contentPadding;
+
   /// Whether the list offers a way back to nothing chosen. Off by default,
   /// because most of these fields are required and a stray "None" row invites
   /// somebody to empty a thing they were asked to fill.
@@ -163,11 +170,23 @@ class SearchPickerField<T> extends StatelessWidget {
           errorText: errorText,
           border: border,
           isDense: isDense,
+          // A dense picker sits in a filter row: 44 high, the ListSearch
+          // height beside it (UI review 2026-11-02 #3).
+          contentPadding:
+              contentPadding ??
+              (isDense
+                  ? const EdgeInsets.symmetric(horizontal: 12, vertical: 11.5)
+                  : null),
           enabled: enabled,
           // A dropdown's arrow, not a magnifier: the field opens a list to
           // pick from, and a magnifier made every one of them read as a
           // search box (UI review, 2026-10-08). The search is inside the list
           // once it is long enough to need one.
+          // Material's 48-point floor on a suffix icon kept every dense
+          // picker 48 high beside a 44 search.
+          suffixIconConstraints: isDense
+              ? const BoxConstraints(minWidth: 40, minHeight: 24)
+              : null,
           suffixIcon: Icon(
             Icons.arrow_drop_down,
             color: enabled ? scheme.onSurfaceVariant : theme.disabledColor,
@@ -197,8 +216,8 @@ class SearchPickerField<T> extends StatelessWidget {
   }
 
   Future<void> _open(BuildContext context) async {
-    final picked = await showDialog<_Picked<T>>(
-      context: context,
+    final picked = await showSidePanel<_Picked<T>>(
+      context,
       builder: (context) => _SearchPickerDialog<T>(
         title: label,
         options: options,
@@ -226,8 +245,8 @@ Future<T?> showSearchPicker<T>(
   int searchFrom = 8,
   T Function(String typed)? create,
 }) async {
-  final picked = await showDialog<_Picked<T>>(
-    context: context,
+  final picked = await showSidePanel<_Picked<T>>(
+    context,
     builder: (context) => _SearchPickerDialog<T>(
       title: title,
       options: options,
@@ -260,11 +279,7 @@ Future<T?> showSearchPicker<T>(
 /// A picker cannot stop somebody passing a paragraph, but it can stop a
 /// paragraph from eating the list.
 class _Row<T> extends StatelessWidget {
-  const _Row({
-    required this.option,
-    required this.chosen,
-    required this.onTap,
-  });
+  const _Row({required this.option, required this.chosen, required this.onTap});
 
   final SearchOption<T> option;
   final bool chosen;
@@ -289,7 +304,8 @@ class _Row<T> extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: option.child ??
+              child:
+                  option.child ??
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -397,20 +413,22 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
     final hits = _hits;
     final fresh = _new;
 
-    return AlertDialog(
-      contentPadding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
-      title: widget.title == null ? null : Text(widget.title!),
-      content: SizedBox(
-        width: 420,
+    // A SidePanel, never a centred dialog (the standing rule; phone audit
+    // 2026-11-04 found Role, Person and Company's pickers dimming the form).
+    return SidePanel(
+      title: widget.title ?? 'Choose',
+      width: 420,
+      scrollable: false,
+      child: SizedBox(
+        width: double.infinity,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (_searchable)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: TextField(
-                  autofocus: true,
+                  autofocus: autofocusOnOpen,
                   decoration: InputDecoration(
                     isDense: true,
                     prefixIcon: const Icon(Icons.search, size: 18),
@@ -427,7 +445,7 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                         ).pop(_Picked<T>(widget.create!(fresh))),
                 ),
               ),
-            Flexible(
+            Expanded(
               child: hits.isEmpty && fresh == null
                   ? Padding(
                       padding: const EdgeInsets.all(24),
@@ -504,6 +522,7 @@ class SearchMultiPickerField<T> extends StatelessWidget {
     this.label,
     this.hint,
     this.searchFrom = 8,
+    this.selectShown = false,
   });
 
   final Set<T> values;
@@ -512,6 +531,10 @@ class SearchMultiPickerField<T> extends StatelessWidget {
   final String? label;
   final String? hint;
   final int searchFrom;
+
+  /// Offers "Select all shown": ticks every row the search left (Jose,
+  /// 2026-11-12, Reports › Jobs: type "CLE", take every Cleveland line).
+  final bool selectShown;
 
   @override
   Widget build(BuildContext context) {
@@ -554,13 +577,14 @@ class SearchMultiPickerField<T> extends StatelessWidget {
   }
 
   Future<void> _open(BuildContext context) async {
-    final picked = await showDialog<Set<T>>(
-      context: context,
+    final picked = await showSidePanel<Set<T>>(
+      context,
       builder: (context) => _SearchMultiDialog<T>(
         title: label,
         options: options,
         values: values,
         searchFrom: searchFrom,
+        selectShown: selectShown,
       ),
     );
 
@@ -574,12 +598,14 @@ class _SearchMultiDialog<T> extends StatefulWidget {
     required this.options,
     required this.values,
     required this.searchFrom,
+    this.selectShown = false,
   });
 
   final String? title;
   final List<SearchOption<T>> options;
   final Set<T> values;
   final int searchFrom;
+  final bool selectShown;
 
   @override
   State<_SearchMultiDialog<T>> createState() => _SearchMultiDialogState<T>();
@@ -601,20 +627,32 @@ class _SearchMultiDialogState<T> extends State<_SearchMultiDialog<T>> {
           o,
     ];
 
-    return AlertDialog(
-      contentPadding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
-      title: widget.title == null ? null : Text(widget.title!),
-      content: SizedBox(
-        width: 420,
+    // A SidePanel, never a centred dialog (the standing rule; phone audit
+    // 2026-11-04 found Role, Person and Company's pickers dimming the form).
+    return SidePanel(
+      title: widget.title ?? 'Choose',
+      width: 420,
+      scrollable: false,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(<T>{}),
+          child: const Text('Clear'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_chosen),
+          child: const Text('Done'),
+        ),
+      ],
+      child: SizedBox(
+        width: double.infinity,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (widget.options.length >= widget.searchFrom)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: TextField(
-                  autofocus: true,
+                  autofocus: autofocusOnOpen,
                   decoration: const InputDecoration(
                     isDense: true,
                     prefixIcon: Icon(Icons.search, size: 18),
@@ -623,7 +661,27 @@ class _SearchMultiDialogState<T> extends State<_SearchMultiDialog<T>> {
                   onChanged: (value) => setState(() => _term = value),
                 ),
               ),
-            Flexible(
+            if (widget.selectShown && hits.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const ValueKey('search-multi-select-shown'),
+                    onPressed: () => setState(
+                      () => _chosen.addAll([
+                        for (final o in hits)
+                          if (o.enabled) o.value as T,
+                      ]),
+                    ),
+                    icon: const Icon(Icons.done_all, size: 18),
+                    label: Text(
+                      needle.isEmpty ? 'Select all' : 'Select all shown',
+                    ),
+                  ),
+                ),
+              ),
+            Expanded(
               child: hits.isEmpty
                   ? Padding(
                       padding: const EdgeInsets.all(24),
@@ -665,16 +723,6 @@ class _SearchMultiDialogState<T> extends State<_SearchMultiDialog<T>> {
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(<T>{}),
-          child: const Text('Clear'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_chosen),
-          child: const Text('Done'),
-        ),
-      ],
     );
   }
 }

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\SubscriptionLapsedException;
+use App\Jobs\CheckNewConnections;
 use App\Jobs\OnboardWhatsAppNumber;
+use App\Jobs\RecheckPlaidItem;
 use App\Jobs\RegisterThumbtackWebhook;
 use App\Jobs\SyncBusinessProfileConnection;
 use App\Jobs\SubscribeMetaMessages;
@@ -14,8 +16,13 @@ use App\Models\WhatsAppNumber;
 use App\Services\Leads\ThumbtackLeads;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
+use App\Support\Leads\ConnectBranch;
 use App\Support\Scoping\ViewScope;
+use App\Support\Social\BusinessProfileOAuth;
+use App\Support\Social\ConnectSetup;
 use App\Support\Social\FacebookAdsOAuth;
+use App\Support\Social\FacebookOAuth;
+use App\Support\Social\GoogleAdsOAuth;
 use App\Support\Social\SocialAccount;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialOAuth;
@@ -23,11 +30,17 @@ use App\Support\Social\SocialOAuthDrivers;
 use App\Support\Social\SocialOAuthGrant;
 use App\Support\Social\SocialOAuthRefused;
 use App\Support\Social\SocialOAuthSignIns;
+use App\Support\Social\PlaidOAuth;
+use App\Support\Social\QuickBooksOAuth;
 use App\Support\Social\SocialProvider;
+use App\Support\Social\YouTubeOAuth;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Foundation\Console\QueuedCommand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response as Status;
 
@@ -43,12 +56,21 @@ class SocialAuthController extends Controller
         private readonly SocialConnectionAccess $access,
         private readonly TenantContext $tenant,
         private readonly AuditLogger $audit,
+        private readonly ConnectSetup $setup,
     ) {}
 
     public function start(Request $request, string $network): JsonResponse
     {
         $oauth = $this->driverOrAbort($network);
         $user = $request->user();
+
+        // Only the products chosen before the sign-in (design 183).
+        if ($oauth instanceof FacebookOAuth && $request->filled('products')) {
+            $oauth = $oauth->withProducts($request->validate([
+                'products' => ['array'],
+                'products.*' => ['in:'.implode(',', array_keys(FacebookOAuth::PRODUCTS))],
+            ])['products']);
+        }
 
         // The permission follows the module that USES the connection, not this
         // controller. A Google Ads account is connected by whoever runs Leads.
@@ -57,6 +79,22 @@ class SocialAuthController extends Controller
             Status::HTTP_FORBIDDEN,
             Refusal::permission($oauth->provider()->connectAct())->message(),
         );
+
+        // Google the same way; Gmail is listed but never signed in to.
+        if ($oauth instanceof GoogleAdsOAuth && $request->filled('products')) {
+            $chosen = array_values(array_filter(
+                $request->validate([
+                    'products' => ['array'],
+                    'products.*' => ['in:'.implode(',', array_keys(GoogleAdsOAuth::PRODUCTS))],
+                ])['products'],
+                fn (string $k) => GoogleAdsOAuth::PRODUCTS[$k]['scopes'] !== [],
+            ));
+
+            abort_if($chosen === [], Status::HTTP_UNPROCESSABLE_ENTITY,
+                'Choose Business Profile, Google Ads or YouTube. Gmail is set up through Google Workspace in Email settings.');
+
+            $oauth = $oauth->withProducts($chosen);
+        }
 
         $notReady = $oauth->notReadyBecause();
 
@@ -142,6 +180,24 @@ class SocialAuthController extends Controller
     }
 
     /**
+     * Plaid returns here after a reconnect (update mode, FinancialBankController::reconnect).
+     * The state names which bank login; whether it worked is asked of Plaid
+     * (RecheckPlaidItem), so this page says only that the check is running.
+     */
+    public function plaidRelinked(Request $request): Response
+    {
+        $state = (string) $request->query('state', '');
+        $id = $state === '' ? null : Cache::pull(PlaidOAuth::cacheKey('relink:'.$state));
+        if (! is_string($id)) {
+            return $this->page('That did not work', SocialOAuthRefused::noOpenSignIn('Plaid')->getMessage(), Status::HTTP_BAD_REQUEST, SocialProvider::Plaid);
+        }
+        RecheckPlaidItem::dispatch($id);
+
+        return $this->page('Thanks', 'EzBizi is checking the bank again now. You can close this window — '
+            .'Financials › Bank shows it connected once the bank confirms.', Status::HTTP_OK, SocialProvider::Plaid);
+    }
+
+    /**
      * @throws SocialOAuthRefused
      */
     private function finish(SocialOAuth $oauth, SocialSignIn $signIn, string $code): Response
@@ -173,6 +229,16 @@ class SocialAuthController extends Controller
             }
 
             $grant = $oauth->exchange($code, $signIn->code_verifier);
+
+            // Intuit names the company on the callback (?realmId=), not in the token response.
+            if ($oauth instanceof QuickBooksOAuth) {
+                $grant = $oauth->withRealm($grant, (string) request()->query('realmId', ''));
+            }
+
+            if ($oauth->provider() === SocialProvider::GoogleAds) {
+                return $this->finishGoogle($user, $signIn, $grant);
+            }
+
             $accounts = $oauth->identify($grant);
 
             if ($oauth->requiresRefreshToken() && ($grant->refreshToken === null || $grant->refreshToken === '')) {
@@ -215,6 +281,52 @@ class SocialAuthController extends Controller
     }
 
     /**
+     * ONE GOOGLE SIGN-IN, EVERY GOOGLE PRODUCT (Jose, 2026-11-05: "one
+     * Integrations card per sign-in"). The consent asks for Ads, Business
+     * Profile and YouTube together; each product the person left ticked,
+     * may connect, and owns something in becomes rows. One that brings
+     * nothing costs the others nothing, as Facebook's ad accounts do.
+     */
+    private function finishGoogle(User $user, SocialSignIn $signIn, SocialOAuthGrant $grant): Response
+    {
+        $family = [
+            [SocialProvider::GoogleAds, GoogleAdsOAuth::class, GoogleAdsOAuth::SCOPE],
+            [SocialProvider::GoogleBusinessProfile, BusinessProfileOAuth::class, BusinessProfileOAuth::SCOPES[0]],
+            [SocialProvider::YouTube, YouTubeOAuth::class, YouTubeOAuth::SCOPE_UPLOAD],
+        ];
+        $said = [];
+        $refused = null;
+
+        foreach ($family as [$provider, $driver, $scope]) {
+            if (($grant->scopes !== [] && ! in_array($scope, $grant->scopes, true))
+                || ! $user->hasPermission($provider->connectPermission())) {
+                continue;
+            }
+
+            try {
+                $rows = $this->store($user, $signIn, $provider, $grant, app($driver)->identify($grant));
+            } catch (SocialOAuthRefused $e) {
+                $refused ??= $e;
+
+                continue;
+            }
+
+            $said[] = count($rows) === 1
+                ? $rows[0]->display_name.' ('.$provider->label().')'
+                : count($rows).' '.$provider->label().' accounts';
+        }
+
+        if ($said === []) {
+            throw $refused ?? SocialOAuthRefused::unidentified('Google');
+        }
+
+        $sentence = 'Connected to EzBizi: '.implode(', ', $said).'. You can close this window.';
+        $this->signIns->record($signIn, SocialOAuthSignIns::CONNECTED, $sentence);
+
+        return $this->page('Connected', $sentence, Status::HTTP_OK, SocialProvider::GoogleAds);
+    }
+
+    /**
      * @param  SocialAccount[]  $accounts
      * @return SocialConnection[]
      *
@@ -239,7 +351,7 @@ class SocialAuthController extends Controller
         }
 
         try {
-            return DB::transaction(function () use ($user, $signIn, $provider, $grant, $accounts) {
+            $saved = DB::transaction(function () use ($user, $signIn, $provider, $grant, $accounts) {
                 $saved = [];
 
                 foreach ($accounts as $account) {
@@ -262,6 +374,8 @@ class SocialAuthController extends Controller
                     $connection->forceFill([
                         'display_name' => $account->displayName,
                         'handle' => $account->handle,
+                        // Signed and short-lived (TikTok): replaced on every connect.
+                        'avatar_url' => $account->avatarUrl,
                         // Google Ads: the manager this account is read through,
                         // null when the grant reaches it directly. Written on
                         // every connect so a row that gained a direct route
@@ -275,6 +389,12 @@ class SocialAuthController extends Controller
                     // column existed picks it up rather than staying unmatched.
                     $metaUser = $grant->extra['meta_user_id'] ?? null;
 
+                    // Google: the login this grant is (GoogleToken::exchange).
+                    // Kept when a reconnect's consent carried none.
+                    if (is_string($grant->extra['account_email'] ?? null)) {
+                        $connection->forceFill(['account_email' => $grant->extra['account_email']]);
+                    }
+
                     if (is_string($metaUser) && $metaUser !== '') {
                         $connection->forceFill(['meta_user_id' => $metaUser]);
                     }
@@ -284,6 +404,11 @@ class SocialAuthController extends Controller
                         'access_token' => $account->accessToken ?? $grant->accessToken,
                         'scopes' => $grant->scopes,
                     ];
+
+                    // The one Google sign-in: every row renews through its client.
+                    if ($signIn->provider === SocialProvider::GoogleAds->value) {
+                        $tokens['oauth_service'] = 'google_ads';
+                    }
 
                     if ($grant->expiresIn !== null) {
                         $tokens['expires_at'] = now()->addSeconds($grant->expiresIn)->toIso8601String();
@@ -304,6 +429,9 @@ class SocialAuthController extends Controller
 
                     $connection->connect($tokens);
                     $connection->save();
+
+                    // A lead account's branch, when the answer is plain (ConnectBranch).
+                    ConnectBranch::apply($connection);
 
                     /*
                      * Thumbtack has to be told where to send enquiries, and
@@ -332,6 +460,35 @@ class SocialAuthController extends Controller
                         SyncBusinessProfileConnection::start($connection);
                     }
 
+                    // Facebook Ads reads its campaigns now, not at the 05:30 run (Jose, 2026-11-12).
+                    if ($provider === SocialProvider::FacebookAds) {
+                        Artisan::queue('ezbizi:meta-ads-sync', ['--connection' => (string) $connection->getKey()]);
+                    }
+
+                    // Monday: who connected is who the sync acts as, and the
+                    // boards imported from Monday are read now (MondaySync).
+                    if ($provider === SocialProvider::Monday) {
+                        $setup = (array) ($connection->setup ?? []);
+                        $setup['monday']['as'] = (string) $user->getKey();
+                        $connection->forceFill(['setup' => $setup])->save();
+                        QueuedCommand::dispatch(['ezbizi:monday-sync', ['--connection' => (string) $connection->getKey(), '--full' => true]])
+                            ->afterCommit();
+                    }
+
+                    // QuickBooks: its expenses are read now, every class and location
+                    // matched to a branch by name (QuickBooksSync), not at the next run.
+                    if ($provider === SocialProvider::QuickBooks) {
+                        QueuedCommand::dispatch(['ezbizi:quickbooks-sync', ['--connection' => (string) $connection->getKey(), '--full' => true]])
+                            ->afterCommit();
+                    }
+
+                    // Plaid: the bank's accounts, balances and first transactions are read now
+                    // (PlaidSync), not at the next run. History still arriving comes by webhook.
+                    if ($provider === SocialProvider::Plaid) {
+                        QueuedCommand::dispatch(['ezbizi:plaid-sync', ['--connection' => (string) $connection->getKey()]])
+                            ->afterCommit();
+                    }
+
                     // Meta the same way: a Page or Instagram account sends its
                     // messages only once it has subscribed the app.
                     if (in_array($provider, [SocialProvider::FacebookPage, SocialProvider::InstagramProfessional], true)) {
@@ -355,6 +512,10 @@ class SocialAuthController extends Controller
                     $saved[] = $connection;
                 }
 
+                // The card's verdict now, not at tomorrow's health run (Jose, 2026-11-12).
+                CheckNewConnections::dispatch(array_map(fn (SocialConnection $c) => (string) $c->getKey(), $saved))
+                    ->afterCommit()->delay(now()->addMinutes(2));
+
                 return $saved;
             });
         } catch (SubscriptionLapsedException) {
@@ -363,6 +524,15 @@ class SocialAuthController extends Controller
                 .'renewed.',
             );
         }
+
+        // The whole process, not just the token (Jose, 2026-11-12): default
+        // choices, then the pass/fail check the card shows. After the commit,
+        // so a slow provider holds no transaction open. Every row here came
+        // from one grant, so one provider call answers for all of them: a
+        // Google consent can bring forty-six.
+        $this->setup->afterConnect($saved);
+
+        return $saved;
     }
 
     private function driverOrAbort(string $network): SocialOAuth

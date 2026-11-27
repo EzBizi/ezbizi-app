@@ -9,6 +9,7 @@ use App\Models\FinancialChargeSheetRow;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
 use App\Models\Organization;
+use App\Models\PaymentAccount;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Invoices\InvoiceChannels;
@@ -89,6 +90,7 @@ class InvoicesController extends Controller
         return response()->json(['data' => FinancialChargeSheet::query()->withCount('rows')
             ->when($term !== '', fn ($q) => $q->where('title', 'like', '%'.addcslashes($term, '%_\\').'%'))
             ->orderByDesc('period_from')->limit(200)->get()
+            ->filter(fn (FinancialChargeSheet $s) => $this->reaches(ViewScope::forUser($request->user()), $s->company_id))
             ->map(fn ($s) => $s->only('id', 'title', 'status', 'rows_count') + [
                 'period_from' => $s->period_from->toDateString(), 'period_to' => $s->period_to->toDateString()])->values()]);
     }
@@ -103,6 +105,8 @@ class InvoicesController extends Controller
             'title' => ['nullable', 'string', 'max:160'],
             'company_id' => ['nullable', 'uuid', Rule::exists('companies', 'id')->where('organization_id', $this->tenant->idOrFail())],
         ]);
+        abort_unless($this->reaches(ViewScope::forUser($user), $input['company_id'] ?? null), Response::HTTP_FORBIDDEN,
+            'Choose a company in your view to bill from.');
         $issuer = isset($input['company_id']) ? Company::findOrFail($input['company_id']) : null;
         $sheet = $this->invoicing->makeSheet($user, $input['period_from'], $input['period_to'], $issuer, $input['title'] ?? null);
 
@@ -111,7 +115,7 @@ class InvoicesController extends Controller
 
     public function showSheet(Request $request, FinancialChargeSheet $sheet): JsonResponse
     {
-        $this->may($request->user(), 'view');
+        $this->may($request->user(), 'view', sheet: $sheet);
 
         return response()->json(['data' => $this->sheetShape($sheet, $request->user())]);
     }
@@ -120,7 +124,7 @@ class InvoicesController extends Controller
     public function updateRows(Request $request, FinancialChargeSheet $sheet): JsonResponse
     {
         $user = $request->user();
-        $this->may($user, 'edit');
+        $this->may($user, 'edit', sheet: $sheet);
         $changes = $request->validate([
             'rows' => ['required', 'array', 'max:500'],
             'rows.*.id' => ['required', 'uuid'],
@@ -160,7 +164,7 @@ class InvoicesController extends Controller
     public function invoiceSheet(Request $request, FinancialChargeSheet $sheet): JsonResponse
     {
         $user = $request->user();
-        $this->may($user, 'create');
+        $this->may($user, 'create', sheet: $sheet);
         $result = $this->invoicing->invoiceSheet($user, $sheet);
 
         return response()->json(['data' => [
@@ -171,7 +175,7 @@ class InvoicesController extends Controller
 
     public function destroySheet(Request $request, FinancialChargeSheet $sheet): JsonResponse
     {
-        $this->may($request->user(), 'delete');
+        $this->may($request->user(), 'delete', sheet: $sheet);
         if ($sheet->rows()->whereNotNull('invoice_id')->exists()) {
             throw ValidationException::withMessages(['sheet' => 'This sheet has invoices. Void them first.']);
         }
@@ -352,6 +356,10 @@ class InvoicesController extends Controller
             'channels' => array_map(fn ($c) => $channels->readiness($c, $issuer) + ['chosen' => in_array($c, $channels->chosen($issuer), true)], InvoiceChannels::ALL),
             'sms_numbers' => $channels->textingNumbers($issuer)->map(fn ($n) => ['id' => $n->id, 'e164' => $n->e164, 'label' => $n->label])->values(),
             'mailbox' => ($m = $channels->mailbox($issuer)) ? ['id' => $m->id, 'address' => $m->address] : null,
+            // Card and bank payments: a company's own Stripe account (InvoicePaymentsController).
+            'payments' => $issuer instanceof Company ? ['configured' => (string) config('services.stripe.secret') !== '',
+                'may_connect' => $user->hasPermission('invoices.approve')]
+                + (PaymentAccount::query()->where('company_id', $issuer->id)->first()?->present() ?? ['stripe_account_id' => null]) : null,
         ]]);
     }
 
@@ -380,7 +388,13 @@ class InvoicesController extends Controller
 
     // ── Helpers ───────────────────────────────────────────────
 
-    private function may(User $user, string $action, ?Invoice $invoice = null): void
+    /** A sheet belongs to the company that bills from it; an organization sheet to the organization view. */
+    private function reaches(ViewScope $scope, ?string $companyId): bool
+    {
+        return $companyId !== null ? $scope->coversCompany($companyId) : $scope->isOrganization();
+    }
+
+    private function may(User $user, string $action, ?Invoice $invoice = null, ?FinancialChargeSheet $sheet = null): void
     {
         abort_unless($user->hasPermission("invoices.{$action}"), Response::HTTP_FORBIDDEN, match ($action) {
             'view' => 'Your role cannot see invoices.',
@@ -388,6 +402,8 @@ class InvoicesController extends Controller
             'send' => 'Your role cannot send invoices.',
             default => 'Your role cannot change invoices.',
         });
+        // Outside the view, the sheet is not there (the authorization sweep's sibling case).
+        abort_if($sheet !== null && ! $this->reaches(ViewScope::forUser($user), $sheet->company_id), Response::HTTP_NOT_FOUND);
         if ($invoice === null) {
             return;
         }

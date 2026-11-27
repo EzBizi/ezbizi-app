@@ -42,5 +42,36 @@ class LeadsDailyDigestTest extends TestCase
         $this->assertSame(1, $after['booked']);
         $this->assertStringStartsWith('Tue Sep 29: 3 leads (2 LS calls, 1 LS texts)', $after['summary']);
         $this->assertStringNotContainsString("\n", $after['summary']);
+        $this->assertSame("*Tue Sep 29: 3 leads*\nLS calls: 2\nLS texts: 1\n*Booked: 1*", $after['summary_lines']);
+    }
+
+    /** Desk, 2026-11-11: a company's leads were printed under "Booked"; Jose watches bookings. */
+    public function test_leads_and_bookings_per_company_are_two_labelled_blocks(): void
+    {
+        Carbon::setTestNow('2026-09-30T12:00:00Z');
+        $t = $this->provisionTenant('A1-Group');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $other = \App\Models\Company::create(['organization_id' => $t['org']->id, 'name' => 'Other Co']);
+            foreach ([[$t['company'], true], [$t['company'], false], [$t['company'], false], [$other, true], [$other, false]] as $i => [$company, $booked]) {
+                Lead::create([
+                    'organization_id' => $t['org']->id, 'company_id' => $company->id,
+                    'source' => Lead::SOURCE_LOCAL_SERVICES, 'lead_type' => 'PHONE_CALL', 'remote_id' => "c-$i",
+                    'status' => $booked ? Lead::STATUS_BOOKED : Lead::STATUS_NEW, 'received_at' => Carbon::parse('2026-09-29T15:00:00Z'),
+                ]);
+            }
+        });
+
+        $this->artisan('ezbizi:leads-daily-digest')->assertSuccessful();
+
+        $after = AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.daily_digest')->sole()->payload['after'];
+        $name = $t['company']->name;
+        $this->assertEquals([$name => 3, 'Other Co' => 2], $after['by_company']); // a JSON column keeps no key order
+        $this->assertEquals([$name => 1, 'Other Co' => 1], $after['booked_by_company']);
+        $this->assertSame(
+            "*Tue Sep 29: 5 leads*\nLS calls: 5\nLeads by company:\n$name: 3\nOther Co: 2\n*Booked: 2*\nBooked by company:\n$name: 1\nOther Co: 1",
+            $after['summary_lines'],
+        );
+        $this->assertStringContainsString("by company: $name 3, Other Co 2 - 2 booked ($name 1, Other Co 1).", $after['summary']);
     }
 }

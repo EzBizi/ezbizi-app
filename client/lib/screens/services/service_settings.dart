@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
@@ -36,6 +37,22 @@ class _ServiceSettingsState extends State<ServiceSettings> {
   void initState() {
     super.initState();
     _load();
+    // A group or label added or removed by another admin: re-read quietly.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'service_taxonomy'},
+      (_) {
+        if (!_loading) return _load(quiet: true);
+      },
+      active: () => widget.visible && LiveChanges.visible(this)(),
+    );
+  }
+
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
   }
 
   @override
@@ -44,15 +61,18 @@ class _ServiceSettingsState extends State<ServiceSettings> {
     if (widget.visible && !oldWidget.visible) _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _groups.isEmpty && _labels.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the lists on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _groups.isEmpty && _labels.isEmpty;
+        _error = null;
+      });
+    }
 
     final groups = await widget.api.get('/services/groups');
     final labels = await widget.api.get('/services/labels');
-    if (!mounted) return;
+    if (!mounted || (quiet && !(groups.ok && labels.ok))) return;
 
     if (!groups.ok) {
       setState(() {

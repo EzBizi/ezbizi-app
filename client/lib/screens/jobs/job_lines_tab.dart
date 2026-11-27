@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
@@ -8,6 +7,49 @@ import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/tag.dart';
+
+/// Sets the job's technician (performed_by_user_id) from the users who reach
+/// its franchise (Jose, 2026-11-12: "there is currently no way to set a
+/// technician"). True when it changed.
+Future<bool> pickJobTechnician(
+  BuildContext context,
+  ApiClient api,
+  String jobId,
+  String? currentId,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final list = await api.get('/jobs/$jobId/performers');
+  if (!context.mounted) return false;
+  if (!list.ok) {
+    messenger.showSnackBar(SnackBar(content: Text(list.reason)));
+    return false;
+  }
+  final picked = await showSearchPicker<String>(
+    context,
+    title: 'Technician',
+    value: currentId ?? '',
+    options: [
+      const SearchOption(value: '', label: 'Nobody'),
+      for (final u in (list.data as List?) ?? const [])
+        if (u is Map)
+          SearchOption(
+            value: '${u['id']}',
+            // Assigned before the roles rule, or by Workiz (Jose, 2026-11-16).
+            label: u['outside_roles'] == true
+                ? '${u['name']} (not a technician role)'
+                : '${u['name']}',
+          ),
+    ],
+  );
+  if (picked == null || picked == (currentId ?? '')) return false;
+  final r = await api.patch('/jobs/$jobId', {
+    'performed_by_user_id': picked.isEmpty ? null : picked,
+  });
+  messenger.showSnackBar(
+    SnackBar(content: Text(r.ok ? 'Technician saved.' : r.reason)),
+  );
+  return r.ok;
+}
 
 /// The work on a job: who it is assigned to, who did it, the service lines,
 /// and the total — which is summed from those lines, never typed (§12.3).
@@ -86,9 +128,8 @@ class _JobLinesTabState extends State<JobLinesTab> {
     super.dispose();
   }
 
-  List<Map<String, dynamic>> get _lines => List<Map<String, dynamic>>.from(
-    widget.job['lines'] as List? ?? const [],
-  );
+  List<Map<String, dynamic>> get _lines =>
+      List<Map<String, dynamic>>.from(widget.job['lines'] as List? ?? const []);
 
   Map<String, dynamic>? get _role =>
       widget.job['assigned_role'] as Map<String, dynamic>?;
@@ -258,9 +299,30 @@ class _JobLinesTabState extends State<JobLinesTab> {
           children: [Tag(_role?['name'] as String? ?? 'Unassigned')],
         ),
         const SizedBox(height: 6),
-        Text(
-          'Performed by ${_performedBy?['name'] as String? ?? 'nobody yet'}',
-          style: theme.textTheme.bodyMedium,
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                'Performed by ${_performedBy?['name'] as String? ?? 'nobody yet'}',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            if (widget.editable)
+              TextButton(
+                key: const Key('job-technician-set'),
+                onPressed: () async {
+                  if (await pickJobTechnician(
+                    context,
+                    widget.api,
+                    widget.jobId,
+                    _performedBy?['id'] as String?,
+                  )) {
+                    await _refresh();
+                  }
+                },
+                child: Text(_performedBy == null ? 'Assign…' : 'Change'),
+              ),
+          ],
         ),
         // The lines, the total and adding one ARE the job's money: Financials
         // only (Jose, 2026-09-29). The role and the performer above are not.
@@ -445,7 +507,10 @@ class _JobLinesTabState extends State<JobLinesTab> {
               label: 'Service',
               options: [
                 for (final service in _services)
-                  SearchOption(value: service['id'] as String?, label: service['name'] as String? ?? ''),
+                  SearchOption(
+                    value: service['id'] as String?,
+                    label: service['name'] as String? ?? '',
+                  ),
               ],
               onChanged: _busy ? null : (v) => setState(() => _serviceId = v),
             ),

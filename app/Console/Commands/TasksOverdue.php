@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Organization;
 use App\Models\Task;
 use App\Support\Automations\EventEmitter;
+use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -54,6 +55,12 @@ class TasksOverdue extends Command
                             ],
                         ]);
                     });
+                    // Its owners hear it too, not only through a rule (Shoval 11-13: due-date and overdue alerts).
+                    $owners = $task->owners()->pluck('user_id')->map(fn ($id) => (string) $id)->all();
+                    if ($owners !== []) {
+                        app(NotificationDispatcher::class)->dispatch(title: 'Overdue: '.$task->title,
+                            subject: $task, source: 'tasks', userIds: $owners, kind: 'task.due');
+                    }
                     $raised++;
                 }
             });

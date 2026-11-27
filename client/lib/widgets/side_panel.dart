@@ -1,6 +1,9 @@
+import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../core/theme.dart';
 
 /// A panel that slides in from the right — the app's answer to a modal dialog.
 ///
@@ -215,7 +218,23 @@ class _SidePanelState extends State<SidePanel> {
           // look this panel exists to avoid. Padding the content instead keeps
           // the surface bleeding to every edge and moves only the parts you
           // touch.
-          child: SafeArea(child: _content(context)),
+          //
+          // And the keyboard (mobile review 11-24): this is a dialog route, so
+          // nothing resized it, and the footer's Save / Create / Book sat under
+          // the keyboard on a phone. The larger of the keyboard and the home
+          // bar, not both: the keyboard already covers the home bar.
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: math.max(
+                  MediaQuery.viewInsetsOf(context).bottom,
+                  MediaQuery.viewPaddingOf(context).bottom,
+                ),
+              ),
+              child: _content(context),
+            ),
+          ),
         ),
       ),
     );
@@ -235,11 +254,13 @@ class _SidePanelState extends State<SidePanel> {
       : child;
 
   Widget _content(BuildContext context) {
+    // Mobile review 2026-11-13, P6: 24 a side left a phone 327 of 375.
+    final g = Gutter.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 12, 16),
+          padding: EdgeInsets.fromLTRB(g, 20, 12, 16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -286,18 +307,18 @@ class _SidePanelState extends State<SidePanel> {
         Expanded(
           child: widget.scrollable
               ? SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                  padding: EdgeInsets.fromLTRB(g, 20, g, 20),
                   child: _readable(widget.child),
                 )
               : Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                  padding: EdgeInsets.fromLTRB(g, 20, g, 20),
                   child: _readable(widget.child),
                 ),
         ),
         if (widget.actions.isNotEmpty) ...[
           const Divider(height: 1),
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+            padding: EdgeInsets.fromLTRB(g, 14, g, 18),
             // Wraps rather than overflows. Three buttons is about 344px,
             // which fits the panel until the window is narrow enough that
             // the panel becomes the window — and that is exactly where a
@@ -390,4 +411,47 @@ Widget paneFooter({
       FilledButton(onPressed: onSave, child: Text(saveLabel)),
     ],
   ),
+);
+
+/// A form pane: [paneHeader], its fields scrolling beneath (a spinner while
+/// [loading]), and [paneFooter]. Back and Cancel both call [onCancel], and
+/// neither works while [busy].
+Widget formPane(
+  BuildContext context,
+  String title, {
+  required bool showBack,
+  required bool busy,
+  required VoidCallback onCancel,
+  required VoidCallback? onSave,
+  String saveLabel = 'Save',
+  String backTooltip = 'Back to the list',
+  bool loading = false,
+  required List<Widget> children,
+}) => Column(
+  crossAxisAlignment: CrossAxisAlignment.stretch,
+  children: [
+    paneHeader(
+      context,
+      title,
+      showBack: showBack,
+      onBack: busy ? null : onCancel,
+      backTooltip: backTooltip,
+    ),
+    Expanded(
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: children,
+              ),
+            ),
+    ),
+    paneFooter(
+      onCancel: busy ? null : onCancel,
+      onSave: onSave,
+      saveLabel: saveLabel,
+    ),
+  ],
 );

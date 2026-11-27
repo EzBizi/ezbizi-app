@@ -87,7 +87,7 @@ class LeadDashboardController extends Controller
         $waiting = $scoped()->whereIn('leads.source', Lead::INBOX_SOURCES)
             ->where('leads.status', Lead::STATUS_NEW)
             ->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
-            ->whereBetween('leads.last_contact_at', [now()->subDay(), now()->subMinutes(Lead::REPLY_OVERDUE_AFTER_MINUTES)])
+            ->whereBetween('leads.last_contact_at', [now()->subDay(), now()->subMinutes((int) SettingsResolver::forOrganization('leads.reply_overdue_minutes'))])
             ->get()
             ->filter(fn (Lead $l) => $l->replyOverdue($this->replies->canReply($l)))
             ->count();
@@ -179,7 +179,9 @@ class LeadDashboardController extends Controller
             // A website form is answered by calling, never in the thread, so
             // it is not counted against anybody (136 forms, 0 "answered", in
             // the first week measured - 2026-09-30).
-            if ($firstCustomer === null || $lead->source === Lead::SOURCE_WEBSITE_FORM) {
+            // Nor one that owes nobody a reply: Not a lead, Lost, Completed (Jose, 2026-11-02).
+            if ($firstCustomer === null || $lead->source === Lead::SOURCE_WEBSITE_FORM
+                || in_array($lead->status, Lead::STATUSES_NO_REPLY_OWED, true)) {
                 continue;
             }
             $totals['answerable']++;

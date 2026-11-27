@@ -39,7 +39,6 @@ class LsaCertifications
     /** A document under review is not yet a problem. */
     private const PENDING = ['PENDING', 'PENDING_REVIEW', 'IN_REVIEW'];
 
-    public const WARN_DAYS = 30;
 
     /**
      * @return array{statuses: list<array<string, mixed>>, documents: list<array<string, mixed>>, problems: list<array{code: string, text: string}>, soonest_expiry: ?string}
@@ -48,6 +47,10 @@ class LsaCertifications
      */
     public function check(SocialConnection $connection): array
     {
+        $organization = \App\Models\Organization::withoutGlobalScopes()->find($connection->organization_id);
+        // Settings › Ads (Jose, 2026-11-04: no business values in code).
+        $warnDays = (int) ($organization === null ? 30 : app(\App\Support\Settings\SettingsResolver::class)->get('ads.lsa_warn_days', $organization));
+
         $token = GoogleToken::forConnection($connection, 'google_ads');
 
         $settings = $this->search($connection, $token,
@@ -80,7 +83,7 @@ class LsaCertifications
         }
         unset($s);
 
-        return self::assess($statuses, self::newestDocuments($artifacts), now());
+        return self::assess($statuses, self::newestDocuments($artifacts), now(), $warnDays);
     }
 
     /**
@@ -91,7 +94,7 @@ class LsaCertifications
      * @param  list<array<string, mixed>>  $documents
      * @return array{statuses: list<array<string, mixed>>, documents: list<array<string, mixed>>, problems: list<array{code: string, text: string}>, soonest_expiry: ?string}
      */
-    public static function assess(array $statuses, array $documents, Carbon $now): array
+    public static function assess(array $statuses, array $documents, Carbon $now, int $warnDays = 30): array
     {
         $problems = [];
 
@@ -127,7 +130,7 @@ class LsaCertifications
                     'code' => "expired:{$d['type']}",
                     'text' => ucfirst($type).' expired on '.$expires->toFormattedDateString().'.',
                 ];
-            } elseif ($expires->lte($now->copy()->addDays(self::WARN_DAYS))) {
+            } elseif ($expires->lte($now->copy()->addDays($warnDays))) {
                 $problems[] = [
                     'code' => "expiring:{$d['type']}:".$expires->toDateString(),
                     'text' => ucfirst($type).' expires on '.$expires->toFormattedDateString().'.',

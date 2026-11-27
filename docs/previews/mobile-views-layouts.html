@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Phone views</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a;--prif:#d8eef5;--bar:#10161b;--barink:#e8ecef;--ok:#1f7a3a;--okf:#dcf3e3;--bad:#a3261d;--badf:#fbe1de;--cau:#734600;--cauf:#fff0d2}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;--ok:#7fd69a;--okf:#173a24;--bad:#f19a91;--badf:#3d1714;--cau:#f1c56a;--cauf:#3d2e0c}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;--ok:#7fd69a;--okf:#173a24;--bad:#f19a91;--badf:#3d1714;--cau:#f1c56a;--cauf:#3d2e0c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.lead{margin:0 0 18px;color:var(--mut);max-width:1100px}
+h2.sec{font-size:16px;margin:26px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
+.phones{display:flex;flex-wrap:wrap;gap:22px}
+.phn{width:300px}.phn>h3{font-size:13.5px;margin:0 0 2px}.phn>p{margin:0 0 8px;color:var(--mut);font-size:12px;min-height:64px}
+.rec{color:var(--pri)}
+.scr{width:300px;height:560px;border:1px solid var(--line);border-radius:22px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column;position:relative;font-size:11.5px}
+.top{display:flex;align-items:center;gap:8px;background:var(--bar);color:var(--barink);padding:8px 10px}.sp{flex:1}
+.pb{flex:1;overflow:hidden;padding:8px}
+.nav{display:flex;justify-content:space-around;border-top:1px solid var(--line);background:var(--card);padding:6px 0 10px;font-size:9.5px;color:var(--mut)}
+.nav span{text-align:center}.nav .on{color:var(--pri);font-weight:700}
+.srch{border:1px solid var(--line);border-radius:18px;padding:5px 10px;color:var(--mut);background:var(--card);margin-bottom:6px}
+.chips{display:flex;gap:5px;margin-bottom:6px;flex-wrap:nowrap;overflow:hidden}.chip{border:1px solid var(--line);border-radius:12px;padding:2px 8px;white-space:nowrap;background:var(--card)}.chip.on{background:var(--prif);color:var(--pri);border-color:var(--pri)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:6px}
+.card b{font-size:12px}.mut{color:var(--mut)}
+.pill{display:inline-block;border-radius:10px;padding:1px 7px;font-size:9.5px;font-weight:700}
+.ok{background:var(--okf);color:var(--ok)}.bad{background:var(--badf);color:var(--bad)}.cau{background:var(--cauf);color:var(--cau)}.pri{background:var(--prif);color:var(--pri)}
+.acts{display:flex;gap:6px;margin-top:6px}.act{flex:1;text-align:center;border:1px solid var(--line);border-radius:8px;padding:4px 0;color:var(--pri);font-weight:600;font-size:10.5px}
+.row{display:flex;gap:8px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--line)}
+.dot{width:8px;height:8px;border-radius:4px;background:var(--pri);flex:none}
+.av{width:22px;height:22px;border-radius:11px;background:var(--prif);color:var(--pri);display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex:none}
+.fab{position:absolute;right:14px;bottom:56px;width:44px;height:44px;border-radius:22px;background:var(--pri);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+.sticky{display:flex;gap:6px;padding:8px;border-top:1px solid var(--line);background:var(--card)}.sticky .act{padding:7px 0}
+.fill{background:var(--pri);color:#fff;border-color:var(--pri)}
+.grp{font-weight:700;margin:6px 0 4px;display:flex;align-items:center;gap:6px}.bar4{width:4px;height:14px;border-radius:2px}
+.days{display:flex;gap:4px;margin-bottom:6px}.days span{flex:1;text-align:center;border-radius:8px;padding:3px 0;background:var(--card);border:1px solid var(--line);font-size:10px}.days .on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.slot{display:flex;gap:6px;margin-bottom:6px}.slot .t{width:38px;color:var(--mut);font-size:10px;padding-top:2px}.slot .card{flex:1;margin:0;border-left:4px solid var(--pri)}
+.lane{display:flex;gap:6px;overflow:hidden}.col{min-width:200px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px}
+.tabs{display:flex;border-bottom:1px solid var(--line);background:var(--card)}.tabs span{flex:1;text-align:center;padding:6px 0;color:var(--mut)}.tabs .on{color:var(--pri);border-bottom:2px solid var(--pri);font-weight:700}
+.bub{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:5px 8px;margin:5px 0;max-width:82%}.bub.me{margin-left:auto;background:var(--prif);border-color:transparent}
+.qr{display:flex;gap:5px;overflow:hidden;padding:4px 8px;background:var(--card)}.qr span{border:1px solid var(--pri);color:var(--pri);border-radius:12px;padding:2px 8px;white-space:nowrap;font-size:10px}
+.comp{display:flex;gap:6px;align-items:center;padding:6px 8px 10px;background:var(--card);border-top:1px solid var(--line)}.comp .in{flex:1;border:1px solid var(--line);border-radius:16px;padding:5px 10px;color:var(--mut)}
+</style></head><body>
+<h1>207 · Better phone views: Jobs, Task Board, Leads, Scheduling</h1>
+<p class="lead">Jose, 11-23, via the desk: "take inspiration for how stuff looks on mobile on workiz, monday, etc." The patterns worth taking are below. All names are invented.<br>
+<b>Workiz</b>: the day's schedule lists jobs, leads and tasks together, and each has quick actions for call, message, directions and reschedule. The job page has one-tap Clock in, Send ETA and Add payment.<br>
+<b>monday.com</b>: My Work sits in the bottom bar, a round + adds from anywhere, and the item card opens full screen with an Updates tab and a breadcrumb back to its board.<br>
+Every option keeps our bottom bar (four modules plus More) and the house pills and colours. Tap targets are 44 pt or more, and the main actions sit within thumb reach.</p>
+
+<h2 class="sec">Jobs</h2>
+<div class="phones">
+<div class="phn"><h3>J1 · Cards with quick actions, sticky actions on the job <span class="rec">(recommended)</span></h3><p>From Workiz. Each job card shows the number, status pill, customer, address and time, with Call, Text and Navigate one tap away. Inside a job, a sticky bar at the bottom holds Call, Text, Navigate and the next step (Start, then Done).</p>
+<div class="scr"><div class="top"><b>Jobs</b><span class="sp"></span>⚲ ＋</div><div class="pb">
+<div class="srch">🔍 Number, customer, address</div><div class="chips"><span class="chip on">Today</span><span class="chip">Open</span><span class="chip">Unpaid</span><span class="chip">Filters 2</span></div>
+<div class="card"><b>JOB-04926</b> <span class="pill pri">Scheduled</span><span style="float:right" class="mut">9:00 AM</span><br>Dana Reyes · Chimney sweep<br><span class="mut">41 Elm St, Akron</span><div class="acts"><span class="act">📞 Call</span><span class="act">💬 Text</span><span class="act">🧭 Go</span></div></div>
+<div class="card"><b>JOB-04931</b> <span class="pill cau">In progress</span><span style="float:right" class="mut">11:30 AM</span><br>Omar Field · Liner install<br><span class="mut">8 Oak Ave, Kent</span><div class="acts"><span class="act">📞 Call</span><span class="act">💬 Text</span><span class="act">🧭 Go</span></div></div>
+<div class="card"><b>JOB-04902</b> <span class="pill bad">Unpaid</span><br>Rita Moss · Inspection</div>
+</div><div class="nav"><span>Leads</span><span class="on">Jobs</span><span>Schedule</span><span>Tasks</span><span>More</span></div></div></div>
+<div class="phn"><h3>J2 · Today's route first</h3><p>The list opens on "My jobs today" in route order with drive times between stops. Other views sit behind a switch at the top. Great for technicians, less so for the office.</p>
+<div class="scr"><div class="top"><b>My day</b><span class="sp"></span>▾</div><div class="pb">
+<div class="card"><span class="pill pri">1</span> <b>9:00 · Dana Reyes</b><br><span class="mut">41 Elm St · sweep</span></div><div class="mut" style="text-align:center">↓ 14 min drive</div>
+<div class="card"><span class="pill pri">2</span> <b>11:30 · Omar Field</b><br><span class="mut">8 Oak Ave · liner</span></div><div class="mut" style="text-align:center">↓ 22 min drive</div>
+<div class="card"><span class="pill pri">3</span> <b>2:00 · Rita Moss</b><br><span class="mut">3 Pine Rd · inspection</span></div>
+</div><div class="nav"><span>Leads</span><span class="on">Jobs</span><span>Schedule</span><span>Tasks</span><span>More</span></div></div></div>
+<div class="phn"><h3>J3 · Dense rows, grouped by day</h3><p>Today's rows, tighter: one line each, grouped under Today, Tomorrow and Later. More jobs per screen, but the actions move into the job.</p>
+<div class="scr"><div class="top"><b>Jobs</b><span class="sp"></span>⚲ ＋</div><div class="pb">
+<div class="grp">Today</div><div class="row"><span class="dot"></span><b>04926</b> Dana Reyes<span class="sp"></span><span class="pill pri">Sched.</span></div><div class="row"><span class="dot" style="background:var(--cau)"></span><b>04931</b> Omar Field<span class="sp"></span><span class="pill cau">Active</span></div>
+<div class="grp">Tomorrow</div><div class="row"><span class="dot"></span><b>04940</b> Rita Moss<span class="sp"></span><span class="pill pri">Sched.</span></div><div class="row"><span class="dot"></span><b>04944</b> Sam Okafor<span class="sp"></span><span class="pill pri">Sched.</span></div>
+</div><div class="nav"><span>Leads</span><span class="on">Jobs</span><span>Schedule</span><span>Tasks</span><span>More</span></div></div></div>
+<div class="phn"><h3>J1 · inside a job</h3><p>The header carries the status and money. Tabs are Details, Items, Photos and Notes. The sticky bar is the thumb zone; the next step is the filled button.</p>
+<div class="scr"><div class="top">‹ <b>JOB-04926</b><span class="sp"></span>⋯</div>
+<div style="padding:8px;background:var(--card);border-bottom:1px solid var(--line)"><b style="font-size:13px">Dana Reyes</b> <span class="pill pri">Scheduled</span><br><span class="mut">Today 9:00–11:00 · Chimney sweep · $189 due</span></div>
+<div class="tabs"><span class="on">Details</span><span>Items</span><span>Photos</span><span>Notes</span></div>
+<div class="pb"><div class="card mut">Address, gate code, notes…</div><div class="card mut">Assigned: Sam Okafor</div></div>
+<div class="sticky"><span class="act">📞</span><span class="act">💬</span><span class="act">🧭</span><span class="act fill" style="flex:2">Start job</span></div></div></div>
+</div>
+
+<h2 class="sec">Task Board</h2>
+<div class="phones">
+<div class="phn"><h3>T1 · Groups as sections, item card full screen, + button <span class="rec">(recommended)</span></h3><p>From monday. Each group is a collapsible section of cards showing name, status pill, owner and date. A round + bottom right adds to the open group. Tapping a card opens it full screen (next frame).</p>
+<div class="scr"><div class="top"><b>Open Tasks</b> ▾<span class="sp"></span>🔍</div><div class="pb">
+<div class="chips"><span class="chip on">Mine</span><span class="chip">Due this week</span><span class="chip">Stuck</span></div>
+<div class="grp"><span class="bar4" style="background:var(--bad)"></span>Urgent · 2</div>
+<div class="card"><b>Call back insurer</b><br><span class="pill bad">Stuck</span> <span class="mut">· Fri</span><span style="float:right" class="av">SO</span></div>
+<div class="card"><b>Order 8" liner</b><br><span class="pill cau">Working on it</span> <span class="mut">· Today</span><span style="float:right" class="av">DR</span></div>
+<div class="grp"><span class="bar4" style="background:var(--pri)"></span>This week · 5 ▸</div>
+<div class="grp"><span class="bar4" style="background:var(--ok)"></span>Done · 12 ▸</div>
+</div><div class="fab">＋</div><div class="nav"><span>Leads</span><span>Jobs</span><span>Schedule</span><span class="on">Tasks</span><span>More</span></div></div></div>
+<div class="phn"><h3>T1 · the item card</h3><p>A breadcrumb back to the board and group, the status as a big pill, then the columns as rows. Updates is a tab, and its composer sits at the bottom with @mentions and photos.</p>
+<div class="scr"><div class="top">‹ <span class="mut" style="color:var(--barink)">Open Tasks › Urgent</span></div>
+<div style="padding:8px;background:var(--card)"><b style="font-size:13px">Call back insurer</b><br><span class="pill bad" style="font-size:11px;padding:3px 10px">Stuck</span></div>
+<div class="tabs"><span>Details</span><span class="on">Updates 3</span><span>Files</span></div>
+<div class="pb"><div class="card"><span class="av">SO</span> <b>Sam</b> <span class="mut">2h</span><br>Left a voicemail, trying again at 3.</div><div class="card"><span class="av">DR</span> <b>Dana</b> <span class="mut">1d</span><br>@Sam they need the photos first.</div></div>
+<div class="comp"><span>📎</span><span class="in">Write an update… @ to mention</span><span>➤</span></div></div></div>
+<div class="phn"><h3>T2 · Swipe between status columns</h3><p>A kanban with one column per screen and swipes left and right. Visual, but you see one status at a time, and dragging between columns is fiddly on a phone.</p>
+<div class="scr"><div class="top"><b>Open Tasks</b><span class="sp"></span>🔍</div><div class="pb"><div class="chips"><span class="chip on">Stuck 2</span><span class="chip">Working 4</span><span class="chip">Done 12</span></div>
+<div class="lane"><div class="col"><div class="card"><b>Call back insurer</b><br><span class="mut">Sam · Fri</span></div><div class="card"><b>Fix gutter quote</b><br><span class="mut">Dana · Mon</span></div></div><div class="col"></div></div></div>
+<div class="nav"><span>Leads</span><span>Jobs</span><span>Schedule</span><span class="on">Tasks</span><span>More</span></div></div></div>
+<div class="phn"><h3>T3 · "My Work" across every board</h3><p>monday's My Work: everything assigned to me from every board, grouped Overdue, Today, This week and Later. It complements T1 and is reached from the board picker.</p>
+<div class="scr"><div class="top"><b>My work</b><span class="sp"></span></div><div class="pb">
+<div class="grp" style="color:var(--bad)">Overdue · 1</div><div class="card"><b>Send W-9</b><br><span class="mut">Office board · Tue</span></div>
+<div class="grp">Today · 2</div><div class="card"><b>Order 8" liner</b><br><span class="mut">Open Tasks · Urgent</span></div><div class="card"><b>Review Akron ads</b><br><span class="mut">Marketing</span></div>
+</div><div class="nav"><span>Leads</span><span>Jobs</span><span>Schedule</span><span class="on">Tasks</span><span>More</span></div></div></div>
+</div>
+
+<h2 class="sec">Leads</h2>
+<div class="phones">
+<div class="phn"><h3>L1 · Inbox rows; the thread has quick replies and a sticky composer <span class="rec">(recommended)</span></h3><p>Like a messaging inbox. Each row shows a source icon, name, last message, time and an unread dot. Source and status are chips above. In the thread: one-tap Call and Book, quick-reply chips over the composer.</p>
+<div class="scr"><div class="top"><b>Leads</b><span class="sp"></span>🔍</div><div class="pb">
+<div class="chips"><span class="chip on">All 6</span><span class="chip">Google</span><span class="chip">Thumbtack</span><span class="chip">New</span></div>
+<div class="row"><span class="dot"></span><span class="av">G</span><div><b>Dana Reyes</b><br><span class="mut">Can someone sweep Friday?</span></div><span class="sp"></span><span class="mut">2m</span></div>
+<div class="row"><span class="dot"></span><span class="av">T</span><div><b>Omar Field</b><br><span class="mut">Quote for a liner please</span></div><span class="sp"></span><span class="mut">1h</span></div>
+<div class="row"><span class="dot" style="background:transparent"></span><span class="av">W</span><div><b>Rita Moss</b><br><span class="mut">You: We have Tue 8–11</span></div><span class="sp"></span><span class="mut">3h</span></div>
+</div><div class="nav"><span class="on">Leads</span><span>Jobs</span><span>Schedule</span><span>Tasks</span><span>More</span></div></div></div>
+<div class="phn"><h3>L1 · the thread</h3><p>The header has the name, source, status pill, Call and Book. The conversation runs to the bottom. Quick replies come from the reply templates.</p>
+<div class="scr"><div class="top">‹ <b>Dana Reyes</b><span class="sp"></span>📞 <span class="pill ok">Book</span></div>
+<div class="pb"><div class="bub">Hi, can someone sweep Friday?</div><div class="bub me">Yes! We have Friday 8–11 AM.</div><div class="bub">Perfect</div></div>
+<div class="qr"><span>Send price list</span><span>Ask for address</span><span>Book Friday</span></div>
+<div class="comp"><span>📎</span><span class="in">Reply by text…</span><span>➤</span></div></div></div>
+<div class="phn"><h3>L2 · Cards per lead</h3><p>Bigger cards with source, service, ZIP and status, and Reply and Call buttons on the card. Clear, but half as many leads fit per screen.</p>
+<div class="scr"><div class="top"><b>Leads</b><span class="sp"></span>🔍</div><div class="pb">
+<div class="card"><b>Dana Reyes</b> <span class="pill pri">New</span><br><span class="mut">Google · Chimney sweep · 44310</span><div class="acts"><span class="act">💬 Reply</span><span class="act">📞 Call</span></div></div>
+<div class="card"><b>Omar Field</b> <span class="pill cau">Quoted</span><br><span class="mut">Thumbtack · Liner · 44240</span><div class="acts"><span class="act">💬 Reply</span><span class="act">📞 Call</span></div></div>
+</div><div class="nav"><span class="on">Leads</span><span>Jobs</span><span>Schedule</span><span>Tasks</span><span>More</span></div></div></div>
+<div class="phn"><h3>L3 · Source tabs across the top</h3><p>The sources as a tab strip (All, Google, Thumbtack, Website) with plain rows under it. Familiar, but with seven or more sources the strip scrolls sideways.</p>
+<div class="scr"><div class="top"><b>Leads</b><span class="sp"></span>🔍</div><div class="tabs"><span class="on">All</span><span>Google</span><span>Thumbt.</span><span>Web</span></div><div class="pb">
+<div class="row"><b>Dana Reyes</b><span class="sp"></span><span class="mut">2m</span></div><div class="row"><b>Omar Field</b><span class="sp"></span><span class="mut">1h</span></div></div>
+<div class="nav"><span class="on">Leads</span><span>Jobs</span><span>Schedule</span><span>Tasks</span><span>More</span></div></div></div>
+</div>
+
+<h2 class="sec">Scheduling</h2>
+<div class="phones">
+<div class="phn"><h3>S1 · Day agenda with a swipeable date strip <span class="rec">(recommended)</span></h3><p>From Workiz. A week strip at the top (swipe for the next week), then the day's jobs by time. Each card has a colour edge for its technician and a ⋯ menu with Call, Text, Directions and Reschedule. A "Tech" chip narrows it to one person.</p>
+<div class="scr"><div class="top"><b>Schedule</b><span class="sp"></span>Today</div><div class="pb">
+<div class="days"><span>M<br>23</span><span class="on">T<br>24</span><span>W<br>25</span><span>T<br>26</span><span>F<br>27</span></div>
+<div class="chips"><span class="chip on">Everyone</span><span class="chip">Sam</span><span class="chip">Dana</span><span class="chip">Unassigned 2</span></div>
+<div class="slot"><span class="t">8 AM</span><div class="card"><b>Dana Reyes</b> <span class="pill pri">Sweep</span><span style="float:right">⋯</span><br><span class="mut">Sam Okafor · 41 Elm St</span></div></div>
+<div class="slot"><span class="t">11 AM</span><div class="card" style="border-left-color:var(--ok)"><b>Omar Field</b> <span class="pill cau">Liner</span><span style="float:right">⋯</span><br><span class="mut">Dana Reyes · 8 Oak Ave</span></div></div>
+<div class="slot"><span class="t">2 PM</span><div class="card" style="border-left-color:var(--cau)"><b>Rita Moss</b> <span class="pill pri">Insp.</span><span style="float:right">⋯</span><br><span class="mut">Unassigned</span></div></div>
+</div><div class="nav"><span>Leads</span><span>Jobs</span><span class="on">Schedule</span><span>Tasks</span><span>More</span></div></div></div>
+<div class="phn"><h3>S2 · Technician after technician (today's phone view)</h3><p>What ships now: each technician, then their jobs in time order. Good for "where is Sam?", weaker for "what's at 2 PM?".</p>
+<div class="scr"><div class="top"><b>Schedule</b><span class="sp"></span>Tue 24</div><div class="pb">
+<div class="grp"><span class="av">SO</span>Sam Okafor · 3 jobs</div><div class="card">8:00 Dana Reyes · Sweep</div><div class="card">1:00 Lee Park · Cap</div>
+<div class="grp"><span class="av">DR</span>Dana Reyes · 1 job</div><div class="card">11:00 Omar Field · Liner</div>
+</div><div class="nav"><span>Leads</span><span>Jobs</span><span class="on">Schedule</span><span>Tasks</span><span>More</span></div></div></div>
+<div class="phn"><h3>S3 · Week as a list</h3><p>Seven day headers, each with a count and its jobs under it. Good for planning a week ahead, but long scrolling on busy days.</p>
+<div class="scr"><div class="top"><b>This week</b><span class="sp"></span></div><div class="pb">
+<div class="grp">Mon 23 · 4</div><div class="row">8:00 Dana Reyes<span class="sp"></span><span class="mut">Sam</span></div><div class="row">11:00 Omar Field<span class="sp"></span><span class="mut">Dana</span></div>
+<div class="grp">Tue 24 · 6</div><div class="row">9:00 Rita Moss<span class="sp"></span><span class="mut">—</span></div>
+</div><div class="nav"><span>Leads</span><span>Jobs</span><span class="on">Schedule</span><span>Tasks</span><span>More</span></div></div></div>
+</div>
+</body></html>

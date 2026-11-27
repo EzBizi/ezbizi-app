@@ -242,6 +242,24 @@ class FieldTest extends TestCase
         $this->assertCount(1, $this->events('field.signal_lost'));
     }
 
+    public function test_a_lost_signal_alert_closes_itself_when_the_phone_reports_again(): void
+    {
+        $this->mode('always');
+        $this->send($this->point(40.0, -75.0, '2026-09-25 13:59:00'));
+        $this->travelTo('2026-09-25 14:20:00');
+        $this->artisan('ezbizi:field-sweep')->assertSuccessful();
+        // Only lost signal: standing still 21 minutes there also raised "stopped", which stays open.
+        $open = fn () => $this->inTenant($this->t['org'], fn () => FieldAlert::query()
+            ->where('kind', FieldAlert::SIGNAL_LOST)->whereNull('acknowledged_at')->count());
+        $this->assertSame(1, $open());
+
+        $this->send($this->point(40.0, -75.0, '2026-09-25 14:20:00'));
+
+        $this->assertSame(0, $open());
+        $this->assertNull($this->inTenant($this->t['org'], fn () => FieldAlert::query()
+            ->where('kind', FieldAlert::SIGNAL_LOST)->value('acknowledged_by')));
+    }
+
     public function test_sos_alerts_notifies_the_managers_who_can_see_the_person_and_is_audited(): void
     {
         $bystander = $this->userWithRole($this->t, 'Office', ['field.view']);
@@ -641,6 +659,26 @@ class FieldTest extends TestCase
             // The technician and the administrator.
             ->assertJsonPath('data.counts.tracked', 2)
             ->assertJsonPath('data.counts.reporting', 1);
+    }
+
+    public function test_open_alerts_is_the_sum_of_its_tiles_however_old(): void
+    {
+        // UI audit 10.1: 32 open vs 21 + 3. The tiles counted people right now;
+        // a stopped alert stays open after its person goes quiet. 60 > the list's cap.
+        $this->inTenant($this->t['org'], function () {
+            foreach ([FieldAlert::STOPPED => 40, FieldAlert::SIGNAL_LOST => 18, FieldAlert::SOS => 2] as $kind => $n) {
+                for ($i = 0; $i < $n; $i++) {
+                    FieldAlert::query()->create(['user_id' => $this->tech->id, 'kind' => $kind, 'latitude' => 40, 'longitude' => -75])
+                        ->forceFill(['created_at' => now()->subDays(3)])->save();
+                }
+            }
+        });
+
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/dashboard')
+            ->assertJsonPath('data.counts.stopped', 40)
+            ->assertJsonPath('data.counts.silent', 18)
+            ->assertJsonPath('data.counts.sos', 2)
+            ->assertJsonPath('data.counts.open_alerts', 60);
     }
 
     public function test_the_dashboard_glance_says_who_is_reporting(): void

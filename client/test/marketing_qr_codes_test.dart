@@ -1,11 +1,13 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/files.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/marketing/qr_codes_tab.dart';
 import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -286,6 +288,109 @@ void main() {
       ),
       findsOneWidget,
     );
+    // Rodrigo 01a1ef57: the genuine empty state offers the first one.
+    await tester.tap(find.byKey(const Key('qr-create-empty')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('qr-new-name')), findsOneWidget);
+  });
+
+  testWidgets('Preview shows the code large with where it sends people, and '
+      'Copy link copies the code’s own link', (tester) async {
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await _pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('qr-copy:q-1')));
+    await tester.pumpAndSettle();
+    expect(copied, _url('q-1'));
+    expect(find.text('Link copied.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('qr-preview:q-1')));
+    await tester.pumpAndSettle();
+    final panel = find.byKey(const Key('qr-preview-panel'));
+    expect(panel, findsOneWidget);
+    expect(
+      find.descendant(
+        of: panel,
+        matching: find.byKey(const Key('qr-preview-image')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<SelectableText>(
+            find.byKey(const Key('qr-preview-destination')),
+          )
+          .data,
+      'https://everdoors.example/spring',
+    );
+    expect(find.byKey(const Key('qr-preview-open')), findsOneWidget);
+    // Scan history is on the same card.
+    expect(find.text('Scan history'), findsWidgets);
+  });
+
+  // Bar, 01a1f4ba: "Be able to add the company logo or any other image to
+  // QR Codes". The logo is in the middle by default, on the card and the
+  // preview; No picture takes it out; Upload sends any picture.
+  testWidgets('the company logo sits in the middle of the code; No picture '
+      'and Upload change it', (tester) async {
+    final server = _Server();
+    await _pump(tester, server: server);
+
+    Finder centre(String id) => find.descendant(
+      of: find.byKey(ValueKey('qr-image:$id')),
+      matching: find.byKey(const Key('qr-center-picture')),
+    );
+    expect(centre('q-1'), findsOneWidget);
+    final card = tester.getSize(find.byKey(const ValueKey('qr-image:q-1')));
+    final pad = tester.getSize(centre('q-1'));
+    expect(pad.width / card.width, closeTo(0.22, 0.01));
+
+    await tester.tap(find.byKey(const ValueKey('qr-preview:q-1')));
+    await tester.pumpAndSettle();
+    final preview = find.byKey(const Key('qr-preview-image'));
+    expect(
+      find.descendant(
+        of: preview,
+        matching: find.byKey(const Key('qr-center-picture')),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('qr-picture-none')));
+    await tester.pumpAndSettle();
+    expect(server.puts.last, {'center_image': 'none'});
+    expect(
+      find.descendant(
+        of: preview,
+        matching: find.byKey(const Key('qr-center-picture')),
+      ),
+      findsNothing,
+    );
+    expect(centre('q-1'), findsNothing);
+
+    Files.debugPickBytes = (_) async =>
+        PickedBytes('badge.png', _Server._png.toList());
+    addTearDown(() => Files.debugPickBytes = null);
+    await tester.tap(find.byKey(const Key('qr-picture-upload')));
+    await tester.pumpAndSettle();
+    expect(server.uploads, ['q-1']);
+    expect(centre('q-1'), findsOneWidget);
+    expect(find.text('Your picture · change'), findsOneWidget);
   });
 
   testWidgets('on a phone the cards stack and Change says what it changes', (
@@ -316,7 +421,9 @@ void main() {
       permissions: const ['marketing.qr_codes.view'],
       screen: (api, session) => SocialMediaTab(api: api, session: session),
     );
-    expect(find.widgetWithText(ChoiceChip, 'QR Codes'), findsOneWidget);
+    // UI queue 199: a tool beside the calendar; with no post grant it is the
+    // page itself.
+    expect(find.byKey(const Key('social-qr')), findsOneWidget);
     expect(find.byType(QrCodesTab), findsOneWidget);
 
     await _pump(
@@ -324,7 +431,7 @@ void main() {
       permissions: const ['marketing.accounts.view'],
       screen: (api, session) => SocialMediaTab(api: api, session: session),
     );
-    expect(find.widgetWithText(ChoiceChip, 'QR Codes'), findsNothing);
+    expect(find.byKey(const Key('social-qr')), findsNothing);
     expect(find.byType(QrCodesTab), findsNothing);
   });
 
@@ -535,7 +642,13 @@ class _Server {
   /// Whether the server sends each code's last 30 days.
   final bool month;
   final List<String> images = [];
+  final List<String> uploads = [];
   Map<String, Object?> me = const {};
+
+  /// A 1x1 PNG: the company logo, as the server sends it.
+  static final _png = base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  );
 
   static Map<String, Object?> _row(
     String id,
@@ -583,10 +696,30 @@ class _Server {
       return http.Response.bytes([60, 115, 118, 103, 62], 200);
     }
 
+    final centre = RegExp(
+      r'/marketing/qr-codes/([^/]+)/center-image$',
+    ).firstMatch(path);
+    if (centre != null) {
+      final row = rows.firstWhere((r) => r['id'] == centre.group(1));
+      if (request.method == 'POST') {
+        uploads.add(centre.group(1)!);
+        row['center_image'] = 'upload';
+        return _json({'data': row});
+      }
+      return row['center_image'] == 'none'
+          ? _json({'message': 'Not found.'}, 404)
+          : http.Response.bytes(_png, 200);
+    }
+
     final one = RegExp(r'/marketing/qr-codes/([^/]+)$').firstMatch(path);
     if (one != null && request.method == 'PUT') {
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       puts.add(body);
+      if (body['center_image'] is String) {
+        final row = rows.firstWhere((r) => r['id'] == one.group(1));
+        row['center_image'] = body['center_image'];
+        return _json({'data': row});
+      }
       final to = body['destination_url'] as String;
       if (!to.startsWith('https://')) return _refused;
       final row = rows.firstWhere((r) => r['id'] == one.group(1));

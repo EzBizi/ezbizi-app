@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/training/guide_player.dart';
 import 'package:ezbizi_client/screens/training/test_player.dart';
+import 'package:ezbizi_client/widgets/list_table.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -70,7 +71,7 @@ void main() {
     expect(find.text('Before you climb › The ladder'), findsOneWidget);
     expect(find.text('Body for Why this guide exists.'), findsOneWidget);
     expect(find.text('Second paragraph.'), findsOneWidget);
-    expect(find.byType(DataTable), findsOneWidget);
+    expect(find.byType(ListTable), findsOneWidget);
     expect(find.byKey(const Key('training.play-video')), findsOneWidget);
   });
 

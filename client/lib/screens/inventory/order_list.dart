@@ -1,8 +1,13 @@
+import '../../widgets/module_page_header.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
+import '../../widgets/empty_state.dart';
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
@@ -42,6 +47,7 @@ class _OrderListState extends State<OrderList> {
   List<Map<String, dynamic>> _orders = [];
   List<Map<String, dynamic>> _issues = [];
   List<Map<String, dynamic>> _sales = [];
+
   /// The tile narrowing the list: null, `receive`, `open`, `sales` or
   /// `issues`; and the counts on the tiles, across every page (Inventory,
   /// 83999f2c). A server without them draws the old chips.
@@ -65,10 +71,22 @@ class _OrderListState extends State<OrderList> {
   void initState() {
     super.initState();
     _load();
+    // An order received, a sale fulfilled, an issue posted elsewhere: the
+    // three lists re-read quietly (scroll, the open pane and the search kept).
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'inventory_orders'},
+      (_) {
+        if (!_loading) return _load(quiet: true);
+      },
+      active: () => widget.visible && LiveChanges.visible(this)(),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -92,11 +110,14 @@ class _OrderListState extends State<OrderList> {
   bool get _hasPane =>
       _addingPo || _addingIssue || _addingSale || _open != null;
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _orders.isEmpty && _issues.isEmpty && _sales.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _orders.isEmpty && _issues.isEmpty && _sales.isEmpty;
+        _error = null;
+      });
+    }
 
     final po = await widget.api.get('/inventory/purchase-orders', {
       if (_tile == 'receive') 'filter': 'to_receive',
@@ -112,6 +133,7 @@ class _OrderListState extends State<OrderList> {
     });
 
     if (!mounted) return;
+    if (quiet && !(po.ok && issues.ok && sales.ok)) return;
 
     if (!po.ok) {
       setState(() {
@@ -142,12 +164,12 @@ class _OrderListState extends State<OrderList> {
       _orders = inventoryRows(po.data);
       _issues = inventoryRows(issues.data);
       _sales = inventoryRows(sales.data);
-      Map<String, dynamic>? tiles(ApiResponse r) =>
-          switch (r.body['meta']) {
-            {'tiles': final Map<dynamic, dynamic> t} =>
-              Map<String, dynamic>.from(t),
-            _ => null,
-          };
+      Map<String, dynamic>? tiles(ApiResponse r) => switch (r.body['meta']) {
+        {'tiles': final Map<dynamic, dynamic> t} => Map<String, dynamic>.from(
+          t,
+        ),
+        _ => null,
+      };
       _poTiles = tiles(po);
       _saleTiles = tiles(sales);
       _issueTotal = switch (issues.body['meta']) {
@@ -309,22 +331,24 @@ class _OrderListState extends State<OrderList> {
                 runSpacing: 8,
                 children: [
                   if (canCreate)
-                    Refused(
-                      reason: createRefused,
-                      child: FilledButton.icon(
-                        key: const ValueKey('tour-inventory-orders-add'),
-                        onPressed: createRefused == null
-                            ? () => setState(() {
-                                _addingPo = true;
-                                _addingIssue = false;
-                                _addingSale = false;
-                                _selectedId = null;
-                                _open = null;
-                                _kind = null;
-                              })
-                            : null,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Add purchase order'),
+                    ModuleAction(
+                      child: Refused(
+                        reason: createRefused,
+                        child: FilledButton.icon(
+                          key: const ValueKey('tour-inventory-orders-add'),
+                          onPressed: createRefused == null
+                              ? () => setState(() {
+                                  _addingPo = true;
+                                  _addingIssue = false;
+                                  _addingSale = false;
+                                  _selectedId = null;
+                                  _open = null;
+                                  _kind = null;
+                                })
+                              : null,
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Add purchase order'),
+                        ),
                       ),
                     ),
                   if (canEdit)
@@ -376,82 +400,112 @@ class _OrderListState extends State<OrderList> {
 
   Widget _list() {
     final rows = _visible();
+    final phone = MediaQuery.sizeOf(context).width < 600;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          key: const ValueKey('tour-inventory-orders-tiles'),
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          child: _poTiles == null || _saleTiles == null
-              ? Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final (key, label) in const [
-                      ('receive', 'To receive'),
-                      ('open', 'Open POs'),
-                      ('issues', 'Issues'),
-                      ('sales', 'Sales'),
-                    ])
-                      FilterChip(
-                        label: Text(label),
-                        selected: _tile == key,
-                        onSelected: (on) => _pick(on ? key : null),
-                      ),
-                  ],
-                )
-              : LayoutBuilder(
-                  builder: (context, box) => inventoryTiles(
-                    context,
-                    prefix: 'orders',
-                    tiles: _tileList(),
-                    picked: _tile,
-                    onPick: _pick,
-                    twoByTwo: box.maxWidth < 760,
-                  ),
+    final top = [
+      Padding(
+        key: const ValueKey('tour-inventory-orders-tiles'),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: _poTiles == null || _saleTiles == null
+            ? Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final (key, label) in const [
+                    ('receive', 'To receive'),
+                    ('open', 'Open POs'),
+                    ('issues', 'Issues'),
+                    ('sales', 'Sales'),
+                  ])
+                    FilterChip(
+                      label: Text(label),
+                      selected: _tile == key,
+                      onSelected: (on) => _pick(on ? key : null),
+                    ),
+                ],
+              )
+            : LayoutBuilder(
+                builder: (context, box) => inventoryTiles(
+                  context,
+                  prefix: 'orders',
+                  tiles: _tileList(),
+                  picked: _tile,
+                  onPick: _pick,
+                  twoByTwo: box.maxWidth < 760,
                 ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: TextField(
+              ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: ListSearch(
             key: const Key('inventory-orders-search'),
             controller: _search,
             onChanged: _searched,
-            // bodyMedium for the text and the hint, as the dense pickers draw:
-            // 53 points tall, as they are; the theme's 16-point hint makes 56.
-            style: Theme.of(context).textTheme.bodyMedium,
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: 'Number, vendor, customer or item',
-              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
-              ),
-            ),
+            hint: 'Number, vendor, customer or item',
           ),
         ),
-        Expanded(
-          child: rows.isEmpty
-              ? Center(
-                  child: Text(
-                    _q.isEmpty
-                        ? 'There are no orders or sales.'
-                        : 'No order, sale or issue matches "$_q".',
-                  ),
+      ),
+    ];
+    final empty = rows.isEmpty
+        ? (_q.isEmpty
+              ? const EmptyState(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'No orders yet',
+                  message: 'There are no orders or sales.',
                 )
-              : LayoutBuilder(
-                  builder: (context, box) => box.maxWidth >= 760 && !_hasPane
-                      ? _table(context, rows)
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                          itemCount: rows.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 8),
-                          itemBuilder: (context, i) => _row(context, rows[i]),
-                        ),
-                ),
-        ),
-      ],
+              : EmptyState(
+                  icon: Icons.search_off,
+                  title: 'No matches',
+                  message: 'No order, sale or issue matches "$_q".',
+                ))
+        : null;
+
+    // On a phone the tiles and the search are the first rows of the one
+    // list, inside InventorySplitScaffold's HeaderAboveList: as a fixed
+    // column they overflowed an iPhone Duo's cover screen by 80 px, and a
+    // second HeaderAboveList here nested two NestedScrollViews and
+    // overflowed the stack (mobile review 11-24).
+    if (phone) {
+      return ListView(
+        key: const ValueKey('inventory-orders-phone-list'),
+        padding: const EdgeInsets.only(bottom: 24),
+        children: [
+          ...top,
+          if (empty != null)
+            empty
+          else
+            for (var i = 0; i < rows.length; i++)
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, i == 0 ? 0 : 8, 16, 0),
+                child: _row(context, rows[i]),
+              ),
+        ],
+      );
+    }
+
+    // The tiles and search scroll or cap rather than stand fixed: an iPhone
+    // on its side (874x402) left the list -1 px under them (mobile review
+    // 11-25). Inside the split scaffold this is the nested, capped column.
+    return HeaderAboveList(
+      header: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: top,
+      ),
+      list:
+              empty ??
+              LayoutBuilder(
+                builder: (context, box) => box.maxWidth >= 760 && !_hasPane
+                    ? _table(context, rows)
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        itemCount: rows.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        itemBuilder: (context, i) => _row(context, rows[i]),
+                      ),
+              ),
     );
   }
 
@@ -550,7 +604,8 @@ class _OrderListState extends State<OrderList> {
       default:
         forWho = '${inventoryMap(row['vendor'])?['name'] ?? ''}';
         final part =
-            status == 'open' && _sum(row, 'qty_received') > 0 &&
+            status == 'open' &&
+            _sum(row, 'qty_received') > 0 &&
             _hasRemaining(row);
         pill = StatusPill(
           part ? 'Part received' : inventoryPoStatusLabel(status),

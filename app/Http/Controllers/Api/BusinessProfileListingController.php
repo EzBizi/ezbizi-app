@@ -117,19 +117,23 @@ class BusinessProfileListingController extends Controller
         Places::scope($query, $request->user());
 
         return response()->json(['checked_at' => now()->toIso8601String(), 'data' => $query->get()->map(function (BusinessLocation $l) use ($digits) {
-            $lines = $l->franchise_id === null ? [] : PhoneNumber::query()->where('scope_type', PhoneNumber::SCOPE_FRANCHISE)
-                ->where('scope_id', $l->franchise_id)->pluck('e164')->all();
+            // Lines may sit on the branch or on the company (A1 keeps all 14 on the company).
+            $lines = PhoneNumber::query()->where(fn ($q) => $q
+                ->where(fn ($q) => $q->where('scope_type', PhoneNumber::SCOPE_FRANCHISE)->where('scope_id', $l->franchise_id))
+                ->orWhere(fn ($q) => $q->where('scope_type', PhoneNumber::SCOPE_COMPANY)->where('scope_id', $l->company_id)))
+                ->pluck('e164')->all();
             $website = $l->franchise ? CustomerLinks::branchPhone($l->franchise) : null;
             $listing = $digits($l->phone);
             $ours = array_map($digits, $lines);
 
+            // The website often shows one central number for every branch, so it only decides when EzBizi has no lines.
             return ['id' => $l->id, 'name' => $l->label(), 'branch' => $l->franchise?->name,
                 'listing_phone' => $l->phone, 'ezbizi_lines' => $lines, 'website_phone' => $website,
                 'status' => match (true) {
                     $listing === null => 'missing',
-                    $ours === [] && $website === null => 'unknown',
-                    ($ours === [] || in_array($listing, $ours, true)) && ($website === null || $digits($website) === $listing) => 'match',
-                    default => 'mismatch',
+                    $ours !== [] => in_array($listing, $ours, true) ? 'match' : 'mismatch',
+                    $website === null => 'unknown',
+                    default => $digits($website) === $listing ? 'match' : 'mismatch',
                 }];
         })->values()->all()]);
     }
@@ -149,8 +153,10 @@ class BusinessProfileListingController extends Controller
         return response()->json(['data' => [
             $row(Review::SOURCE_GOOGLE, true, BusinessLocation::query()->max('synced_at')),
             $row(Review::SOURCE_EKOMI, (clone $ekomi)->exists(), $ekomi->max('last_reached_at')),
-            // ponytail: Thumbtack exposes no reviews API to partners; stays unconnected until it does.
-            ['source' => 'thumbtack', 'connected' => false, 'count' => 0, 'average' => null, 'last_sync' => null],
+            // Connected for leads, but Thumbtack shares no reviews with partners (Jose, 2026-11-09:
+            // "why does it say not connected when we do have a thumbtack connection").
+            ['source' => 'thumbtack', 'connected' => SocialConnection::query()->where('provider', SocialProvider::Thumbtack->value)->exists(),
+                'reviews_available' => false, 'count' => 0, 'average' => null, 'last_sync' => null],
         ], 'reply_rule_id' => $this->replyRuleId()]);
     }
 

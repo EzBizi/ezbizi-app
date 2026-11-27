@@ -99,6 +99,8 @@ class EstimatesController extends Controller
                 ->mapWithKeys(fn ($r) => [$r->currency => ['quoted' => (int) $r->quoted, 'accepted' => (int) $r->accepted]])
                 ->all();
         }
+        // Where each status may go, so a board can fade the columns it may not drop on.
+        $meta['transitions'] = self::NEXT;
 
         return response()->json([
             'data' => collect($page->items())->map(fn (Estimate $e) => $this->present($e)),

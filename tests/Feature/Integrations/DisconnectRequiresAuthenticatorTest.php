@@ -102,6 +102,28 @@ class DisconnectRequiresAuthenticatorTest extends TestCase
             ->assertOk()->assertJsonPath('data.disconnected', 1);
     }
 
+    public function test_one_facebook_disconnect_takes_the_ad_accounts_its_sign_in_brought(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $page = $this->social($t, 'facebook_page', 'page-1');
+        $ads = $this->social($t, 'facebook_ads', 'act_1');
+        $other = $this->social($t, 'pinterest', 'pin-1');
+
+        $code = $this->authenticatorCode($t['admin']);
+        $this->signedInAs($t['admin'])
+            ->deleteJson('/api/v1/social/providers/facebook_page/connections', $code)
+            ->assertOk()->assertJsonPath('data.disconnected', 2);
+
+        $this->assertFalse($this->exists(SocialConnection::class, $t, $page->id));
+        $this->assertFalse($this->exists(SocialConnection::class, $t, $ads->id));
+        $this->assertTrue($this->exists(SocialConnection::class, $t, $other->id));
+
+        // Integrations folds Facebook Ads into the Facebook card.
+        $catalogue = collect($this->signedInAs($t['admin'])->getJson('/api/v1/social/providers?include=data_sources')->json('data'))->keyBy('value');
+        $this->assertSame('facebook_page', $catalogue['facebook_ads']['signed_in_with']);
+        $this->assertNull($catalogue['facebook_page']['signed_in_with']);
+    }
+
     public function test_a_phone_connection_needs_the_code(): void
     {
         $t = $this->provisionTenant('A1-Group');

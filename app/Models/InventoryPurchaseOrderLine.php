@@ -24,6 +24,11 @@ class InventoryPurchaseOrderLine extends Model implements StatesRetention
     }
 
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A line is its purchase order's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['inventory_orders', InventoryPurchaseOrder::class, 'purchase_order_id'];
+
     use HasUuids;
 
     protected function casts(): array

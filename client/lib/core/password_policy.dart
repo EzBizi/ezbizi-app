@@ -33,9 +33,9 @@ class PasswordPolicy {
 
   /// Mirrors `PasswordPolicy::MIN_LENGTH` (PHP). The PLATFORM floor, not
   /// necessarily what the signed-in person's organization asks for.
-  static const int minLength = 12;
+  static const int minLength = 8;
 
-  /// "At least 12 characters" — one sentence, so the public forms agree on the
+  /// "At least 8 characters" — one sentence, so the public forms agree on the
   /// wording as well as the number.
   static const String hint = 'At least $minLength characters.';
 

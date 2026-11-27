@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/camera_watch.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
@@ -19,6 +21,7 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'camera_view.dart';
 import 'note_card.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Camera Monitoring — the tile grid of connected cameras (spec §"Sub-project
 /// 3"), the last of the three Monitoring sub-tabs to get a real screen.
@@ -105,18 +108,35 @@ class _CameraMonitoringTabState extends State<CameraMonitoringTab> {
   @override
   void initState() {
     super.initState();
-    if (_canView) _load();
+    if (_canView) {
+      _load();
+      // A camera added, renamed or its bridge checking in: re-read quietly.
+      _live = LiveChanges.of(widget.api).subscribe({'monitoring_cameras'}, (_) {
+        if (!_loading) return _load(quiet: true);
+      }, active: LiveChanges.visible(this));
+    }
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _cameras.isEmpty;
-      _error = null;
-    });
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the cameras on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _cameras.isEmpty;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/monitoring/cameras');
 
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       _loading = false;
@@ -224,16 +244,9 @@ class _CameraMonitoringTabState extends State<CameraMonitoringTab> {
               // Standard field height, as tall as Leads search (Jose, 2026-10-27).
               SizedBox(
                 width: 240,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('cameras-search'),
-                  textAlignVertical: TextAlignVertical.center,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIconConstraints: BoxConstraints(minWidth: 36),
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Find a camera',
-                    border: OutlineInputBorder(),
-                  ),
+                  hint: 'Find a camera',
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),
@@ -935,7 +948,7 @@ class _AddCameraPanelState extends State<_AddCameraPanel> {
           TextField(
             key: const Key('camera-add-label-field'),
             controller: _labelController,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(labelText: 'Label'),
           ),
           const SizedBox(height: 14),

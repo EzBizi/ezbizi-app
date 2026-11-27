@@ -3,6 +3,7 @@
 namespace App\Support\Web;
 
 use App\Models\WebSite;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -73,6 +74,16 @@ final class SiteRefresh
     public function now(WebSite $site): bool
     {
         if (! $site->isServiceLinked() || $site->service_rest_url === null) {
+            return false;
+        }
+
+        /*
+         * At most one nudge a site per two minutes. Each one is a read against
+         * the plugin's 60-an-hour budget, and 391 page saves through the API
+         * on 2026-11-10 sent 391 of them. A skipped nudge costs at most the
+         * plugin's own five-minute refresh.
+         */
+        if (! Cache::add('web-site-refresh:'.$site->getKey(), 1, 120)) {
             return false;
         }
 

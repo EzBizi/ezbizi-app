@@ -2969,6 +2969,39 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 171 · Leads on a phone: cleaner thread and list — **sent 2026-11-03 — Jose: "looks good" (1) — built** (`docs/previews/leads-mobile-clean-layouts.html`)
+
+A staff message, via Jose: the reply box is too small, the top should scroll away so the messages show. Jose: "mobile is a mess, we need something cleaner and simpler". Recommended 1, messenger style:
+- **Thread:** one app-bar row (back, avatar, name, a status chip opening a sheet, Book, ⋯), with job, phone, notes and More moved into ⋯. Messages fill the rest of the screen, even with the keyboard up.
+- **Composer:** full width, pinned above the keyboard, 1–5 lines. + opens a sheet (Suggest, quick replies with search, emoji, attach); round Send on the right. Quick replies show as one chip row only while the box is focused and empty.
+- **List:** search plus one "Filters (n)" button opening a sheet (show only / sources / channels, "Show N leads"). Only the picked quick chips stay visible, as one row. Rows are two lines.
+
+2 = Messages | Details tabs in the thread, with all chips in one sideways row. 3 = today's header scrolls away and folds when the keyboard opens, with a stacked composer. Phone only; desktop unchanged.
+
+**Built (phone, under 600 wide):**
+- The thread's one bar is back, avatar, name, a Status picker, Book and ... (`thread-details-toggle`, which opens the star, note, copy, facts and customer card). Details stay folded while the keyboard is up. The note being edited, a booking and an offer show either way.
+- The composer is + (`reply-tools`: Suggest, emoji and the quick replies), a box of 1–5 lines, and a round Send. The quick replies show by themselves while the box is focused and empty.
+- The list is search, Filters (n) and Fetch, then a chip for the source and the quick chips that are on. The Filters page, in place of the list like the sources page, holds the source, the quick chips with status and Mark all read, the takeover filters and In All.
+- There was no attach in the composer before; none was added.
+
+### 170 · Reports › Performance › People: answer and booking in separate columns — **APPROVED 2026-11-03, option 8 + phone** (Jose: "as u recommend"; Reports builds) (`docs/previews/reports-people-answer-booking-layouts.html`)
+
+Jose 11-03: "a column for not answered and answered, missed call, separate from the booked, not booked". Recommended 1 + phone 4. The People table becomes Rang · Answered · Not answered · Missed · Booked · Booking rate (booked out of answered). A person's calls get an Answer pill (Answered / Not answered · who took it / Missed) and a Booking pill (Booked / Not booked / Existing job, "—" when not answered), with two filter chip groups. Red only for Missed. 2 = one column with stacked pills; 3 = separate Answering and Booking tables. Reports builds it.
+
+**Round 2, 11-03:** Jose said "hmm can u come up with more". Added 7 (a funnel bar per person), 8 (a two-part table with Phone and Sales header groups), 9 (person cards with rings), 10 (one status pill per call) and 11 (a drill-down in two tabs). Each has a phone version. The recommendation is now 8, with option 1's call list as the drill-down; 1 is second. The call list no longer overflows at 800 px.
+
+### 169 · Deep-dive patterns (filter bar, search, pickers, skeletons) — **no gallery — Jose 2026-11-02: implement all recommendations** (`docs/reviews/2026-11-02/ui-ux-deep-dive.md` §2, `ui-ux.md` #3/#4/#7/#10)
+
+These were built from the review straight away, with no gallery. `ListSearch` (`client/lib/widgets/list_search.dart`) is the one list search box: outlined, 44 high, about 280 wide on a desktop and the full width on a phone. It is used in Automations, Guidelines and Services so far. Availability's Area and Calendar branch chips are now one "Company · Branch" `SearchPickerField`. `AsyncBody(skeleton: true)` and `LoadingSkeleton` show grey rows in place of a long spinner (Email › Settings, Profit & Loss). Job and Customer panes drop Save/Cancel on their read-only tabs. The sidebar shows a scroll thumb. Inventory's empty lists use `EmptyState`. **Kept:** Training's search stays 56 high (Jose 2026-10-27), and the three-box `CalendarDayField` stays, because it was the owner's own ask.
+
+### 168 · Development tab brought up to date — **sent 2026-11-02 — Jose: "go ahead with ur recommendations" (1 + phone 4)** (`docs/previews/development-tab-layouts.html`)
+
+Jose: "the Development Tab, it's a bit outdated". Recommended 1 + phone 4: 103 first-level tabs (Health with a red problem count); one thin red control-plane bar, walkthrough offer only via the title (▶); Organizations / Modules / Client versions as one-row-per-item tables with search, counts pluralised and the branch label; Modules' permissions on expand; Health problems first in red, healthy checks green on one line, repeated app issues merged with a count. 2 = tighter two-column cards; 3 = overview tiles first.
+
+### 167 · Settings › Integrations: Google connections grouped by login — **sent 2026-11-02 (inline mockup) — Jose: "as u recommend" (1)**
+
+Jose via Leads: group Google connections under the login they were made with (account_email, cc3cc5f2d; null = "Unknown login · reconnect to see"). Recommended 1: one collapsible card per login with count, OK / need-reconnect chips, its own search, Reconnect and Disconnect all; unknown-login card last. 2 = flat list with a Login column and login chips. One login can hold dozens of rows (37 from 3 sign-ins on 10-29).
+
 ### 166 · Leads: Facebook, Instagram and WhatsApp in one Meta tab — **sent 2026-11-02 — Jose: "as you recommend" (1 + phone 4)** (`docs/previews/leads-meta-tab-layouts.html`)
 
 Jose 2026-11-02 via Leads: "combine the Facebook - Instagram and Whatsapp Tabs into a Meta Tab, but still keep their individual tags". Recommended 1 + phone 4: Meta in Facebook's rail slot (badge = sum, shown if any of the three is granted); a sub-chip row above the search (All Meta · Facebook · Instagram · WhatsApp, each counted, each only if granted), like the In All row; rows keep their source tag. Client only (?sources=). Tour reuses Messenger's. 2 = rail tree; 3 = Filters tick only.
@@ -4302,7 +4335,7 @@ Jose, 2026-09-30, with two screenshots of Communication › Phone › Dial: *"se
 improve the Phone Main Screen"*. Today: recent calls are numbers only (the same one nine times in a
 row, a customer's number still digits although every call carries `customer_id`), no day groups, no
 missed filter; the keypad floats in a wide empty column above the live transcript's grey box, which
-sits empty until a call; the number shows raw (+13057242199) in the box and in the Customer panel;
+sits empty until a call; the number shows raw (+13055550107) in the box and in the Customer panel;
 Calling as runs the full width and "Do not disturb" sits alone on a line. `docs/previews/phone-dial-layouts.html`:
 desktop **1** a call desk: calls by day, named, repeats folded (×9), chips All / Missed / Voicemail,
 "called back" on a missed call; one strip for the state and the line; a name-or-number box that
@@ -5229,3 +5262,169 @@ nobody closes is now auto-closed at `time_clock.max_hours` (org setting, default
 this shipped for were closed at 16h each when nobody knows when those people
 actually went home. Correcting them is the first real use of this screen, and
 Jose will be the one doing it.
+
+### 172 · Estimate Board — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend"; Jobs builds) (`docs/previews/estimate-board-layouts.html`)
+
+From Jose's Monday list ("New Estimate Board"), via the desk. Server ready (GET /estimates status filters + status_counts; PATCH status refuses illegal moves), so client only; Jobs builds. Recommended **1 + phone 4**:
+- **Where:** a List | Board toggle on Jobs › Estimates that keeps the search, "Company · Branch" and date filters, with column counts from status_counts.
+- **Archived (1,846 of 2,231):** a collapsed amber column at the right that expands on click and accepts drops while shut.
+- **Drag:** columns the card can't go to fade, allowed ones are outlined, and a refused drop springs back with the server's reason. A card opens in the SidePanel. 25 cards per column, then "Show 25 more".
+- **Phone:** one column at a time with swipeable status tabs, and "Move to" as a bottom sheet listing only the allowed moves.
+Alternatives: 2, Archived hidden behind a "Show archived" chip; 3, a separate Estimate board tab.
+
+### 173 · Newsletter: new mailing list with a tag — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend") (`docs/previews/newsletter-new-list-layouts.html`)
+
+Marketing asked for this (server 2b9173a4: POST newsletter/audiences takes an optional tag). The client has no create-list form. Recommended: 1 + phone 4, a "+ New list" button that opens a SidePanel (name, kind, Mailchimp list, "Only people tagged"), with the chip showing "· tag".
+
+### 174 · Customer tags: edit, show, filter — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend"; UI/UX builds) (`docs/previews/customer-tags-layouts.html`)
+
+Customers asked for this (server 8975174c: tags on every customer, PATCH the whole list, GET ?tag=). Jose wants newsletters and automations "by tag". Recommended: 1 + phone 4. Neutral chips with × under the name in the panel, an inline "+ Tag" field that suggests existing tags and saves at once, up to 2 chips then "+N" on each row, and a Tag search picker in the filter bar. Alternatives: 2, a Tags field in Info with Save; 3, quick-filter chips for the most-used tags.
+
+### 175 · Ownership chart, process map, KPI report — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as you recommend with everything") (`docs/previews/ownership-process-kpi-layouts.html`)
+
+Jose's Monday list; Jose 11-03: "B, everything we do is for ezbizi" (a screen, not a document). Recommended: 1 (a Company module with Ownership | Processes | KPIs tabs) + phone 4. Data gaps: no reports-to field (HR); no area or step owner record (new); no answer, booking or close rate goals and no tech KPI goals (Reports). HR and Reports were asked.
+
+### 176 · Business Profile: Google posts to approve — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as you recommend with everything") (`docs/previews/gbp-post-approval-layouts.html`)
+
+For CX (ba397315f). Recommended 1 + phone 4: a Posts to approve (N) tab, list + Google preview, Approve / Edit / Disapprove, per-listing Publish without approval switch (off).
+
+### 177 · Field recordings: summary + transcript, Record on the job — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend for everything as usual") (`docs/previews/field-recording-transcript-layouts.html`)
+
+For Field (c60be2fc) and Jobs. Jose's "AI Tech Recorder & Summary". Recommended 1 + phone 4: labelled summary sections with copy, transcript with clock times; Record pill in the job header (red ● 00:12 · Stop while recording), first start asks "I told the customer" in a SidePanel.
+
+### 178 · Task Board: Calendar, Timeline, Number and Formula columns — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend for everything as usual") (`docs/previews/task-board-calendar-timeline-layouts.html`)
+
+For Task Board (Monday survey 131037c3a; A-1 off Monday by Nov 10). Recommended 1 + phone 4: Calendar (Month|Week, drag to re-date, no-date tray) and Timeline (range column + Gantt, drag/resize, today line, Week|Month|Quarter) join the existing Table|Kanban|Cards switcher; Number gets Plain|Currency|% and a Formula column is built in the column settings SidePanel, with group-footer sums. Phone: Calendar is an agenda list, Timeline scrolls sideways.
+
+### 179 · Calls: set New/Existing and Booked/Not booked by hand — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend on the trey stuff") (`docs/previews/call-reclassify-layouts.html`)
+
+For Reports (backend 1e45b6f06, gated on reports.handles). Jose for Trey: "reclassify from existing to new and viceverse as well as to booke from not booked and viceversa". Recommended 1 + phone 4: Client and Booking segmented controls in the call details, "Set by X · Automatic ↺" to undo, a ✎ mark with a tooltip on the row pills.
+
+### 180 · Ads performance: control Meta campaigns — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/meta-campaigns-layouts.html`)
+
+For Meta API (backend a24e0de6f). Jose 11-04: "we need to be able to control meta campaigns from the app." Recommended 1 + phone 4: a Google | Meta switch on Ads performance; an expandable campaign › ad set › ad table with an on/off switch per row ("Paused by campaign" from effective_status); the budget edit only on the row that owns daily_budget, in a SidePanel; pausing takes effect with an Undo snackbar; read-only without ads_performance.manage; an empty state with "Open Integrations" when nothing is connected.
+
+### 181 · Settings › Lists: edit every business list — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/settings-lists-layouts.html`)
+
+For Settings (11-04 ruling: every business value editable; GET/POST/PATCH/DELETE settings/lists). Recommended 1 + phone 4: a Lists tab in Settings; searchable lists grouped by module on the left, the chosen list in place on the right; cells edit inline and save on blur (one PATCH per row) with the 422 under the row; tick boxes save at once; ✕ removes with Undo; drag handle sorts; + Add row last; no typed keys; "Default values" chip while unedited; read-only without may_edit; empty state while the registry is empty. Phone: list of lists, then the list in place with ‹.
+
+### 182 · Settings › Integrations: one card per sign-in — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/integrations-sign-in-cards-layouts.html`)
+
+For Meta API (Facebook family) and the desk (Google family backend). Jose 11-05: "1 facebook connections grabs social and ada and whatever scopes we have etc. Same for disconnecting. And this goes for everything". Recommended 1 + phone 4: a Facebook card (Pages, Ad accounts, Lead forms) and a Google card (Business Profile, Google Ads, YouTube, Gmail/Workspace), one sign-in each, each product with its own status line; a product the grant missed shows "Add access", re-running the same sign-in for more scopes; one Disconnect per card, red, an inline two-step listing "This removes: …" with Confirm/Cancel that lapses after 5 s; Instagram and single-product services stay plain cards; search kept. Phone: cards stack, Disconnect at the card foot.
+
+### 183 · Settings › Integrations redesigned: choose what to connect — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/integrations-choose-products-layouts.html`)
+
+For Meta API (Facebook family), Leads + Google API (Google family); client by UI/UX. Jose 11-05: "it asks me what connections from facebook i want to make, before proceeding to the connection" and "this may need a re-design of the Integrations screen then". **Supersedes 182's layout.** Recommended 1 + phone 4: Needs attention / Connected / Available sections with search and category chips; one card per sign-in with per-product status lines; a "Choose what to connect" SidePanel before sign-in; Manage re-opens it, ticking more signs in for just those scopes, unticking is an inline red two-step. Contract: products[] per family in GET social/providers, products[] on connect start, DELETE ?product=.
+
+### 184 · Settings › Integrations: one provider, one list — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/integration-detail-layouts.html`)
+
+Client by UI/UX. Jose 11-05: "can we improve these connections screens, like something cohesive, unified, modern". Replaces the per-place cards and the "Connect another" card in `integration_provider_screen.dart`: a header card (logo, purpose, working / to-reconnect pills, Connect top-right, or the existing note + Open module when Connect is not here), one list card with places as section labels, a status pill per row, Name / Edit / Disconnect in a ⋯ menu (SidePanel on phone). Google login cards (design 167) keep their grouping inside the same list shape. No server change.
+
+### 185 · Marketing › Ads: on/off schedule per campaign — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/ad-schedule-layouts.html`)
+
+Client by Meta API (both the Meta and Google campaign tables; coordinate with Google API for its table). Jose, relayed by the desk: "can we build a switch so it can turn it on/off at designated times?" Row: the switch stays; a clock chip "Mon–Fri 8a–6p ET · off at 6:00 PM", amber when last_error is set ("Couldn't turn on at 8:00 AM"), dashed "＋ Schedule" when none (hidden without ads_performance.manage). Chip opens a SidePanel: last_error sentence first, day toggles, on/off times, timezone (org default), overnight hint, next/last change, Remove schedule as an inline red two-step; read-only without manage. Contract (Meta API): GET /ad-schedules?connection_id= → [{id, connection_id, object_id, object_name, days[1..7], on_at, off_at, timezone, next_change_at, next_state, last_state, last_applied_at, last_error}]; PUT /ad-schedules; DELETE /ad-schedules/{id}; acts on edges only.
+
+### 186 · HR › Records › Personal: gender picker, no gaps, copy, HR sets the photo — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-personal-tab-layouts.html`)
+
+Client by UI/UX; server by HR. Jose 11-06 (relayed by Website Changes): Gender a picker (Male / Female / Prefers not to answer); "I don't like gaps" between Date of birth and Gender; a copy icon on each field; HR can upload a person's picture. Option 1: equal 2-column grid with Date of birth stretched, copy icon as each field's suffix, avatar at the top with Change photo opening a SidePanel (upload / remove). Needs from HR: has_avatar on the person payload, POST/DELETE hr/people/{id}/avatar.
+
+### 187 · Lists: tags line up beside the time (Phone › Recent calls, Leads inbox) — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/list-tags-right-layouts.html`)
+
+Jose 11-06: "I'm also thinking if it would not be best to always put the tags at the opposite side, like for example in this scenario moving all the tabs to the left side of the time, so they all line up. same on leads as well. i feel it would be a lot cleaner." Option 1: fixed-width right-aligned tag column just left of the time; lead tags (status, Customer, Facebook, Lead/Teammate) in it, max 2 then "+N"; message chips (Text, Call, Chat, Form) stay on line 2 before the preview. Phone: pills right-aligned under the time.
+
+### 188 · HR › Records › Employment: works at several places — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-places-layouts.html`)
+
+Client by UI/UX; server HR 17fb4c40e. Jose via the desk: show current access as a clear list with Add place / remove, plus what the role grants. A "Works at" card: one row per place (Company · Branch) with ×, inline red two-step remove, the last place shows HR's 422 sentence instead; Add place opens the SidePanel search picker from GET hr/people/scope-options; under it, the role and that it applies at every place.
+
+### 193 · Project Management › totals strip — **PM totals strip — option 1 APPROVED by Jose 2026-11-12** (`docs/previews/pm-totals-strip.html`)
+
+Jose: "put them in colored blocks… have it do some html examples, not just 1"; he picked "first one". Three equal tinted tiles: Paid (ok), Remaining (caution, not red), Total of jobs (primary container); under 600 px they stack as label-left, figure-right rows. Client by UI/UX (`client/lib/screens/project_board_screen.dart`). Open: Paid + Remaining ($987,778.06) exceeds Total ($973,417.87) by $14,360.19, for the PM owner.
+
+### 192 · Leads › lead detail header, lined up — **APPROVED (standing rule 2026-11-03), recommended option (desk's grid)** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/lead-detail-header.html`)
+
+Jose 11-11: "stuff doesn't seem lined up properly, like there's wasted space still." Desktop: row 1 name + chips left, Call / Edit / Book / ⋯ right; row 2 the status segmented control left-aligned (picker under 640 px); facts and the AI line with even gaps; the Existing customer bar capped at 720 px. Phone bar (design 171) unchanged. Client by UI/UX (`client/lib/widgets/lead_thread.dart`).
+
+### 190 · HR › Records › Training tab — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-training-tab-layouts.html`)
+
+Jose 11-06 on the Work tab: "this can definitely be shown in a better way, use green and red as well for clock in - out times"; on Training: "same here". Three equal tinted KPI tiles; an aligned table Course | Status (green Passed / amber Due / red Failed-Overdue) | Score bar | Completed | Retake by; empty state; the footnote rewritten plainly. Client by UI/UX (`client/lib/screens/hr/training_card.dart`).
+
+### 191 · Integrations › Workiz › Tags — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/workiz-tags-layouts.html`)
+
+Client by UI/UX on the Workiz backend (session/workiz 5b905b31b). Jose 11-10: "a sub tab where we can see all existing tags per account so if someone in the future changes a tag, we know about it and get a warning". A Tags section on the Workiz provider screen: caution banner for changes in the last 7 days linking to the log, a tags × accounts matrix (sticky tag column and header, colour chip + name, differing cell tinted caution, missing cell "—" in caution), Show only differences + search, Approve current tags as standard (SidePanel confirm, disabled when nothing differs), then the change log (Deleted is Tone.bad, the rest caution). No baseline yet: one line asking to approve the current tags.
+
+### 189 · HR › Work: work schedule — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-work-schedule-layouts.html`)
+
+Client by UI/UX. Jose 11-06: "this can definitely be shown in a better way, use green and red as well for clock in - out times". All seven days as rows (a day off reads "Off" instead of vanishing), green in chip (Tone.ok), red out chip (Tone.bad; his ruling for this screen), a 24 h day bar, hours per day and a weekly total. Times through DisplayFormats.formatWallClock. Phone drops the bar.
+
+### 194 · Leads › lead detail header, two columns — **APPROVED (standing rule 2026-11-03), recommended option A (A1)** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/lead-header.html`)
+
+Jose 11-16: "this is still terrible ui-ux, see how it can be arranged better, lots of wasted space and things all around". Supersedes 192. Desktop: row 1 the name with every chip in one row (company once, status, star, viewers, note) and Call / Edit / Book / ⋯; under it two columns: left the six moves, one "What they asked" card (the AI line, then only what the customer added: when, by when; the scope dropped when the AI line already says it) and the existing-customer bar; right a facts grid (label column, value, copy button): Phone, Email, Address (+ suggestion chip, Check availability), Job, Branch, Source (source chip, account, status). The loose "service · source · branch" line and the italic AI line are gone. Under 720 px of header the grid follows the moves; phone keeps design 171's bar, ⋯ opens chips, card, grid, customer. Client by UI/UX (`client/lib/widgets/lead_thread.dart`).
+
+### 195 · Lists on a phone: the controls above the first row (Jobs, Customers, CX › Reviews) — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/phone-list-controls.html`)
+
+UI pass 11-16: at 375 px the first row started below 70% of the screen (4–7 control rows). Phone (under 600 px): line 1 is search, "Filters · n" (an in-place Filters page, the Leads 171 pattern) and ⋯ (Export, Import, Possible duplicates, Draft all, Fetch new). Line 2 is the status chips as one line that scrolls sideways (Customers has none). The count sentence moves into the group line. The CX rating card becomes one tappable line. Desktop unchanged. Client by UI/UX, after telling Jobs, Customers and CX.
+
+### 196 · Record headers: the Job panel and the Customer record like the lead — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose 2026-11-17 on the lead header: "this is how stuff should be all around the app, proper and organized and simple") (`docs/previews/record-header.html`)
+
+The dot-joined subtitle (number · Workiz · customer · branch · Booked by) becomes the record's number only, and the rest goes to a labelled facts grid with copy buttons (`widgets/record_facts.dart`, two columns from 440 px). Job: the status is shown once, as the picker on the top line, where the StatusPill used to repeat it. Customer: Call and Book a job (filled) on the top line, and the owner Tag is gone (it's in the grid as Company · Branch). Both: Save lights only after a change. The form is unchanged. Client by UI/UX, after telling Jobs and Customers.
+
+### 197 · Jobs › Book: book the whole job in EzBizi — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose 2026-11-17 via the desk: "perhaps we ought to have a fully dedicated booking sub tab in jobs, and review every place that booking buttons are") (`docs/previews/jobs-book-tab-layouts.html`)
+
+One Book flow as its own Jobs tab, the shared Book panel in two columns (form left; Scheduling's days × windows grid, team and Create right). Every Book button (Leads, Customers, Calls, Jobs +) opens the same panel. Only a window with room can be picked; `late` windows read Blocked with the day's reason (the cut is a setting per company/branch/area, never hardcoded in the client). A 422 from Jobs' BookingGate shows the rule, the next windows, and a reason + Book anyway only when `can_override`. UI/UX builds the client; Jobs the gate, line items, tags, ad group, duplicate check; Scheduling `GET scheduling/availability/days`. 2 = four steps; 3 = availability first, form in a drawer; phones 5-6.
+
+### 198 · Work Hours › Payroll — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Clock In; Merav via Jose 2026-11-19; server 47460410d) (`docs/previews/work-hours-payroll-layouts.html`)
+
+A new Work Hours tab beside Daily approval (136), behind `work_hours.payroll`, following the top-bar view. **1** (recommended) Daily approval's frame: week ‹ › with a calendar, the view's name, chips People / Hours / Pay / Waiting / With warnings, Find a person, Download .xlsx, Approve all N waiting. Table columns: Name+role·branch, Rate (or "No rate"), Hours (+OT shown, not paid), Bonus and Deductions as fields in the row that save when you leave them, Tech expenses with ▸ for the lines (job, item, qty, amount, paid), Weekly pay, warnings as chips, status (Approve / Approved by X). A note via the pencil opens a line under the row. Editing un-approves. Total row at the foot. **2** a read-only table with a side pane to edit. **3** cards. Phone **4** (recommended: Daily approval cards with pay large, hours/OT, warnings, the bonus/deductions fields, ▸ expenses, note, Approve; outlined Approve all at the bottom; Download in the header) / **5** short rows → full screen / **6** one person at a time.
+
+### 199 · Reports › nine operations reports, grouped — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Reports; Shoval, owner, 2026-11-18 via the desk) (`docs/previews/reports-operations-layouts.html`)
+
+Tech AI checks, Tech report, Cancelled jobs, Complaints KPI, Dispatch, Accounting weekly, Recruiting, Pending jobs, Estimates; each the shared shape (date bar, figures, search + Company · Branch / technician / source filters, ReportGrid with Download and pinned headings, row opens the job or person), each its own grant. **1** (recommended) three families with sub-tabs (PM Settings style): **Jobs** = Overview (today's) · Pending · Cancelled · Estimates; **Technicians** (new) = Tech report · AI checks (each count a link to its jobs); **Office** (new) = Dispatch · Complaints · Accounting weekly · Recruiting. 11 top tabs, not 18; a family shows when any child is granted; last sub-tab kept per person. **2** nine more top tabs (18). **3** one Operations tab with a left list. Phone **4** (recommended: sub-tab chips scrolling, 2×2 figures, search + Filters panel, a card per row, Download in the header) / **5** sideways table / **6** figures first, rows on tap.
+
+### 200 · Task Board › the polish of Monday — **APPROVED (standing rule 2026-11-03), recommended A on every point + phone 4** (Jose 2026-11-20 via the desk, Monday side by side) (`docs/previews/task-board-polish-layouts.html`)
+
+**1** contrast A: three steps, page darker / group on a raised rounded card / rows one step lighter with hairlines. **2** A: clicking a row selects it (blue fill + blue edge) and docks the task panel at the right on Updates, board live beside it, no scrim; another row swaps; Esc/✕ clears; overlay under 1100 px. **3** A: the whole row lifts one shade on hover; ⠿ and ⋯ show on hover; selection beats hover. **4** A: dragged row is a lifted card, ghost left behind, blue drop line in any group; grabbing a group header folds every group while it moves and restores after. **5–7** A: ★ Favorites section on top (per person, own order), boards and folders drag with the order shown at once (kept until the server agrees), "N open" counts removed. Bug (no options): group header counts no trashed tasks. Phone **4**: same shades, task full screen on Updates, long-press drags.
+
+### 201 · HR › Recruiting — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (HR; Shoval, owner, 2026-11-20; server 9dfa1e434) (`docs/previews/hr-recruiting-layouts.html`)
+
+New HR tab `recruiting` (hr.view; writes hr.edit). **1** (recommended) sub-tabs Applicants · Spend; search + Position / Stage / Source / Company · Branch / dates pickers, "+ Applicant"; chips (applicants, relevant, interviewed, hired, first response) only as the server counts them; rows: name+contact+branch, position, source, stage pill, relevant ★, interviews, applied, first response; a row docks the applicant beside the list (details edited in place, Relevant switch, stage picker, interviews with kind/time/held/outcome/interviewer, + Interview, notes). Spend: month × position grid, edit in the cell, totals, + Spend (cost per hire when the server gives hires). **2** board by stage. **3** positions on the left. Phone **4** (recommended: cards, Filters panel, applicant full screen) / **5** swipe board / **6** positions first.
+
+### 202 · Customer Experience › Reviews & Complaints — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Customer Experience; Shoval via Jose 2026-11-20; server 22e04f82d) (`docs/previews/reviews-complaints-layouts.html`)
+
+Complaints renamed "Reviews & Complaints". **1** (recommended) a red-edged "Due within 24 h" strip above the list (open priority complaints, soonest first, "5 h left" / solid red "Overdue 2 h"), kind chips All · Google · Website · Call · BBB · Attorney General · Lawsuit · Other, a Client / Not a client badge on every row and the clock on priority rows; "+ New complaint" side panel (kind, title, summary, branch, came in, client; BBB/AG/Lawsuit say due in 24 h); a not-a-client Google review's pane shows the evidence and **Report on Google** (opens Google's tool, copies the evidence, says so). **2** priority as a sort + red Due column. **3** a Priority column on the board. Phone **4** (recommended: strip first, chips scroll, cards with badges, + full screen) / **5** Priority tab / **6** banner only.
+
+### 203 · Inspection › Generated Reports reads like the PDF — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose 2026-11-23 via the desk, app vs PDF screenshots, JOB-04926) (`docs/previews/inspection-report-view-layouts.html`)
+
+The app's report view draws what ReportDocument prints: only the questions this inspection asked (the same conditions), steering questions (print: ignore) left out, a Pass/Fail result banner with Pass · Fail · N/A counts, one card per section with plain answers in a grid, each finding (print: root) as a card with a green/red/grey left bar and a PASS/FAIL/N/A badge, the chosen words, the code citation in a quote block and the revealed answers (photos, notes, work) beneath; dividers as subheads, alerts as notes; the Inspection summary table last. **1** (recommended) section cards. **2** section nav beside. **3** summary table first, rows expand. Phone **4** (recommended: the same cards stacked) / **5** Fail-first chips / **6** summary rows that open.
+
+### 204 · Review QR (Customer Experience + Inspection) and the technician leaderboard — **APPROVED (standing rule 2026-11-03), recommended option 1 + leaderboard A + phone 4** (Jose 2026-11-23 via the desk; backend Customer Experience ed182b56d) (`docs/previews/review-qr-layouts.html`)
+
+One reusable `ReviewQrPanel(api, {jobId, customerId})`: one centred field "ZIP, client or job number" (5 digits offers the ZIP; otherwise clients and jobs drop down), Generate → POST customer-experience/review-qr → a dark-on-white QR (300 px on a phone) of the branch's /r/<code> review page, the branch name, "Scans count for you · valid until …", Download PNG (drawn on the client), Copy link, New code. A job or client given generates at once. Mounted in Customer Experience after Review links (Reviews' grant) and by Inspection as its last sub-tab. Review links gets a **Technician leaderboard** above the Branch/Person table (ranked by reviews written, then green, then QR scans; gold/silver/bronze; top 10 + Show all) and a QR scans column. **2** a ZIP/Client/Job switch. **3** my recent codes beside. Leaderboard **B** a third switch. Phone **4** (recommended) / **5** switch / **6** full-screen card.
+
+### 205 · "View as" a role or a person (Administrators who are developers) — **APPROVED (standing rule 2026-11-03), recommended option 1 + banner A + phone 4** (Jose 2026-11-23 via the desk; server Roles & Permissions) (`docs/previews/view-as-layouts.html`)
+
+A top-bar icon left of Search, shown only to administrators who are developers. It opens the side panel "View as" with Role · Person: Role = a Company · Branch picker and that view's roles with their head-counts; Person = a search list (name, role, branch); Recent (last three) on top; "Start viewing". While viewing, an amber strip under the top bar on every screen ("Viewing as Technician · A-1 Chimney › Akron", Switch, Exit) and the icon lit amber; the app behaves as the target (modules, tabs, buttons, data from /me as them). **2** a drop-down menu off the icon. **3** inside the Company · Branch picker. Banner **B** a pill in the top bar. Phone **4** (recommended: the strip, full-screen picker) / **5** pill / **6** bottom bar.
+
+### 206 · iPhone Duo / open-fold tier (600–899 wide): keep the bottom bar, list + record side by side — **APPROVED (standing rule 2026-11-03), recommended option 1** (Jose 2026-11-23 via the desk: "we need Iphone Duo support") (`docs/previews/iphone-duo-layouts.html`)
+Inner screen ~669×951 pt upright / 951×669 sideways; outer ~466 pt (already the phone layout). By width, never by device. Prerequisite outside the client: iOS build on the iOS 27.1 SDK (Xcode 27.1), else the Duo letterboxes the app.
+
+### 207 · Better phone views (Workiz / monday inspiration): Jobs, Task Board, Leads, Scheduling — **APPROVED (standing rule 2026-11-03), recommended J1 + T1 + L1 + S1** (Jose 2026-11-23 via the desk) (`docs/previews/mobile-views-layouts.html`)
+J1 job cards with Call/Text/Go + sticky job action bar; T1 groups as sections, full-screen item card with Updates tab, + button; L1 inbox rows + quick replies over a sticky composer; S1 day agenda with a swipeable week strip, technician colour edge, ⋯ quick actions.
+**Built 11-23/24:** S1 (schedule_pane `_phoneList`) and J1 Call + Go (no Text: no compose-by-number, keeps technicians off personal SMS), in 0.0.0630. **T1 and L1 were already in the app**, nothing built: Task Board phone = collapsible group sections of cards, + per group, task opens full screen (showSidePanel on a phone); Leads phone = inbox rows with unread, reply-template chips over the composer, Call/Book in the thread header.
+
+### 208 · Phone bottom bar chosen per role (4 slots + fixed More; module or module › tab) — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 5** (Jose 2026-11-23 via the desk; server Roles & Permissions: role.mobile_bar, /roles/{role}/mobile-bar/options, /me.mobile_bar) (`docs/previews/mobile-bar-layouts.html`)
+Role editor card: four SearchPickerField slots (modules with tabs indented), ↑↓ ✕, live phone mock, Reset to default. The bar is the same on phone and the open iPhone Duo (206); empty slots fall back to the default.
+
+### 209 · Project Management: several appointments per job, Repair teams tab, days-in-stage colours — **APPROVED (standing rule 2026-11-03), recommended A1 + B1 + C1 + phone 4** (Jose with Shoval 2026-11-23 via the desk; server Jobs: POST/GET project-board/jobs/{job}/appointments, GET project-board/repair-teams/{name}/jobs, status_days) (`docs/previews/pm-appointments-teams-layouts.html`)
+A1 side panel of appointment cards (date, slot, Technicians|Repair team, items) + live read-only customer text; B1 team picker, day-grouped list + Field map (filled = team, outlined = via a member) with hover cards (type, customer, time, items, parts received/on order); C1 1d/2d/3d+ tone pill.
+
+### 210 · Task Board group headers: bigger titles, the title row in the group's colour — **APPROVED: option 3 + phone 6** (Jose 2026-11-24: "i like option number 3"; spec sent to Task Board 11-24) (Jose 2026-11-24 via the desk: "make these titles a bit bigger… give the entire group top column a color"; build goes to Task Board after the pick) (`docs/previews/task-group-headers.html`, https://claude.ai/artifact/7kgZppaDyCuxQjrveNh6w7)
+Jose then: "the title row", so every option colours the whole title row only; column headings unchanged. 1 full group colour, 18px title in white/black by measured contrast (recommended); 2 light wash + 6px edge, contrast-corrected coloured title; 3 half-strength tint + 4px full-colour rule, 20px title. Phones 4/5/6 match 1/2/3 (4 recommended). Each drawn light and dark with collapsed groups and kanban; real Triplex groups (Company Files, Open Tasks, Unscheduled - Waiting Review - Cleveland, Ready To Schedule - Columbus / Cincinnati yellow).
+
+### 211 · Task Board sidebar, ordered by company — **APPROVED: option 1 + phone 4, Jose 2026-11-25 "as you recommend", with the organization (Triplex Group) as the root: "you put Triplex Group at the bottom, when it's actually the highest one"; built by UI/UX on session/uiux-board-tree** (Jose 2026-11-25 via the desk on 0.0.0644: "it's a mess and you can't tell what is what", "simplify stuff ... waste of space"; TaskBoardToDo row 66; inventory docs/agents/task-board-sidebar-layout-2026-11-25.md) (`docs/previews/task-board-sidebar-by-company.html`, https://claude.ai/artifact/TD5zSLM75FXuJzePLXn8gC)
+Same rules in all options: one look per level (SECTION small caps, company bold + dot, folder icon, board icon), company board first, folders inside their company, no single-child wrapper rows, no "· 1 board" counts, search matches company names. 1 the desk's tree with a company's branch boards in one "Branches" folder row; a one-board folder shows the board with the folder name beside it; a company with only its company board opens it from its own row (recommended). 2 Monday's folders one for one inside each company (branches under Field Management › Operations Management). 3 one company at a time, chosen at the top. Phones 4/5/6 match 1/2/3 (4 recommended). Build: UI/UX in task_board_sidebar.dart; server facts (company board per company, folder company_id, hide empty auto "Main" boards) asked of Task Board.
+
+### 212 · Leaderboard: a new main module, Leaderboard + My performance — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Trey 01a213ec + 01a213ed, approved by Jose, via Reports 2026-11-25; API by Reports: GET leaderboard, leaderboard/mine, leaderboard/mine/calls) (`docs/previews/leaderboard-layouts.html`, https://claude.ai/artifact/JkBGNck496C8ZeEmCLF6uV)
+1 Leaderboard: one card, top 3 as rows (medal, avatar, name, score /10, calls scored), then a "You" card in the selected tint (#rank of N, score, calls); My performance full width: six equal Performance tiles, Score (checks, strengths, to improve) + Grok reviews left, scored calls (Latest 3 · Best · Worst, transcript in place) + searchable calls right (recommended). 2 podium + one column. 3 one list with You as its last row + Overview/Calls/Reviews chips. Trey's 3rd item (desk 11-25): the Leaderboard runs Sun–Fri and restarts each Sunday: a week stepper ‹ This week · Sun – Fri › replaces the date bar on that tab, and a Past weeks card lists each earlier week's winner with 2nd and 3rd (tap opens that week). Empty states in the You slot: not_new, too_few_calls (n of min), not_matched, nobody ranked. Phones 4/5/6 match (4 recommended; no avatar on phone rows). Built by UI/UX on Reports' API.
+
+### 213 · EzChat: the green app icon and a technician-first phone app — **APPROVED (standing rule 2026-11-03), icon 1 (#00C875) + layout B1** (Jose 2026-11-25 via the desk: EzChat, Chat as its own companion app for technicians; icon "a green version of the icon, like we had the red and purple ones for whatsapp"; Chat leads the build) (`docs/previews/ezchat-layouts.html`)
+Icon: the EzBizi E/z recoloured (scripts/ezchat-icons.py; any green is one command), every size in assets/logo/ezchat/ (iOS AppIcon set, macOS 16–1024, Android legacy + adaptive foreground/background/monochrome, store 1024/512). 1 fresh #00C875 (recommended), 2 deep #0A8F4E, 3 teal #00A884. Layout: B1 Chats · Calls · You with filter chips (All · Unread · Jobs · Groups), job-tied chats say their job, quick replies (On my way · Running late · Done · Need parts), camera beside the field, large hold-to-talk mic (recommended); B2 sections + four big buttons; B3 jobs first.

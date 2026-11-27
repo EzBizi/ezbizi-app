@@ -1,10 +1,13 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/app_window.dart';
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/widgets/module_page_header.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -26,6 +29,31 @@ import 'package:http/testing.dart';
 /// why `tapping a row below a divider opens that row` is the load-bearing test
 /// here rather than one more case.
 void main() {
+  // Jose 2026-11-24: right-click a module, "Open in new window", for two
+  // EzBizis side by side (AppWindow).
+  testWidgets('right-click on a module opens it in a new window', (
+    tester,
+  ) async {
+    _wide(tester);
+    final opened = <String>[];
+    AppWindow.opener = (path) async => opened.add(path);
+    addTearDown(() => AppWindow.opener = (_) async {});
+    await _pumpShell(
+      tester,
+      modules: ['dashboard', 'customers', 'jobs'],
+      order: ['dashboard', 'customers', 'jobs'],
+    );
+
+    await tester.tap(_inSidebar('Jobs'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open in new window'));
+    await tester.pumpAndSettle();
+
+    expect(opened, ['/jobs']);
+    // The right-click did not also switch this window to Jobs.
+    expect(_open('Jobs'), findsNothing);
+  });
+
   testWidgets('tapping a row below a divider opens THAT row', (tester) async {
     _wide(tester);
 
@@ -55,19 +83,20 @@ void main() {
 
     await _pumpShell(
       tester,
-      modules: ['dashboard', 'customers', 'jobs'],
-      order: ['jobs', 'customers'],
+      modules: ['dashboard', 'jobs', 'scheduling'],
+      order: ['scheduling', 'jobs'],
     );
 
+    // All three sit under the Work heading, so their saved order rules.
     // Dashboard is not in the saved order at all. It goes last rather than
     // missing, which is what the day a module is added looks like to everybody
     // who has ever arranged their sidebar.
     expect(
-      tester.getTopLeft(_inSidebar('Jobs')).dy,
-      lessThan(tester.getTopLeft(_inSidebar('Customers')).dy),
+      tester.getTopLeft(_inSidebar('Scheduling')).dy,
+      lessThan(tester.getTopLeft(_inSidebar('Jobs')).dy),
     );
     expect(
-      tester.getTopLeft(_inSidebar('Customers')).dy,
+      tester.getTopLeft(_inSidebar('Jobs')).dy,
       lessThan(tester.getTopLeft(_inSidebar('Dashboard')).dy),
     );
   });
@@ -135,12 +164,13 @@ void main() {
     // The list, not the rail: a handle on every row, and the filter gone —
     // reordering a list that is hiding rows drops things between two that are
     // neighbours on screen and not in the order.
-    expect(find.byIcon(Icons.drag_handle), findsNWidgets(2));
-    expect(find.byType(TextField), findsNothing);
+    // Two modules and their two section headings (Jose 11-24).
+    expect(find.byIcon(Icons.drag_handle), findsNWidgets(4));
+    expect(find.text('Find a module'), findsNothing);
 
     await tester.tap(find.text('Add a divider'));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.drag_handle), findsNWidgets(3));
+    expect(find.byIcon(Icons.drag_handle), findsNWidgets(5));
 
     expect(saved, isEmpty, reason: 'Nothing is written until Done.');
 
@@ -148,13 +178,115 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(saved, [
-      ['dashboard', '--', 'customers'],
+      ['#Work', 'dashboard', '--', '#Customers', 'customers'],
     ]);
     expect(
       find.text('Rearrange'),
       findsOneWidget,
       reason: 'Done puts the rail back.',
     );
+  });
+
+  // Jose 11-24: "on the re-arrange mode you don't see the group divisions, so
+  // u can't properly reorganize stuff".
+  testWidgets('rearrange shows the sections, and a cross-section drop is '
+      'saved and then drawn there', (tester) async {
+    _wide(tester);
+    final saved = <List<dynamic>>[];
+    await _pumpShell(
+      tester,
+      modules: ['dashboard', 'jobs', 'phone'],
+      order: const [],
+      onSave: saved.add,
+    );
+
+    await tester.tap(find.text('Rearrange'));
+    await tester.pumpAndSettle();
+
+    // The headings normal mode draws, in place, in the list being arranged.
+    expect(_inSidebar('Work'), findsOneWidget);
+    expect(_inSidebar('Communication'), findsOneWidget);
+    expect(
+      tester.getTopLeft(_inSidebar('Communication')).dy,
+      greaterThan(tester.getTopLeft(_inSidebar('Jobs')).dy),
+    );
+
+    // Jobs, from Work, dropped under Communication.
+    await _dragRow(tester, find.widgetWithText(ListTile, 'Jobs'), 160);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    final order = saved.single;
+    expect(order.first, '#Work');
+    expect(
+      order.indexOf('jobs'),
+      greaterThan(order.indexOf('#Communication')),
+      reason: 'Jobs was dropped into Communication: $order',
+    );
+
+    // And normal mode draws exactly that.
+    await tester.pumpWidget(const SizedBox());
+    await _pumpShell(
+      tester,
+      modules: ['dashboard', 'jobs', 'phone'],
+      order: [for (final e in order) '$e'],
+    );
+    expect(
+      tester.getTopLeft(_inSidebar('Jobs')).dy,
+      greaterThan(tester.getTopLeft(_inSidebar('COMMUNICATION')).dy),
+    );
+  });
+
+  testWidgets('a heading moves its whole section', (tester) async {
+    _wide(tester);
+    final saved = <List<dynamic>>[];
+    await _pumpShell(
+      tester,
+      modules: ['dashboard', 'jobs', 'phone'],
+      order: const [],
+      onSave: saved.add,
+    );
+    await tester.tap(find.text('Rearrange'));
+    await tester.pumpAndSettle();
+
+    await _dragRow(tester, _inSidebar('Communication'), -200);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    expect(saved.single, [
+      '#Communication',
+      'phone',
+      '#Work',
+      'dashboard',
+      'jobs',
+    ]);
+  });
+
+  testWidgets('sections are added, renamed and removed', (tester) async {
+    _wide(tester);
+    final saved = <List<dynamic>>[];
+    await _pumpShell(
+      tester,
+      modules: ['dashboard', 'phone'],
+      order: const [],
+      onSave: saved.add,
+    );
+    await tester.tap(find.text('Rearrange'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add a section'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'New section'),
+      ' Dispatch ',
+    );
+    // Removing Communication puts Phone in the section above it.
+    await tester.tap(find.byTooltip('Remove this section').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    expect(saved.single, ['#Dispatch', '#Work', 'dashboard', 'phone']);
   });
 
   testWidgets('Done without moving anything writes nothing', (tester) async {
@@ -214,11 +346,212 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ReorderableListView), findsOneWidget);
-    expect(find.byIcon(Icons.drag_handle), findsNWidgets(4));
+    // Three modules, the rule, and the Work and Customers headings.
+    expect(find.byIcon(Icons.drag_handle), findsNWidgets(6));
+  });
+
+  testWidgets(
+    'a phone has a bottom bar: Jobs first, and More opens the drawer',
+    (tester) async {
+      // Mobile review 2026-11-13, P7.
+      tester.view.physicalSize = const Size(375, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await _pumpShell(
+        tester,
+        modules: ['dashboard', 'customers', 'jobs'],
+        order: ['dashboard', 'customers', 'jobs'],
+      );
+
+      final bar = find.byKey(const Key('phone-bottom-bar'));
+      expect(bar, findsOneWidget);
+      await tester.tap(find.descendant(of: bar, matching: find.text('Jobs')));
+      await tester.pumpAndSettle();
+      expect(_open('Jobs'), findsOneWidget);
+
+      await tester.tap(find.descendant(of: bar, matching: find.text('More')));
+      await tester.pumpAndSettle();
+      expect(find.byType(Drawer), findsOneWidget);
+    },
+  );
+
+  // Design 208: the role's own slots come first, a tab slot by its label,
+  // and tapping it hands that module a tab link; the default fills the rest.
+  testWidgets(
+    "a role's bar puts its slots first; a tab slot sends a tab link",
+    (tester) async {
+      tester.view.physicalSize = const Size(375, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      addTearDown(() => DeepLinks.pending.value = null);
+
+      await _pumpShell(
+        tester,
+        modules: ['dashboard', 'customers', 'jobs'],
+        order: ['dashboard', 'customers', 'jobs'],
+        mobileBar: [
+          {'module': 'customers', 'tab': 'tags', 'label': 'Tags'},
+        ],
+      );
+
+      final bar = find.byKey(const Key('phone-bottom-bar'));
+      final tags = find.byKey(const ValueKey('phone-bottom-customers-tags'));
+      expect(find.descendant(of: bar, matching: tags), findsOneWidget);
+      expect(
+        tester.getCenter(tags).dx,
+        lessThan(
+          tester.getCenter(find.byKey(const ValueKey('phone-bottom-jobs'))).dx,
+        ),
+        reason: 'the role slot is first, the default after it',
+      );
+
+      // Recorded as sent: the screen that owns it may take it at once.
+      final sent = <DeepLink>[];
+      void record() {
+        if (DeepLinks.pending.value case final l?) sent.add(l);
+      }
+
+      DeepLinks.pending.addListener(record);
+      addTearDown(() => DeepLinks.pending.removeListener(record));
+      await tester.tap(tags);
+      await tester.pumpAndSettle();
+      expect(_open('Customers'), findsOneWidget);
+      expect(
+        [for (final l in sent) (l.module, l.type, l.id)],
+        [('customers', 'tab', 'tags')],
+      );
+    },
+  );
+
+  testWidgets(
+    'the phone bar keeps every label on one line at 320 px and large text',
+    (tester) async {
+      // Jose, 2026-11-16: "Communicati / on" on the iOS build.
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _pumpShell(
+        tester,
+        modules: ['jobs', 'scheduling', 'leads', 'phone'],
+        order: ['jobs', 'scheduling', 'leads', 'phone'],
+      );
+      expect(tester.takeException(), isNull);
+
+      final bar = find.byKey(const Key('phone-bottom-bar'));
+      final labels = find.descendant(of: bar, matching: find.byType(Text));
+      expect(labels, findsWidgets);
+      expect(
+        find.descendant(of: bar, matching: find.text('Communication')),
+        findsNothing,
+      );
+      final one = tester
+          .getSize(find.descendant(of: bar, matching: find.text('More')))
+          .height;
+      for (final e in labels.evaluate()) {
+        expect(tester.getSize(find.byWidget(e.widget)).height, one);
+      }
+    },
+  );
+
+  // Jose, 2026-11-24, on the Technician bar: "this is hard to view, you
+  // can't tell stuff apart". Five items at 360 px, two of them long tabs.
+  testWidgets('the phone bar keeps five labels apart at 360 px', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await _pumpShell(
+      tester,
+      modules: ['training', 'inspection', 'work_hours', 'customers'],
+      order: ['training', 'inspection', 'work_hours', 'customers'],
+      mobileBar: [
+        {'module': 'training', 'tab': null, 'label': 'Training'},
+        {'module': 'inspection', 'tab': null, 'label': 'Inspection'},
+        {'module': 'inspection', 'tab': 'review-qr', 'label': 'Review QR'},
+        {
+          'module': 'customers',
+          'tab': 'loyalty-members',
+          'label': 'Loyalty Members Waiting For Callback',
+        },
+      ],
+    );
+    expect(tester.takeException(), isNull);
+
+    final bar = find.byKey(const Key('phone-bottom-bar'));
+    final labels = [
+      for (final e
+          in find.descendant(of: bar, matching: find.byType(Text)).evaluate())
+        if ((e.widget as Text).data != null) e,
+    ];
+    expect(labels, hasLength(5));
+    final rects = [
+      for (final e in labels) tester.getRect(find.byWidget(e.widget)),
+    ];
+    for (var i = 0; i < rects.length; i++) {
+      final t = labels[i].widget as Text;
+      expect(t.style?.fontSize, greaterThanOrEqualTo(11), reason: t.data);
+      for (var j = i + 1; j < rects.length; j++) {
+        expect(
+          rects[i].overlaps(rects[j]),
+          isFalse,
+          reason: '"${t.data}" overlaps "${(labels[j].widget as Text).data}"',
+        );
+      }
+    }
+
+    IconData iconIn(String key) => tester
+        .widget<Icon>(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(Icon),
+          ),
+        )
+        .icon!;
+    expect(
+      iconIn('phone-bottom-inspection-review-qr'),
+      isNot(iconIn('phone-bottom-inspection')),
+      reason: "a tab slot has its own icon, not its module's",
+    );
+    expect(iconIn('phone-bottom-inspection-review-qr'), Icons.qr_code);
+    // A tab with no known icon: the module's icon, badged.
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey('phone-bottom-customers-loyalty-members'),
+        ),
+        matching: find.byType(Badge),
+      ),
+      findsOneWidget,
+    );
   });
 }
 
 // ── harness ────────────────────────────────────────────────────────
+
+/// Drags the handle level with [row] by [dy] in small steps, as a hand does.
+Future<void> _dragRow(WidgetTester tester, Finder row, double dy) async {
+  final y = tester.getCenter(row.first).dy;
+  final handles = find.byIcon(Icons.drag_handle);
+  var at = tester.getCenter(handles.first);
+  for (var i = 1; i < handles.evaluate().length; i++) {
+    final c = tester.getCenter(handles.at(i));
+    if ((c.dy - y).abs() < (at.dy - y).abs()) at = c;
+  }
+  final g = await tester.startGesture(at);
+  await tester.pump();
+  for (var k = 0; k < 10; k++) {
+    await g.moveBy(Offset(0, dy / 10));
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  await g.up();
+  await tester.pumpAndSettle();
+}
 
 void _wide(WidgetTester tester) {
   tester.view.physicalSize = const Size(1280, 900);
@@ -255,6 +588,7 @@ Future<void> _pumpShell(
   required List<String> modules,
   required List<String> order,
   ValueChanged<List<dynamic>>? onSave,
+  List<Map<String, dynamic>>? mobileBar,
 }) async {
   final api = ApiClient(
     client: MockClient((request) async {
@@ -268,7 +602,9 @@ Future<void> _pumpShell(
         return _json({'data': _me(modules, order)});
       }
       if (request.url.path.endsWith('/me')) {
-        return _json({'data': _me(modules, order)});
+        return _json({
+          'data': {..._me(modules, order), 'mobile_bar': mobileBar},
+        });
       }
 
       // Everything else is a screen fetching its own data. These tests are

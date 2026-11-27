@@ -9,6 +9,7 @@ import 'staff/health_screen.dart';
 import 'staff/impersonations_screen.dart';
 import 'staff/modules_screen.dart';
 import 'staff/organizations_screen.dart';
+import 'staff/releases_screen.dart';
 import 'staff/staff_accounts_screen.dart';
 import 'staff/suggestions_queue_screen.dart';
 
@@ -17,11 +18,7 @@ import 'staff/suggestions_queue_screen.dart';
 /// Opening this tab asks for the authenticator, then holds a staff token on a
 /// SEPARATE ApiClient while the tab is mounted. Leaving drops that session.
 class DevelopmentScreen extends StatefulWidget {
-  const DevelopmentScreen({
-    super.key,
-    required this.session,
-    this.staffApi,
-  });
+  const DevelopmentScreen({super.key, required this.session, this.staffApi});
 
   final Session session;
   final ApiClient? staffApi;
@@ -36,7 +33,8 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
   final _code = TextEditingController();
   final _codeFormKey = GlobalKey<FormState>();
 
-  int _index = 0;
+  /// Null until a tab is picked: Development opens on Releases (Jose 11-12).
+  int? _index;
 
   /// The tabs opened at least once, kept alive behind the one on screen.
   final Set<int> _opened = {0};
@@ -187,6 +185,8 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
         Icons.devices_outlined,
         ClientVersionsScreen(staff: _staff),
       ),
+      // The release in flight, stage by stage, with its percentage.
+      ('Releases', Icons.rocket_launch_outlined, ReleasesScreen(staff: _staff)),
       (
         'Client access',
         Icons.history_outlined,
@@ -204,7 +204,8 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
         ('Staff', Icons.badge_outlined, StaffAccountsScreen(staff: _staff)),
     ];
 
-    final index = _index.clamp(0, tabs.length - 1);
+    final index = (_index ?? tabs.indexWhere((t) => t.$1 == 'Releases'))
+        .clamp(0, tabs.length - 1);
     _opened.add(index);
 
     return Column(
@@ -263,11 +264,10 @@ class _Banner extends StatelessWidget {
           Expanded(
             child: Text(
               isLead
-                  ? 'Platform control plane — every organization, not just this one. '
-                        'Your ordinary activity here is not written to the business audit '
-                        'trail; sign-ins, staff changes and client access always are.'
-                  : 'Platform control plane — every organization, not just this one. '
-                        'Everything you do here is recorded.',
+                  ? 'Platform control plane: every organization. Sign-ins, staff '
+                        'changes and client access are audited; other activity is not.'
+                  : 'Platform control plane: every organization. Everything you do '
+                        'here is recorded.',
               style: TextStyle(fontSize: 12, color: scheme.error),
             ),
           ),

@@ -2,15 +2,19 @@
 
 namespace Tests\Feature\Field;
 
+use App\Jobs\FieldSummarizeRecording;
+use App\Jobs\FieldTranscribeChunk;
 use App\Models\Customer;
 use App\Models\FieldPresence;
 use App\Models\FieldRecording;
 use App\Models\Job;
 use App\Models\User;
+use App\Services\Leads\CallTranscripts;
 use App\Support\Files\FileStore;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -123,6 +127,62 @@ class FieldRecordingsTest extends TestCase
         $this->signedInAs($elsewhere)->getJson("/api/v1/field/recordings/{$id}/audio/0")->assertForbidden();
     }
 
+    private function fakeWhisper(array $segments): void
+    {
+        $whisper = $this->mock(CallTranscripts::class);
+        $whisper->shouldReceive('local')->andReturn(true);
+        $whisper->shouldReceive('whisperSegments')->andReturn($segments);
+    }
+
+    public function test_each_minute_becomes_words_at_clock_time_and_its_audio_is_deleted(): void
+    {
+        Bus::fake([FieldTranscribeChunk::class, FieldSummarizeRecording::class]);
+        $this->fakeWhisper([['start_s' => 12.5, 'end_s' => 15.0, 'text' => ' The flue liner is cracked. ']]);
+        $id = $this->record($this->tech);
+        $this->chunk($id, 0)->assertCreated();
+        Bus::assertDispatched(FieldTranscribeChunk::class);
+
+        $chunkId = $this->inTenant($this->t['org'], fn () => FieldRecording::query()->find($id)->chunks()->value('id'));
+        app()->call([new FieldTranscribeChunk($chunkId), 'handle']);
+
+        $disk = Storage::disk(app(FileStore::class)->defaultDisk());
+        $this->assertSame([], $disk->allFiles("field-audio/{$this->t['org']->id}/{$id}"), 'No audio once it is words.');
+        $this->signedInAs($this->tech)->getJson("/api/v1/field/recordings/{$id}/transcript")->assertOk()
+            ->assertJsonPath('data.segments.0.text', 'The flue liner is cracked.')
+            ->assertJsonPath('data.segments.0.started_at', '2026-10-16T13:00:12.500Z')
+            ->assertJsonPath('data.pending', 0);
+        $this->get("/api/v1/field/recordings/{$id}/audio/0")->assertNotFound();
+
+        // Closing the recording with every minute done asks for the summary.
+        $this->postJson("/api/v1/field/recordings/{$id}/finish", ['ended_at' => '2026-10-16T13:01:00Z', 'stop_reason' => 'done'])->assertOk();
+        Bus::assertDispatched(FieldSummarizeRecording::class);
+    }
+
+    public function test_a_silent_minute_leaves_no_words_and_no_audio(): void
+    {
+        Bus::fake([FieldTranscribeChunk::class, FieldSummarizeRecording::class]);
+        $this->fakeWhisper([]);
+        $id = $this->record($this->tech);
+        $this->chunk($id, 0)->assertCreated();
+        $chunkId = $this->inTenant($this->t['org'], fn () => FieldRecording::query()->find($id)->chunks()->value('id'));
+
+        app()->call([new FieldTranscribeChunk($chunkId), 'handle']);
+
+        $this->signedInAs($this->tech)->getJson("/api/v1/field/recordings/{$id}/transcript")->assertJsonCount(0, 'data.segments');
+        $this->assertSame([], Storage::disk(app(FileStore::class)->defaultDisk())->allFiles("field-audio/{$this->t['org']->id}/{$id}"));
+    }
+
+    public function test_audio_whisper_never_reached_is_deleted_after_a_day(): void
+    {
+        $id = $this->record($this->tech);
+        $this->chunk($id, 0)->assertCreated();
+
+        $this->travel(25)->hours();
+        $this->artisan('ezbizi:field-sweep')->assertSuccessful();
+
+        $this->assertSame([], Storage::disk(app(FileStore::class)->defaultDisk())->allFiles("field-audio/{$this->t['org']->id}/{$id}"));
+    }
+
     public function test_after_ninety_days_a_recording_and_its_audio_go_unless_kept(): void
     {
         $gone = $this->record($this->tech);
@@ -139,7 +199,8 @@ class FieldRecordingsTest extends TestCase
         $this->assertSame([$kept], $ids);
         $disk = Storage::disk(app(FileStore::class)->defaultDisk());
         $this->assertSame([], $disk->allFiles("field-audio/{$this->t['org']->id}/{$gone}"));
-        $this->assertCount(1, $disk->allFiles("field-audio/{$this->t['org']->id}/{$kept}"));
+        // Kept means the words stay; audio is never kept past a day (Jose, 2026-10-27).
+        $this->assertSame([], $disk->allFiles("field-audio/{$this->t['org']->id}/{$kept}"));
     }
 
     public function test_recording_is_off_until_a_company_turns_it_on(): void

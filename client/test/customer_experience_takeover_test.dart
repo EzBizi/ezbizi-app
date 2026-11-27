@@ -409,6 +409,8 @@ void main() {
       },
       locations: locations,
     );
+    await tester.tap(find.byKey(const ValueKey('gbp-more')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('cx-open-phone-check')));
     await tester.pumpAndSettle();
 
@@ -528,7 +530,12 @@ void main() {
                 'id': 'u-1',
                 'name': 'Dana',
                 'email': 'dana@brightside.example',
-                'permissions': ['reviews.view', 'reviews.manage'],
+                'permissions': [
+                  'reviews.view',
+                  'reviews.manage',
+                  'reviews.edit',
+                  'reviews.publish',
+                ],
                 'modules': <dynamic>[],
                 'organization': {'id': 'org-1', 'name': 'Brightside'},
                 'scope': {
@@ -766,6 +773,8 @@ void main() {
       },
       locations: locations,
     );
+    await tester.tap(find.byKey(const ValueKey('gbp-more')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('cx-open-phone-check')));
     await tester.pumpAndSettle();
     expect(find.text('Checked 5 min ago'), findsOneWidget);
@@ -897,6 +906,8 @@ void main() {
         locations: locations,
         size: phone,
       );
+      await tester.tap(find.byKey(const ValueKey('gbp-more')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('cx-open-phone-check')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('cx-phone-row-loc-2')), findsOneWidget);

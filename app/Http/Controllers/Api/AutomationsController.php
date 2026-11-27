@@ -123,8 +123,11 @@ class AutomationsController extends Controller
         // model's own canActOnFranchise.
         'assign_to_user',
         'task.create',
+        'task.complete_matching',
         'task.assign',
         'task.move_group',
+        'task.shift_date',
+        'task.set_value',
         'report.text',
         'alert.send',
         'lead.text',
@@ -137,6 +140,7 @@ class AutomationsController extends Controller
         'resend',
         'revoke',
         'reply',
+        'book_by_chat',
         'report.send',
 
         // Not subject-bound: it exists so a rule on something with no phone in
@@ -168,6 +172,8 @@ class AutomationsController extends Controller
         // Workiz's: the report's link on its Workiz job (ActionRunner::putInspectionReportOnWorkiz).
         'inspection_report.workiz',
         'workiz.job_update',
+        // Jose, 2026-11-16: a job's source from the line its client dialed.
+        'job.source_from_dialed',
         'job.set',
         /*
          * `ActionRunner::assignTraining` (task 9) is the real arm — the same
@@ -559,6 +565,11 @@ class AutomationsController extends Controller
                         ->all(),
                 ),
 
+                // Boards the author may write, for "Add a task" on a named board (desk 11-16).
+                'task_boards' => TaskBoard::query()->whereNull('archived_at')->orderBy('name')->get()
+                    ->filter(fn (TaskBoard $b) => app(TaskBoards::class)->canEdit($request->user(), $b))
+                    ->map(fn (TaskBoard $b) => ['id' => $b->id, 'label' => $b->name])->values()->all(),
+
                 // From Human Resources, not from a query here: it offers exactly
                 // what startOnboarding accepts, because both ask the same
                 // `usable()`. Name only — the version is resolved when it fires.
@@ -599,6 +610,9 @@ class AutomationsController extends Controller
                     ['key' => 'changed', 'label' => 'changed'],
                     ['key' => 'changed_to', 'label' => 'changed to'],
                     ['key' => 'changed_from', 'label' => 'changed from'],
+                    ['key' => 'has_tag', 'label' => 'has the tag'],
+                    ['key' => 'not_has_tag', 'label' => 'does not have the tag'],
+                    ['key' => 'tag_added', 'label' => 'got the tag'],
                 ],
                 // The vocabulary POST /automations accepts. Anything not here is
                 // declared intent, not a usable action.
@@ -731,7 +745,7 @@ class AutomationsController extends Controller
         }
 
         // ponytail: the newest 500 events are read in full; a trigger busier than that is sampled, not counted.
-        $events = $this->recentInView($request, $key)->take(500);
+        $events = $this->recentInView($request, $key)->take(500)->collect();
         $engine = app(\App\Support\Automations\AutomationEngine::class);
         $verdicts = $events->map(fn (AutomationEvent $e) => ['occurred_at' => $e->occurred_at?->toIso8601String(), 'matched' => $engine->wouldMatch($conditions, $e)]);
 
@@ -750,10 +764,30 @@ class AutomationsController extends Controller
             'scope_id' => $view->type === ViewScope::ORGANIZATION ? null : $view->id]);
 
         return AutomationEvent::query()->where('event_key', $key)->where('occurred_at', '>=', now()->subDays(30))
-            ->latest('occurred_at')->get($columns === ['*'] ? ['*'] : [...$columns, 'id'])
+            // Lazily, so first()/take() stop early instead of loading 30 days (audit 2026-11-27).
+            ->latest('occurred_at')->select($columns === ['*'] ? ['*'] : [...$columns, 'id'])->lazy(500)
             ->filter(fn (AutomationEvent $e) => $probe->coversScope($e->scope_snapshot['type'] ?? null, $e->scope_snapshot['id'] ?? null,
                 companyChain: $e->scope_snapshot['company_chain'] ?? []))
             ->values();
+    }
+
+    /**
+     * The event Test / Run now acts on: this rule's trigger, inside the rule's
+     * scope AND the caller's view. Tenant scope alone let a branch rule fire on
+     * another company's newest event (audit 2026-11-27). A named event outside
+     * that set is a 404, never a fallback.
+     */
+    private function eventToTry(Request $request, Automation $automation, ?string $eventId): ?AutomationEvent
+    {
+        $event = $this->recentInView($request, $automation->trigger_key)
+            ->filter(fn (AutomationEvent $e) => $automation->coversScope($e->scope_snapshot['type'] ?? null,
+                $e->scope_snapshot['id'] ?? null, companyChain: $e->scope_snapshot['company_chain'] ?? []))
+            ->when($eventId !== null, fn ($c) => $c->where('id', $eventId))
+            ->first();
+
+        abort_if($eventId !== null && $event === null, Response::HTTP_NOT_FOUND);
+
+        return $event;
     }
 
     public function triggerFields(Request $request): JsonResponse
@@ -1361,6 +1395,9 @@ class AutomationsController extends Controller
         // The automation itself, because an action's legality depends on the
         // trigger and a PATCH is forbidden from carrying one.
         $input = $this->validated($request, existing: $automation);
+        if (isset($input['actions'])) {
+            $input['actions'] = $this->unmaskSecrets($input['actions'], $automation->activeVersion?->actions ?? []);
+        }
 
         // ...and what it becomes must still be a rule for a board they manage.
         if ($boardOwnerOnly && $this->managedBoardOf($request->user(), $automation->trigger_key,
@@ -1371,7 +1408,9 @@ class AutomationsController extends Controller
             $this->authorize('update', $automation);
         }
 
-        DB::transaction(function () use ($automation, $input, $request) {
+        $rearmed = false;
+        $wasDisabled = $automation->disabled_at !== null;
+        DB::transaction(function () use ($automation, $input, $request, &$rearmed) {
             $automation->fill(array_intersect_key($input, array_flip([
                 'name', 'description', 'scope_type', 'scope_id', 'delay_minutes',
             ])));
@@ -1410,10 +1449,23 @@ class AutomationsController extends Controller
             $this->audit->logChange('automation.updated', $automation);
             $automation->save();
 
-            if (isset($input['actions'])) {
+            if (array_key_exists('actions', $input)) {
                 $this->addVersion($automation, $input, $request);
+                // A saved fix to a rule that is ON re-arms it (Jose, 2026-11-17:
+                // a fixed rule stayed silently off for twelve hours).
+                if ($automation->is_active && $automation->disabled_at !== null) {
+                    $automation->forceFill(['disabled_at' => null, 'disabled_reason' => null, 'consecutive_failures' => 0])->save();
+                    $rearmed = true;
+                }
+            }
+            if (($input['is_active'] ?? false) === true) {
+                $rearmed = true;
             }
         });
+        // After the commit: the failed events of the last day run on the fixed version.
+        if ($rearmed && $wasDisabled) {
+            app(\App\Support\Automations\AutomationEngine::class)->replayFailed($automation->fresh());
+        }
 
         return response()->json(['data' => $this->present($automation->fresh(), detailed: true)]);
     }
@@ -1472,7 +1524,7 @@ class AutomationsController extends Controller
             $this->assertConditionsUsable($input['conditions']);
         }
         $event = ($input['event_id'] ?? null)
-            ? AutomationEvent::query()->where('event_key', $input['trigger_key'])->findOrFail($input['event_id'])
+            ? $this->recentInView($request, $input['trigger_key'])->firstWhere('id', $input['event_id']) ?? abort(Response::HTTP_NOT_FOUND)
             : $this->recentInView($request, $input['trigger_key'])->first();
         if ($event === null) {
             return response()->json(['message' => 'This has not happened yet here, so there is nothing to try the rule on.',
@@ -1528,11 +1580,7 @@ class AutomationsController extends Controller
             'event_id' => ['nullable', 'uuid'],
         ]);
 
-        $event = $input['event_id'] ?? null
-            ? AutomationEvent::findOrFail($input['event_id'])
-            : AutomationEvent::where('event_key', $automation->trigger_key)
-                ->latest('occurred_at')
-                ->first();
+        $event = $this->eventToTry($request, $automation, $input['event_id'] ?? null);
 
         if ($event === null) {
             return response()->json([
@@ -1573,11 +1621,7 @@ class AutomationsController extends Controller
             'event_id' => ['nullable', 'uuid'],
         ]);
 
-        $event = ($input['event_id'] ?? null) !== null
-            ? AutomationEvent::findOrFail($input['event_id'])
-            : AutomationEvent::where('event_key', $automation->trigger_key)
-                ->latest('occurred_at')
-                ->first();
+        $event = $this->eventToTry($request, $automation, $input['event_id'] ?? null);
 
         if ($event === null) {
             return response()->json([
@@ -1733,7 +1777,7 @@ class AutomationsController extends Controller
     // ── shared ───────────────────────────────────────────────────
 
     /** Task Board recipes may only use these (inbox 0120). */
-    private const BOARD_OWNER_STEPS = ['task.assign', 'notify', 'alert.send', 'change_status', 'task.move_group'];
+    private const BOARD_OWNER_STEPS = ['task.assign', 'notify', 'alert.send', 'change_status', 'task.move_group', 'task.shift_date', 'task.set_value'];
 
     /**
      * BOARD OWNERS AUTOMATE THEIR OWN BOARD (Jose, 2026-10-13, asked whether an
@@ -1747,7 +1791,7 @@ class AutomationsController extends Controller
      */
     private function managedBoardOf(User $user, string $trigger, ?array $conditions, array $actions, ?string $scopeType, ?string $scopeId): ?TaskBoard
     {
-        if (! in_array($trigger, ['task.created', 'task.status_changed', 'task.overdue'], true) || $actions === []) {
+        if (! in_array($trigger, ['task.created', 'task.status_changed', 'task.overdue', 'task.column_changed', 'task.date_arrived'], true) || $actions === []) {
             return null;
         }
         foreach ($actions as $action) {
@@ -1921,8 +1965,31 @@ class AutomationsController extends Controller
             $this->assertConditionsUsable($input['conditions']);
         }
 
+        // A PATCH carrying only one half of a version keeps the other half from
+        // the active one; a missing key is "unchanged", never "empty" (desk 11-12:
+        // an actions-only edit dropped four rules' conditions for 18 hours).
+        $active = $existing?->activeVersion;
+        if ($active !== null && (array_key_exists('actions', $input) || array_key_exists('conditions', $input))) {
+            $input += ['actions' => $active->actions, 'conditions' => $active->conditions];
+        }
+
+        // A customer-messaging rule with no conditions on a busy trigger texts
+        // everyone; saving one has to be said out loud.
+        if (array_key_exists('actions', $input) && empty($input['conditions'])
+            && in_array($trigger, self::HIGH_VOLUME_TRIGGERS, true)
+            && collect($input['actions'])->contains(fn ($a) => in_array($a['type'] ?? null, self::CUSTOMER_MESSAGES, true))
+            && ! $request->boolean('confirm_no_conditions')) {
+            throw ValidationException::withMessages([
+                'conditions' => 'This rule would message every customer on this trigger. Add a condition, or send confirm_no_conditions=true.',
+            ]);
+        }
+
         return $input;
     }
+
+    private const HIGH_VOLUME_TRIGGERS = ['lead.received', 'lead.customer_replied', 'lead.call_not_booked', 'lead.follow_up_due'];
+
+    private const CUSTOMER_MESSAGES = ['sms.send', 'whatsapp.send', 'email.send', 'message.reply'];
 
     /**
      * An empty condition row would save and then throw on every run.
@@ -2151,6 +2218,8 @@ class AutomationsController extends Controller
         'job.set' => [\App\Models\Job::class],
         'task.assign' => [\App\Models\Task::class],
         'task.move_group' => [\App\Models\Task::class],
+        'task.shift_date' => [\App\Models\Task::class],
+        'task.set_value' => [\App\Models\Task::class],
         'resend' => [\App\Models\Invitation::class],
         'revoke' => [\App\Models\Invitation::class],
         'onboarding.start' => [\App\Models\Invitation::class],
@@ -2160,6 +2229,7 @@ class AutomationsController extends Controller
         'inspection_report.workiz' => [\App\Models\InspectionReport::class],
         'add_to_audience' => [\App\Models\Lead::class],
         'reply' => [\App\Models\Lead::class],
+        'book_by_chat' => [\App\Models\Lead::class],
     ];
 
     /** Refused at save when the trigger is about a record this step does not work on. */
@@ -2419,6 +2489,8 @@ class AutomationsController extends Controller
             $type('inspection_report.email', 'Email the report to the customer', true, []),
             $type('inspection_report.workiz', 'Put the report on its Workiz job', true, []),
             // EzBizi first, Workiz mirrored (Jose, 2026-10-27). The Workiz-only step below stays for rules built on it.
+            // Every job booked since the rule was made, last 48 hours; the pairs are Settings › Lists.
+            $type('job.source_from_dialed', 'Set job sources from the line dialed', false, []),
             $type('job.set', 'Set the job status and tags', true, [
                 $parameter('status', 'Status', 'status', required: false),
                 $parameter('sub_status', 'Sub-status', 'text', required: false),
@@ -2457,11 +2529,25 @@ class AutomationsController extends Controller
             $type('reply', 'Reply to the lead', true, [
                 $parameter('message', 'Message', 'rich_text', variables: true),
             ]),
+            // The booking bot writes its own reply; nothing to fill in.
+            $type('book_by_chat', 'Book through the chat', true, []),
 
             // Task Board (2026-10-13). A task's status is "Change the status".
             $type('task.create', 'Add a task', true, [
                 $parameter('title', 'Task', 'text', variables: true),
                 $parameter('assignee', 'Give it to', 'person', false, true),
+                // Empty = the place's board, as before.
+                $parameter('board', 'On the board (empty: the place board)', 'task_board', false),
+                // e.g. {{phone}}: skip while an open task in the group has it in its title.
+                $parameter('dedupe', 'Skip if an open task already has (title or e.g. {{phone}})', 'text', false, true),
+                $parameter('dedupe_days', 'Only tasks from the last N days (empty: any)', 'text', false),
+                $parameter('on_duplicate', 'When one exists (empty: skip; comment: add an update)', 'text', false),
+                $parameter('duplicate_note', 'The update', 'text', false, true),
+            ]),
+            $type('task.complete_matching', 'Close the call-back task for this number', false, [
+                $parameter('board', 'On the board', 'task_board'),
+                $parameter('phone', 'Phone number', 'text', variables: true),
+                $parameter('note', 'Note on the task', 'text', false, true),
             ]),
             // Communication › Alerts, from a rule (Jose, 2026-10-13).
             // From the branch's texting line, onto the enquiry's thread (Leads' LeadTexts).
@@ -2478,6 +2564,18 @@ class AutomationsController extends Controller
             $type('task.move_group', 'Move the task to a group', true, [
                 // A group id on the task's own board; Task Board's recipes fill it.
                 $parameter('group_id', 'Group', 'text'),
+            ]),
+            // Monday parity (2026-11-13): Recurring Tasks push their date on.
+            $type('task.shift_date', 'Push a date', true, [
+                // "due", or a date column's id on the task's own board.
+                $parameter('column_id', 'Date', 'text'),
+                $parameter('amount', 'By', 'text'),
+                $parameter('unit', 'Days, weeks or months', 'text'),
+            ]),
+            $type('task.set_value', 'Set a column', true, [
+                // "due", or a column's id on the task's own board; a label by name, or "today".
+                $parameter('column_id', 'Column', 'text'),
+                $parameter('value', 'To', 'text'),
             ]),
             $type('assign_to_user', 'Assign to a person', true, [
                 // A PERSON OR A FIELD. It was field-only, which meant a rule
@@ -2667,6 +2765,27 @@ class AutomationsController extends Controller
      * recognise one — and to refuse to save it back over a real value, which
      * this screen had to learn the hard way — learns it once.
      */
+    /**
+     * A rule saved back as `show` returned it carries the mask, not the secret:
+     * keep the stored secret (same webhook URL), or refuse (audit 2026-11-27).
+     */
+    private function unmaskSecrets(array $actions, array $before): array
+    {
+        $kept = collect($before)->filter(fn ($a) => filled($a['secret'] ?? null))->keyBy(fn ($a) => $a['url'] ?? '');
+
+        return array_map(function (array $action) use ($kept) {
+            if (($action['secret'] ?? null) !== SensitiveValues::MASK) {
+                return $action;
+            }
+            $secret = $kept->get($action['url'] ?? '')['secret'] ?? null;
+            if ($secret === null) {
+                throw ValidationException::withMessages(['actions' => 'Type the webhook secret again: the masked value cannot be saved.']);
+            }
+
+            return ['secret' => $secret] + $action;
+        }, $actions);
+    }
+
     private function maskSecrets(array $actions): array
     {
         return array_map(function (array $action) {
@@ -2701,12 +2820,74 @@ class AutomationsController extends Controller
             : 'A place that no longer exists');
     }
 
+    /**
+     * The Task Board(s) a rule reads or writes, or null for a rule that has none:
+     * board_id conditions and a step's named board, else its place's board, else
+     * every board (a task step with no place lands on whichever place the event is in).
+     * ponytail: one query per task rule in the list; batch if lists grow large.
+     *
+     * @return array{boards: list<string>, every: bool, label: string}|null
+     */
+    /** A Monday copy's raw "monday:<id> (Monday, active) — off: not here: …" in words (Mobile UI-UX 11-25). */
+    public static function descriptionShown(?string $description): ?string
+    {
+        if ($description === null || ! preg_match('/^monday:\d+ \(Monday, ([^)]*)\)(?: — off: not here: (.*))?$/su', $description, $m)) {
+            return $description;
+        }
+
+        return 'Brought over from Monday.'
+            .(($m[2] ?? '') !== '' ? ' Off here: this board has no '.str_replace('(gone on Monday)', '(removed on Monday)', $m[2]).'.' : '');
+    }
+
+    public static function taskBoardsOf(Automation $automation): ?array
+    {
+        $actions = $automation->activeVersion?->actions ?? [];
+        $types = array_map(fn ($s) => (string) ($s['type'] ?? ''), $actions);
+        if (! str_starts_with((string) $automation->trigger_key, 'task.') && ! array_filter($types, fn ($t) => str_starts_with($t, 'task.'))) {
+            return null;
+        }
+
+        $ids = [];
+        $walk = function ($node) use (&$walk, &$ids) {
+            if (! is_array($node)) {
+                return;
+            }
+            if (($node['field'] ?? null) === 'board_id') {
+                array_push($ids, ...array_map('strval', (array) ($node['value'] ?? [])));
+            }
+            foreach ($node as $child) {
+                $walk($child);
+            }
+        };
+        $walk($automation->activeVersion?->conditions ?? []);
+        foreach ($actions as $step) {
+            if (is_string($step['board'] ?? null) && $step['board'] !== '') {
+                $ids[] = $step['board'];
+            }
+        }
+
+        $boards = \App\Models\TaskBoard::query()->whereKey(array_unique($ids))->orderBy('name')->pluck('name')->all();
+        if ($boards === [] && in_array($automation->scope_type, ['company', 'franchise'], true)) {
+            $boards = \App\Models\TaskBoard::query()->where($automation->scope_type.'_id', $automation->scope_id)
+                ->where('kind', $automation->scope_type)->pluck('name')->all();
+        }
+        $every = $boards === [];
+
+        return ['boards' => $boards, 'every' => $every, 'label' => 'Task Board · '.match (true) {
+            $every => 'every board',
+            count($boards) === 1 => $boards[0],
+            default => count($boards).' boards',
+        }];
+    }
+
     private function present(Automation $automation, bool $detailed = false): array
     {
         $base = [
             'id' => $automation->id,
             'name' => $automation->name,
             'description' => $automation->description,
+            // What a reader sees; `description` stays as stored, for editing (monday:<id> is the import's key).
+            'description_shown' => self::descriptionShown($automation->description),
             'trigger_key' => $automation->trigger_key,
             'is_active' => $automation->is_active,
             'is_live' => $automation->isLive(),
@@ -2725,6 +2906,8 @@ class AutomationsController extends Controller
             'disabled_reason' => $automation->disabled_reason,
             // A rule a tab depends on (Jose, 2026-10-28): what stops working when it is off. Set by that module, never by the builder.
             'core_reason' => $automation->core_reason,
+            // Jose 11-25: a Task Board rule wears its own colour and names its board(s).
+            'task_board' => self::taskBoardsOf($automation),
             'runs_count' => $automation->runs_count ?? $automation->runs()->count(),
             'version' => $automation->activeVersion?->version,
             // A clock rule's WHEN. Missing from this payload, the builder opened

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/screens/monitoring/ownership_tab.dart';
+import 'package:ezbizi_client/widgets/list_table.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -150,14 +151,14 @@ void main() {
     await tester.pumpWidget(wrap(api, await sessionWith(api, const [])));
     await tester.pumpAndSettle();
 
-    expect(find.text('PC name'), findsNothing);
-    expect(find.text('Work days'), findsNothing);
-    expect(find.text('Shift'), findsNothing);
+    expect(find.text('PC NAME'), findsNothing);
+    expect(find.text('WORK DAYS'), findsNothing);
+    expect(find.text('SHIFT'), findsNothing);
 
     // Control: the columns this viewer MAY see are drawn, so the absences
     // above are the gate rather than a table that rendered nothing.
-    expect(find.text('User'), findsOneWidget);
-    expect(find.text('Assignment'), findsOneWidget);
+    expect(find.text('USER'), findsOneWidget);
+    expect(find.text('ASSIGNMENT'), findsOneWidget);
     expect(find.text('Marco Reyes'), findsOneWidget);
   });
 
@@ -175,9 +176,9 @@ void main() {
     await tester.pumpWidget(wrap(api, await sessionWith(api, const [])));
     await tester.pumpAndSettle();
 
-    expect(find.text('PC name'), findsOneWidget);
-    expect(find.text('Work days'), findsOneWidget);
-    expect(find.text('Shift'), findsOneWidget);
+    expect(find.text('PC NAME'), findsOneWidget);
+    expect(find.text('WORK DAYS'), findsOneWidget);
+    expect(find.text('SHIFT'), findsOneWidget);
     expect(find.text('TOULA'), findsOneWidget);
 
     // Two short facts rather than the raw week. The chart used to print the
@@ -440,7 +441,7 @@ void main() {
     await tester.pumpWidget(wrap(api, await sessionWith(api, const [])));
     await tester.pumpAndSettle();
 
-    expect(find.byType(DataTable), findsNothing,
+    expect(find.byType(ListTable), findsNothing,
         reason: 'Below ${OwnershipTab.narrowBelow.toInt()} the chart is a list.');
 
     // The name line.
@@ -520,7 +521,7 @@ void main() {
     await tester.pumpWidget(wrap(api, await sessionWith(api, const [])));
     await tester.pumpAndSettle();
 
-    expect(find.byType(DataTable), findsOneWidget);
-    expect(find.text('Role'), findsOneWidget);
+    expect(find.byType(ListTable), findsOneWidget);
+    expect(find.text('ROLE'), findsOneWidget);
   });
 }

@@ -4,6 +4,7 @@ namespace App\Support\Leads;
 
 use App\Models\Lead;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Support\Carbon;
 
 /**
  * The reply channels the application has, keyed by lead source.
@@ -68,6 +69,14 @@ final class LeadReplies
         return $channel === null
             ? 'Enquiries from this source cannot be replied to from here.'
             : 'This enquiry cannot be replied to right now.';
+    }
+
+    /** When this lead's reply window closes, for a channel that has one; null otherwise. */
+    public function windowEndsAt(Lead $lead): ?Carbon
+    {
+        $channel = $this->for($lead);
+
+        return $channel instanceof HasReplyWindow ? $channel->replyWindowEndsAt($lead) : null;
     }
 
     /**

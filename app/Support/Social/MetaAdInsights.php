@@ -2,6 +2,7 @@
 
 namespace App\Support\Social;
 
+use App\Models\Franchise;
 use App\Models\MetaAdCampaign;
 use App\Models\MetaAdInsight;
 use App\Models\Organization;
@@ -63,6 +64,7 @@ final class MetaAdInsights
                     'organization_id' => $connection->organization_id,
                     'service_group_id' => $groups->first(fn ($g) => Str::contains($name, $g->name, ignoreCase: true))?->id,
                     'state' => self::stateIn($name),
+                    'franchise_id' => self::branchFor($connection, self::stateIn($name)),
                 ]);
             }
 
@@ -106,6 +108,7 @@ final class MetaAdInsights
                         'impressions' => (int) ($row['impressions'] ?? 0),
                         'clicks' => (int) ($row['clicks'] ?? 0),
                         'leads' => self::leads((array) ($row['actions'] ?? [])),
+                        'forms' => self::leads((array) ($row['actions'] ?? []), 'onsite_conversion.lead_grouped'),
                         'currency' => $row['account_currency'] ?? null,
                         'created_at' => now(),
                         'updated_at' => now(),
@@ -114,7 +117,7 @@ final class MetaAdInsights
 
                 foreach (array_chunk($rows, 500) as $chunk) {
                     MetaAdInsight::query()->upsert($chunk, ['connection_id', 'date', 'adset_id', 'region'],
-                        ['adset_name', 'campaign_id', 'spend', 'impressions', 'clicks', 'leads', 'currency', 'updated_at']);
+                        ['adset_name', 'campaign_id', 'spend', 'impressions', 'clicks', 'leads', 'forms', 'currency', 'updated_at']);
                 }
 
                 $written += count($rows);
@@ -168,6 +171,25 @@ final class MetaAdInsights
             ])->all();
     }
 
+    /**
+     * The branch a campaign's state names, guessed once like its service: the
+     * one branch of the account's company called by that state's name
+     * ("NJ" → "New Jersey"). Two of that name, or none, is left for staff.
+     * ponytail: states only; a city in the name (Chicago, DFW) maps nothing.
+     */
+    public static function branchFor(SocialConnection $connection, ?string $state): ?string
+    {
+        if ($connection->scope_type === SocialConnection::SCOPE_FRANCHISE) {
+            return $connection->scope_id;
+        }
+
+        $ids = $state === null ? collect() : Franchise::query()->where('name', self::STATES[$state])
+            ->when($connection->scope_type === SocialConnection::SCOPE_COMPANY, fn ($q) => $q->where('company_id', $connection->scope_id))
+            ->pluck('id');
+
+        return $ids->count() === 1 ? $ids->first() : null;
+    }
+
     /** A two-letter state named in a campaign name: "Texas" or a standalone "TX". */
     public static function stateIn(string $name): ?string
     {
@@ -187,11 +209,15 @@ final class MetaAdInsights
         return null;
     }
 
-    /** Meta's "lead" action is the total of every lead kind (form, Messenger, website). */
-    private static function leads(array $actions): int
+    /**
+     * Meta's "lead" action is the total of every lead kind (form, Messenger,
+     * website pixel); "onsite_conversion.lead_grouped" is its instant forms
+     * alone (A-1's pixel counted 2,261 "leads" on $548, 2026-11-06).
+     */
+    public static function leads(array $actions, string $type = 'lead'): int
     {
         foreach ($actions as $action) {
-            if (is_array($action) && ($action['action_type'] ?? null) === 'lead') {
+            if (is_array($action) && ($action['action_type'] ?? null) === $type) {
                 return (int) ($action['value'] ?? 0);
             }
         }
@@ -205,7 +231,7 @@ final class MetaAdInsights
      * @param  array<string, mixed>  $query
      * @return \Generator<array<string, mixed>>
      */
-    private function pages(SocialConnection $connection, string $path, array $query): \Generator
+    public function pages(SocialConnection $connection, string $path, array $query): \Generator
     {
         $token = $connection->credentials['access_token'] ?? null;
 
@@ -218,7 +244,11 @@ final class MetaAdInsights
 
         while ($url !== null) {
             try {
-                $response = Http::timeout(self::TIMEOUT)->get($url, $query);
+                // Meta's next link carries every parameter, cursor and token included;
+                // a query array, even an empty one, would replace them all.
+                $response = $query === []
+                    ? Http::timeout(self::TIMEOUT)->get($url)
+                    : Http::timeout(self::TIMEOUT)->get($url, $query);
             } catch (ConnectionException) {
                 throw new RuntimeException('Meta did not answer the ads read.');
             }

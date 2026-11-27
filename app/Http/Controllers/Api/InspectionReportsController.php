@@ -10,6 +10,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Files\FileStore;
 use App\Support\Inspection\InspectionScope;
+use App\Support\Inspection\ReportDocument;
 use App\Support\Inspection\ReportPdf;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
@@ -309,13 +310,7 @@ class InspectionReportsController extends Controller
      */
     private function assertReach(Request $request, InspectionReport $report): void
     {
-        [$type, $franchiseId] = $report->automationScope();
-
-        abort_if(
-            $type !== 'franchise'
-                || ! in_array($franchiseId, ViewScope::forUser($request->user())->franchiseIds(), true),
-            404,
-        );
+        abort_unless($report->inReachOf($request->user()), 404);
     }
 
     /** @return array<string, mixed> */
@@ -336,6 +331,8 @@ class InspectionReportsController extends Controller
             $row['answers'] = $report->answers;
             $row['screens'] = $report->version?->screens ?? [];
             $row['intro'] = $report->version?->intro;
+            // PASS/FAIL/N/A per choice field, worked out exactly as the PDF does.
+            $row['findings'] = (object) app(ReportDocument::class)->findings($row['screens'], $report->answers ?? []);
         }
 
         return $row;

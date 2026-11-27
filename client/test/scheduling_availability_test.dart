@@ -93,8 +93,104 @@ void main() {
     expect(find.text('Closed that day'), findsOneWidget);
   });
 
-  // Mia, 2026-10-02: a customer writes "86 Jerusalem hill Trumbull", not a
+  // Mia, 2026-10-02: a customer writes "86 Sample hill Trumbull", not a
   // zip. The pane asks by address and says which address the zip came from.
+  // Jose, 2026-11-06: picking from the list must check right away, map and all.
+  testWidgets(
+    'picking a suggestion runs the check and its suggestion at once',
+    (tester) async {
+      final asked = <String>[];
+      await _pump(
+        tester,
+        onRequest: (r) {
+          if (r.url.path.endsWith('/scheduling/suggest')) {
+            return _json({
+              'data': [
+                {
+                  'type': 'zip',
+                  'label': '06611',
+                  'detail': 'Trumbull · CT',
+                  'area_id': 'a-1',
+                  'area_name': 'CT',
+                },
+              ],
+            });
+          }
+          if (r.url.path.endsWith('/scheduling/availability')) {
+            asked.add('availability ${r.url.query}');
+            return _json({'data': _dallas});
+          }
+          if (r.url.path.endsWith('/scheduling/availability/suggestion')) {
+            asked.add('suggestion ${r.url.query}');
+            return _json({'data': null});
+          }
+          return null;
+        },
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('availability-search')),
+        '0661',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('06611'));
+      await tester.pumpAndSettle();
+
+      expect(asked, ['availability zip=06611', 'suggestion zip=06611']);
+
+      // The customer cannot take that day and asks for the 12th: the 12th's
+      // own suggestion (Jose, 2026-11-06).
+      await tester.tap(
+        find.byKey(const ValueKey('availability-day-2026-10-12')),
+      );
+      await tester.pumpAndSettle();
+      expect(asked.last, 'suggestion zip=06611&date=2026-10-12');
+    },
+  );
+
+  // Jose, 2026-11-09: the branch's office, or that there is none, on every answer.
+  testWidgets('each area names its office, or says none is on file', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      onRequest: (r) {
+        if (!r.url.path.endsWith('/scheduling/availability')) return null;
+        final area = (_dallas['areas'] as List).first as Map;
+        return _json({
+          'data': {
+            ..._dallas,
+            'areas': [
+              {
+                ...area,
+                'office': {
+                  'line': '11836 Judd Ct, Dallas, TX 75243',
+                  'maps_url':
+                      'https://www.google.com/maps/search/?api=1&query=x',
+                },
+              },
+              {...area, 'area_id': 'a-2', 'area_name': 'Plano'},
+            ],
+          },
+        });
+      },
+    );
+    await tester.enterText(
+      find.byKey(const Key('availability-search')),
+      '75243',
+    );
+    await tester.tap(find.text('Check'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Our office: 11836 Judd Ct, Dallas, TX 75243'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('availability-office-copy')), findsOneWidget);
+    expect(find.byKey(const Key('availability-office-maps')), findsOneWidget);
+    expect(find.text('No address on file for this branch'), findsOneWidget);
+  });
+
   testWidgets('an address is asked as an address and shows where it landed', (
     tester,
   ) async {
@@ -108,7 +204,7 @@ void main() {
           'data': {
             ..._dallas,
             'resolved': {
-              'address': '86 Jerusalem Hill Rd, Trumbull, CT 06611, USA',
+              'address': '86 Sample Hill Rd, Trumbull, CT 06611, USA',
               'zip': '06611',
               'exact': true,
             },
@@ -119,14 +215,14 @@ void main() {
 
     await tester.enterText(
       find.byKey(const Key('availability-search')),
-      '86 Jerusalem hill Trumbull',
+      '86 Sample hill Trumbull',
     );
     await tester.tap(find.text('Check'));
     await tester.pumpAndSettle();
 
-    expect(asked?.queryParameters['address'], '86 Jerusalem hill Trumbull');
+    expect(asked?.queryParameters['address'], '86 Sample hill Trumbull');
     expect(
-      find.text('86 Jerusalem Hill Rd, Trumbull, CT 06611, USA — zip 06611'),
+      find.text('86 Sample Hill Rd, Trumbull, CT 06611, USA — zip 06611'),
       findsOneWidget,
     );
   });
@@ -342,7 +438,7 @@ void main() {
     expect(find.text('Zip'), findsOneWidget);
     expect(find.text('Area'), findsOneWidget);
     expect(find.text('Calendar'), findsOneWidget);
-    expect(find.text('Search by Zip Code'), findsNothing);
+    expect(find.text('Search by zip code'), findsNothing);
   });
 
   /// Search by Area: one chip per franchise that HAS areas — the server's
@@ -374,11 +470,14 @@ void main() {
       await tester.tap(find.text('Search by Area'));
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(ChoiceChip, 'Illinois'), findsOneWidget);
+      // One picker, not a chip per branch (deep dive 2026-11-02).
+      await tester.tap(find.byKey(const ValueKey('availability-area-picker')));
+      await tester.pumpAndSettle();
+      expect(find.text('Illinois'), findsOneWidget);
 
       // Named with its company from /me (branch_options.dart); Illinois is
       // outside /me, so it keeps the server's name.
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Everdoors · Texas'));
+      await tester.tap(find.text('Everdoors · Texas'));
       await tester.pumpAndSettle();
 
       expect(asked, 'fr-tx');
@@ -412,7 +511,9 @@ void main() {
 
     await tester.tap(find.text('Search by Area'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, 'All areas'));
+    await tester.tap(find.byKey(const ValueKey('availability-area-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('All areas'));
     await tester.pumpAndSettle();
 
     expect(asked, {'all': '1'});

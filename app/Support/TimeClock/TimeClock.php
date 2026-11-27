@@ -14,6 +14,7 @@ use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Dashboard\Widgets\Hr\ScopesToPlaces;
+use App\Support\Field\FieldMaps;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
@@ -23,6 +24,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -124,7 +126,9 @@ final class TimeClock
      * Lift the lock screen for the rest of today without clocking in
      * (Jose, 2026-10-28). The audit row IS the record: payload() reads it
      * back, so there is no second store to drift. The person stays off the
-     * clock.
+     * clock. An Administrator's skip is NOT an audit row (Jose, 2026-11-24:
+     * "should not be saved or even recorded"): it lives in the cache until
+     * the end of their day.
      */
     public function skipLock(User $user): array
     {
@@ -132,7 +136,12 @@ final class TimeClock
             abort(403, Refusal::permission('skip the lock screen')->message());
         }
 
-        if (! $this->skippedToday($user, $this->scheduleFor($user), ViewScope::forUser($user)->settingsScope())) {
+        $schedule = $this->scheduleFor($user);
+        $scope = ViewScope::forUser($user)->settingsScope();
+        if ($user->isAdministrator()) {
+            $end = now()->timezone($this->dayZone($schedule, $scope))->endOfDay();
+            Cache::put($this->skipKey($user, $schedule, $scope), true, $end);
+        } elseif (! $this->skippedToday($user, $schedule, $scope)) {
             $this->audit->log('time_clock.lock_skipped', $user, actor: $user);
         }
 
@@ -142,7 +151,10 @@ final class TimeClock
     /** "Today" is the schedule's day, in its zone — the same day `today` describes. */
     private function skippedToday(User $user, ?array $schedule, mixed $scope): bool
     {
-        $tz = (string) ($schedule['timezone'] ?? $this->settings->get('timezone', $scope));
+        if (Cache::has($this->skipKey($user, $schedule, $scope))) {
+            return true;
+        }
+        $tz = $this->dayZone($schedule, $scope);
 
         return AuditEvent::query()
             ->where('organization_id', $user->organization_id)
@@ -151,6 +163,16 @@ final class TimeClock
             ->where('target_id', $user->getKey())
             ->where('occurred_at', '>=', now()->timezone($tz)->startOfDay()->setTimezone(config('app.timezone')))
             ->exists();
+    }
+
+    private function dayZone(?array $schedule, mixed $scope): string
+    {
+        return (string) ($schedule['timezone'] ?? $this->settings->get('timezone', $scope));
+    }
+
+    private function skipKey(User $user, ?array $schedule, mixed $scope): string
+    {
+        return 'time_clock.lock_skipped:'.$user->getKey().':'.now()->timezone($this->dayZone($schedule, $scope))->toDateString();
     }
 
     /**
@@ -216,6 +238,10 @@ final class TimeClock
                      * refuses a row with no scheduled end.
                      */
                     'scheduled_end_at' => match (true) {
+                        // A role that clocks out by hand (Jose, 2026-11-13:
+                        // "disable auto clock out for Technicians"): the
+                        // schedule never closes it; the cap is the backstop.
+                        app(ShiftFinishedNotice::class)->isManual($user) => $now->copy()->addHours($this->maxHours($user)),
                         // No schedule today at all — a day off, or nobody set
                         // one. The cap is the only end there is.
                         $window === null => $now->copy()->addHours($this->maxHours($user)),
@@ -275,10 +301,17 @@ final class TimeClock
                     ->first();
 
                 if ($recent !== null) {
+                    // Reopening a shift the clock itself just closed is the
+                    // lock screen's Clock In, not a new day: one extension.
+                    // On a day off it took the whole cap again (Romnick,
+                    // 2026-10-25: 18:00:01 closed, 18:00:03 back, 08:00 out).
+                    $closedByClock = $recent->ended_by !== TimeClockShift::ENDED_BY_PERSON;
                     $recent->forceFill([
                         'clocked_out_at' => null,
                         'ended_by' => null,
-                        'scheduled_end_at' => $fields['scheduled_end_at'],
+                        'scheduled_end_at' => $closedByClock
+                            ? $now->copy()->addMinutes((int) $this->settings->get('time_clock.extension_minutes', $user->organization))
+                            : $fields['scheduled_end_at'],
                     ])->save();
                     $shift = $recent;
                 } else {
@@ -291,7 +324,7 @@ final class TimeClock
                     ]);
                 }
 
-                $this->audit->log('time_clock.clocked_in', $shift);
+                $this->logShift('time_clock.clocked_in', $shift);
                 $this->events->emit(
                     'time_clock.clocked_in',
                     $user,
@@ -363,7 +396,12 @@ final class TimeClock
             $open->ended_by = $causedBy !== null ? TimeClockShift::ENDED_BY_AUTOMATION : $endedBy;
             $open->save();
 
-            $this->audit->log('time_clock.clocked_out', $open);
+            $this->logShift('time_clock.clocked_out', $open);
+            // Their branch's managers hear through an Automations rule (Jose, 2026-11-13).
+            if (app(ShiftFinishedNotice::class)->isManual($user)) {
+                $this->events->emit('time_clock.technician_clocked_out', $user,
+                    [...$this->eventPayload($open), ...app(ShiftFinishedNotice::class)->compose($open)], causedBy: $causedBy);
+            }
             $this->events->emit(
                 'time_clock.clocked_out',
                 $user,
@@ -481,7 +519,7 @@ final class TimeClock
 
             $shift->save();
 
-            $this->audit->log('time_clock.corrected', $shift, changes: [
+            $this->logShift('time_clock.corrected', $shift, changes: [
                 'before' => $before,
                 'after' => [
                     'clocked_in_at' => $this->instant($shift->clocked_in_at),
@@ -564,7 +602,7 @@ final class TimeClock
             'edit_source' => $earlier->edit_source ?? $later->edit_source,
         ])->save();
 
-        $this->audit->log('time_clock.merged', $earlier, changes: [
+        $this->logShift('time_clock.merged', $earlier, changes: [
             'before' => $before,
             'after' => ['clocked_in_at' => $this->instant($earlier->clocked_in_at), 'clocked_out_at' => $this->instant($earlier->clocked_out_at)],
         ]);
@@ -586,7 +624,7 @@ final class TimeClock
         $this->assertReaches($actor, $shift->user);
 
         DB::transaction(function () use ($shift) {
-            $this->audit->log('time_clock.deleted', $shift, changes: [
+            $this->logShift('time_clock.deleted', $shift, changes: [
                 'before' => [
                     'clocked_in_at' => $this->instant($shift->clocked_in_at),
                     'clocked_out_at' => $this->instant($shift->clocked_out_at),
@@ -614,15 +652,21 @@ final class TimeClock
      * sender's last-picked company must not change what the email covers.
      * Reach itself (assertReaches, corrections) is not narrowed either.
      */
-    public function narrowToView(Builder $users, User $actor): Builder
+    public function narrowToView(Builder $users, User $actor, bool $withSelf = false): Builder
     {
         $places = $this->placesInView($actor);
 
-        return $users->where(function (Builder $inView) use ($places) {
+        return $users->where(function (Builder $inView) use ($places, $actor, $withSelf) {
             $inView->whereHas('assignments', fn (Builder $a) => $this->constrainToPlaces($a, $places));
             // Nobody placed anywhere counts only at the whole organization.
             if ($places['organization'] !== null) {
                 $inView->orWhereDoesntHave('assignments');
+            }
+            // The people list: yourself, whatever the picker (Jose, 2026-11-25:
+            // "when ur looking for yourself you always show up no matter
+            // where"). Not counts or payroll, which describe the place.
+            if ($withSelf) {
+                $inView->orWhere($inView->getModel()->qualifyColumn('id'), $actor->getKey());
             }
         });
     }
@@ -689,7 +733,7 @@ final class TimeClock
                 'extensions' => 0,
             ]);
 
-            $this->audit->log('time_clock.added', $shift, changes: [
+            $this->logShift('time_clock.added', $shift, changes: [
                 'after' => [
                     'clocked_in_at' => $this->instant($shift->clocked_in_at),
                     'clocked_out_at' => $this->instant($shift->clocked_out_at),
@@ -854,7 +898,7 @@ final class TimeClock
             $open->extensions = $open->extensions + 1;
             $open->save();
 
-            $this->audit->log('time_clock.extended', $open, metadata: ['minutes' => $minutes]);
+            $this->logShift('time_clock.extended', $open, metadata: ['minutes' => $minutes]);
             $this->events->emit('time_clock.extended', $user, $this->eventPayload($open));
 
             return $this->payload($user);
@@ -1013,7 +1057,7 @@ final class TimeClock
             ]);
         }
 
-        $distance = self::metresBetween((float) $lat, (float) $lng, $zone['lat'], $zone['lng']);
+        $distance = FieldMaps::metres((float) $lat, (float) $lng, $zone['lat'], $zone['lng']);
         if ($distance - max(0.0, (float) ($position['accuracy'] ?? 0)) > $zone['radius']) {
             $this->audit->log('time_clock.geofence_blocked', $user, metadata: [
                 'action' => $verb, 'reason' => 'outside', 'distance_m' => (int) round($distance), 'radius_m' => $zone['radius'],
@@ -1022,17 +1066,6 @@ final class TimeClock
                 'location' => sprintf('You need to be at %s to %s. You are about %d m away (allowed %d m).', $zone['place'], $verb, round($distance), $zone['radius']),
             ]);
         }
-    }
-
-    /** Great-circle distance in metres (haversine). */
-    public static function metresBetween(float $lat1, float $lng1, float $lat2, float $lng2): float
-    {
-        $r = 6371000.0;
-        $dLat = deg2rad($lat2 - $lat1);
-        $dLng = deg2rad($lng2 - $lng1);
-        $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
-
-        return 2 * $r * asin(min(1.0, sqrt($a)));
     }
 
     public function scheduleFor(User $user): ?array
@@ -1133,7 +1166,7 @@ final class TimeClock
 
         $people = User::query()
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
-            ->when($inView, fn (Builder $q) => $this->narrowToView($q, $actor))
+            ->when($inView, fn (Builder $q) => $this->narrowToView($q, $actor, withSelf: true))
             ->orderBy('name')
             // The role, for the list's role filter (Jose, 2026-09-30).
             ->with('role:id,name')
@@ -1189,6 +1222,27 @@ final class TimeClock
      * Carbon's own `startOfWeek()` is deliberately not used: it answers for the
      * locale, and this has to answer for a setting somebody chose.
      */
+    /**
+     * The audit row for a shift event, unless the shift is an Administrator's
+     * (Jose, 2026-11-24: "Administrator Role Accounts should not have logs").
+     * By the OWNER's role, not who did it: a technician's hours edited by an
+     * administrator are still recorded. The shift itself is unchanged.
+     */
+    private function logShift(string $action, TimeClockShift $shift, array $changes = [], array $metadata = []): void
+    {
+        $owner = $shift->relationLoaded('user') ? $shift->user : User::query()->withoutGlobalScopes()->with('role')->find($shift->user_id);
+        if ($owner?->isAdministrator()) {
+            return;
+        }
+        $this->audit->log($action, $shift, changes: $changes, metadata: $metadata);
+    }
+
+    /** The start of the week $date falls in, for Payroll (2026-11-19). */
+    public function weekStartFor(string $date, string $tz, string $startsOn): Carbon
+    {
+        return $this->weekStart($date, $tz, $startsOn);
+    }
+
     private function weekStart(string $date, string $tz, string $startsOn): Carbon
     {
         // Carbon numbers Sunday 0 through Saturday 6, which is the order below.

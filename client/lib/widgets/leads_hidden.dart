@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -203,15 +204,11 @@ class _LeadsHiddenState extends State<LeadsHidden> {
                 children: [
                   SizedBox(
                     width: narrow ? box.maxWidth - 32 : 260,
-                    child: TextField(
+                    child: ListSearch(
                       key: const ValueKey('hidden-search'),
                       controller: _search,
+                      hint: 'Name or number',
                       onChanged: (_) => _load(),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: 'Name or number',
-                        prefixIcon: Icon(Icons.search, size: 18),
-                      ),
                     ),
                   ),
                   chip('all', 'All'),

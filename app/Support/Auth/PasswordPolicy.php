@@ -20,7 +20,7 @@ use App\Support\Tenancy\TenantContext;
  *
  * It RAISES that floor for one organization, and cannot lower it. An
  * administrator answering a client's security questionnaire sets 16 and gets 16;
- * one setting 8 gets 12, because the constant wins. Both directions are tested
+ * one setting 6 gets 8, because the constant wins. Both directions are tested
  * in tests/Feature/Api/SecuritySettingsTest.php.
  *
  * Until this was wired the setting was read by nothing at all — a saved value, an
@@ -56,7 +56,7 @@ final class PasswordPolicy
      * reach every customer on the platform. This is the ordinary tenant policy,
      * and a length nobody complies with is a length that produces Summer2026!.
      */
-    public const MIN_LENGTH = 12;
+    public const MIN_LENGTH = 8;
 
     /**
      * The longest minimum an organization can usefully ask for.

@@ -1270,6 +1270,68 @@ void main() {
     expect(DeepLinks.pending.value, isNull, reason: 'taken, once');
   });
 
+  // Mobile review 11-24 (iPhone 17): two requests pushed the week 21 px past
+  // the bottom, and beside its buttons each request's text had ~80 px. On a
+  // phone the buttons go under the text and the card scrolls inside a cap.
+  // Mobile review 11-24: on an iPhone Duo's cover screen (466x678, ~400 for
+  // the module) the search and filters left the people no room and the
+  // column overflowed by 20 px. On a phone they scroll with the list.
+  testWidgets('a short phone pane scrolls the search with the people', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      size: const Size(466, 110),
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['work_hours.manage'],
+      onClock: (_, _) => _week(
+        people: [
+          for (var i = 0; i < 12; i++) _person(id: 'u-$i', name: 'Person $i'),
+        ],
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('waiting requests fit a phone, buttons under the text', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      size: const Size(390, 700),
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['work_hours.manage'],
+      onClock: (_, _) => {
+        ..._week(people: [_person()]),
+        'correction_requests': [
+          for (var i = 0; i < 6; i++)
+            {
+              'id': 'r-$i',
+              'user': {'id': 'u-2', 'name': 'Bea Okafor'},
+              'was_in': '2026-08-25 08:00',
+              'was_out': '2026-08-25 09:05',
+              'clocked_in': '2026-08-25 07:30',
+              'clocked_out': '2026-08-25 09:05',
+              'reason':
+                  'Came in at 8:00, did not realise I had not clocked in.',
+              'status': 'pending',
+            },
+        ],
+      },
+    );
+
+    expect(tester.takeException(), isNull);
+    final reason = tester.getRect(
+      find.text('Came in at 8:00, did not realise I had not clocked in.').first,
+    );
+    final approve = tester.getRect(
+      find.widgetWithText(FilledButton, 'Approve').first,
+    );
+    expect(approve.top, greaterThanOrEqualTo(reason.bottom));
+    expect(reason.width, greaterThan(250), reason: 'the text was squeezed');
+  });
+
   testWidgets('a manager sees waiting requests on the week and approves one', (
     tester,
   ) async {

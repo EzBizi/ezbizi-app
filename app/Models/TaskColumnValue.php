@@ -64,6 +64,8 @@ class TaskColumnValue extends Model implements HoldsPersonalData
     {
         return $subject instanceof User
             ? static::query()->where('value_user_id', $subject->getKey())
+                // A People column lists them in value_text (["id", ...]).
+                ->orWhere('value_text', 'like', '%"'.$subject->getKey().'"%')
             : null;
     }
 }

@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/jobs_screen.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -68,6 +69,26 @@ void main() {
     await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
 
+    // Asked twice (Jose, 2026-11-09): the first panel names the job, the
+    // second wants its number typed back. Nothing is deleted before that.
+    expect(find.text('Delete J-1001?'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('job-delete-continue')));
+    await tester.pumpAndSettle();
+    final confirm = find.byKey(const Key('job-delete-confirm'));
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    await tester.enterText(find.byKey(const Key('job-delete-number')), 'J-100');
+    await tester.pump();
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    expect(paths.any((p) => p.startsWith('DELETE')), isFalse);
+
+    await tester.enterText(
+      find.byKey(const Key('job-delete-number')),
+      'J-1001',
+    );
+    await tester.pump();
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+
     expect(paths.any((p) => p == 'DELETE /api/v1/jobs/j-1'), isTrue);
   });
 
@@ -78,7 +99,10 @@ void main() {
     await _pump(
       tester,
       jobs: [
-        {..._crown, 'company': {'id': 'co-1', 'name': 'A-1 Chimney'}},
+        {
+          ..._crown,
+          'company': {'id': 'co-1', 'name': 'A-1 Chimney'},
+        },
       ],
     );
 
@@ -92,7 +116,10 @@ void main() {
     await _pump(
       tester,
       jobs: [
-        {..._crown, 'company': {'id': 'co-1', 'name': 'A-1 Chimney'}},
+        {
+          ..._crown,
+          'company': {'id': 'co-1', 'name': 'A-1 Chimney'},
+        },
       ],
       scope: {
         'type': 'company',
@@ -103,34 +130,51 @@ void main() {
     );
 
     expect(find.text('Company'), findsNothing);
-    expect(find.text('Crown inspection'), findsOneWidget, reason: 'the control');
-  });
-
-  testWidgets('a Workiz job shows its Workiz number beside ours, list and panel', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      jobs: [
-        {..._crown, 'workiz_job_number': 12345},
-        {..._job(number: 'J-1002', title: 'Typed in EzBizi'), 'id': 'j-2', 'workiz_job_number': null},
-      ],
-      onRequest: (request) => request.url.path.endsWith('/jobs/j-1')
-          ? _json({
-              'data': {..._crownDetail, 'workiz_job_number': 12345},
-            })
-          : null,
+    expect(
+      find.text('Crown inspection'),
+      findsOneWidget,
+      reason: 'the control',
     );
-
-    expect(find.text('Workiz'), findsOneWidget, reason: 'the column');
-    expect(find.text('#12345'), findsOneWidget);
-    expect(find.text('—'), findsWidgets, reason: 'a job Workiz never had');
-
-    await tester.tap(find.text('Crown inspection'));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('J-1001 · Workiz #12345'), findsOneWidget);
   });
+
+  testWidgets(
+    'a Workiz job shows its Workiz number beside ours, list and panel',
+    (tester) async {
+      await _pump(
+        tester,
+        jobs: [
+          {..._crown, 'workiz_job_number': 12345},
+          {
+            ..._job(number: 'J-1002', title: 'Typed in EzBizi'),
+            'id': 'j-2',
+            'workiz_job_number': null,
+          },
+        ],
+        onRequest: (request) => request.url.path.endsWith('/jobs/j-1')
+            ? _json({
+                'data': {..._crownDetail, 'workiz_job_number': 12345},
+              })
+            : null,
+      );
+
+      expect(find.text('Workiz'), findsOneWidget, reason: 'the column');
+      expect(find.text('#12345'), findsOneWidget);
+      expect(find.text('—'), findsWidgets, reason: 'a job Workiz never had');
+
+      await tester.tap(find.text('Crown inspection'));
+      await tester.pumpAndSettle();
+
+      // Design 196: the number under the title, Workiz's in the facts grid.
+      expect(find.text('J-1001'), findsWidgets);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('fact-Workiz')),
+          matching: find.text('#12345'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('with no Workiz job loaded there is no Workiz column', (
     tester,
@@ -138,11 +182,17 @@ void main() {
     // Most organizations have no Workiz: a column of dashes would be dead weight.
     await _pump(tester, jobs: [_crown]);
 
-    expect(find.text('Crown inspection'), findsOneWidget, reason: 'the control');
+    expect(
+      find.text('Crown inspection'),
+      findsOneWidget,
+      reason: 'the control',
+    );
     expect(find.text('Workiz'), findsNothing);
   });
 
-  testWidgets('a failed customer search is not an empty result', (tester) async {
+  testWidgets('a failed customer search is not an empty result', (
+    tester,
+  ) async {
     await _pump(tester);
 
     await tester.tap(find.text('Add job'));
@@ -184,7 +234,11 @@ void main() {
     await _pump(
       tester,
       jobs: [
-        _job(number: 'JOB-1042', title: 'Chimney sweep', role: 'Chimney Technician'),
+        _job(
+          number: 'JOB-1042',
+          title: 'Chimney sweep',
+          role: 'Chimney Technician',
+        ),
       ],
     );
 
@@ -201,48 +255,57 @@ void main() {
   });
 
   testWidgets('a job with no role does not draw an empty tag', (tester) async {
-    await _pump(tester, jobs: [_job(number: 'JOB-1043', title: 'Unassigned call')]);
+    await _pump(
+      tester,
+      jobs: [_job(number: 'JOB-1043', title: 'Unassigned call')],
+    );
 
     expect(find.byKey(const Key('job-role-tag')), findsNothing);
   });
 
-  testWidgets('several roles at 375px: rows and filter chips both wrap, neither overflows', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      jobs: [
-        _job(
-          number: 'JOB-1044',
-          title: 'Full exterior chimney crown and flashing inspection',
-          role: 'Chimney Sweep Technician',
-        ),
-        _job(number: 'JOB-1045', title: 'Flue liner replacement', role: 'Mason'),
-        _job(number: 'JOB-1046', title: 'Unassigned call'),
-      ],
-      size: const Size(375, 800),
-    );
+  testWidgets(
+    'several roles at 375px: rows and filter chips both wrap, neither overflows',
+    (tester) async {
+      await _pump(
+        tester,
+        jobs: [
+          _job(
+            number: 'JOB-1044',
+            title: 'Full exterior chimney crown and flashing inspection',
+            role: 'Chimney Sweep Technician',
+          ),
+          _job(
+            number: 'JOB-1045',
+            title: 'Flue liner replacement',
+            role: 'Mason',
+          ),
+          _job(number: 'JOB-1046', title: 'Unassigned call'),
+        ],
+        size: const Size(375, 800),
+      );
 
-    expect(tester.takeException(), isNull);
-  });
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('a shared-customer row at 375px does not overflow without a role', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      jobs: [
-        _job(
-          number: 'JOB-1047',
-          title: 'Full exterior chimney crown and flashing inspection',
-          ownedHere: false,
-        ),
-      ],
-      size: const Size(375, 800),
-    );
+  testWidgets(
+    'a shared-customer row at 375px does not overflow without a role',
+    (tester) async {
+      await _pump(
+        tester,
+        jobs: [
+          _job(
+            number: 'JOB-1047',
+            title: 'Full exterior chimney crown and flashing inspection',
+            ownedHere: false,
+          ),
+        ],
+        size: const Size(375, 800),
+      );
 
-    expect(tester.takeException(), isNull);
-  });
+      expect(tester.takeException(), isNull);
+    },
+  );
   // Queue 118, Jose's 1 and phone 4: type, sub-status and tags. Every word
   // here is invented.
   group('type, sub-status and tags', () {
@@ -296,7 +359,7 @@ void main() {
     }
 
     Finder inDialog(Finder f) =>
-        find.descendant(of: find.byType(AlertDialog), matching: f);
+        find.descendant(of: find.byType(SidePanel).last, matching: f);
 
     testWidgets('the panel shows the type and the tags; no sub-status on an '
         'open job without one', (tester) async {
@@ -436,6 +499,39 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // Design 207 J1: Call (with the Phone grant) and Go under a phone card.
+    testWidgets('a phone card offers Call and Go; Call needs the Phone grant', (
+      tester,
+    ) async {
+      final job = {
+        ..._job(number: 'JOB-2001', title: 'Sweep'),
+        'customer': {
+          'id': 'cust-1',
+          'name': 'Dana Reyes',
+          'phone': '+13305550148',
+        },
+        'address': '41 Elm St, Akron OH 44310',
+      };
+      await _pump(
+        tester,
+        jobs: [job],
+        size: const Size(375, 800),
+        permissions: const ['jobs.view', 'phone.phone.view'],
+      );
+      expect(find.byKey(ValueKey('job-call-${job['id']}')), findsOneWidget);
+      expect(find.byKey(ValueKey('job-go-${job['id']}')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await _pump(
+        tester,
+        jobs: [job],
+        size: const Size(375, 800),
+        permissions: const ['jobs.view'],
+      );
+      expect(find.byKey(ValueKey('job-call-${job['id']}')), findsNothing);
+      expect(find.byKey(ValueKey('job-go-${job['id']}')), findsOneWidget);
+    });
+
     testWidgets('the filters send one value as both forms, several as a list', (
       tester,
     ) async {
@@ -454,6 +550,10 @@ void main() {
       );
 
       Future<void> pick(Key field, List<String> words) async {
+        if (find.byKey(field).evaluate().isEmpty) {
+          await tester.tap(find.byKey(const Key('jobs-filters')));
+          await tester.pumpAndSettle();
+        }
         await tester.tap(find.byKey(field));
         await tester.pumpAndSettle();
         for (final w in words) {
@@ -475,12 +575,29 @@ void main() {
       await pick(const Key('jobs-tag-filter'), ['Gate code']);
       expect(queries.last['tag[]'], ['Gate code']);
       expect(queries.last['tag'], ['Gate code']);
-      expect(
-        queries.last['job_type[]'],
-        ['Cap Repair', 'Flue Survey'],
-        reason: 'the two filters go together',
-      );
+      expect(queries.last['job_type[]'], [
+        'Cap Repair',
+        'Flue Survey',
+      ], reason: 'the two filters go together');
     });
+  });
+
+  // Design 195 (phone 4): the first row was below 70% of a 375 screen.
+  testWidgets('on a phone search, Filters and ⋯ share one line; Upcoming / '
+      'Past / All is inside Filters', (tester) async {
+    await _pump(tester, size: const Size(375, 800));
+
+    final search = tester.getCenter(
+      find.byKey(const ValueKey('tour-jobs-search')),
+    );
+    final filters = tester.getCenter(find.byKey(const Key('jobs-filters')));
+    expect(filters.dy, moreOrLessEquals(search.dy, epsilon: 2));
+    expect(find.byKey(const Key('jobs-window')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('jobs-filters')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('jobs-window')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
 
@@ -557,11 +674,7 @@ Future<void> _pump(
 
       if (path.endsWith('/me')) {
         return _json({
-          'data': {
-            ..._me,
-            'permissions': permissions,
-            'scope': ?scope,
-          },
+          'data': {..._me, 'permissions': permissions, 'scope': ?scope},
         });
       }
 
@@ -575,10 +688,7 @@ Future<void> _pump(
               'importable': false,
             },
           ],
-          'organization': {
-            'export_refusal': null,
-            'inventory_refusal': null,
-          },
+          'organization': {'export_refusal': null, 'inventory_refusal': null},
         });
       }
 
@@ -627,7 +737,9 @@ Future<void> _pump(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: JobsScreen(api: api, session: session)),
+      home: Scaffold(
+        body: JobsScreen(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();

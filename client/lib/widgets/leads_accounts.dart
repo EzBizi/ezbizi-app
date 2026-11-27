@@ -28,6 +28,7 @@
 // cannot see is stated and cannot be changed; and Disconnect all is one
 // question and one call.
 
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -40,6 +41,8 @@ import 'grouped_rows.dart';
 import 'leads_dashboard.dart';
 import 'leads_hidden.dart';
 import 'leads_office_hours.dart';
+import 'leads_phone_lines.dart';
+import 'leads_recovery.dart';
 import 'leads_sources.dart';
 import 'leads_stats.dart';
 import 'reply_templates_manager.dart';
@@ -395,6 +398,8 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
               Offstage(offstage: _tab != 'stats', child: _stats()),
               Offstage(offstage: _tab != 'office_hours', child: _officeHours()),
               Offstage(offstage: _tab != 'hidden', child: _hidden()),
+              Offstage(offstage: _tab != 'recovery', child: _recovery()),
+              Offstage(offstage: _tab != 'phone_lines', child: _phoneLines()),
             ],
           ),
         ),
@@ -508,6 +513,40 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
             ],
           ),
         ),
+        Offstage(
+          offstage: _tab != 'recovery',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(
+                context,
+                title: 'Manage',
+                backTooltip: 'Back to the leads',
+                onBack: widget.onBack,
+              ),
+              _tabStrip(context),
+              const Divider(height: 1),
+              Expanded(child: _recovery()),
+            ],
+          ),
+        ),
+        Offstage(
+          offstage: _tab != 'phone_lines',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(
+                context,
+                title: 'Manage',
+                backTooltip: 'Back to the leads',
+                onBack: widget.onBack,
+              ),
+              _tabStrip(context),
+              const Divider(height: 1),
+              Expanded(child: _phoneLines()),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -610,6 +649,12 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
     // Design 160, B1: only with the tick.
     if (widget.session.me?.can(leadsHiddenPermission) == true)
       ('hidden', 'Hidden', Icons.visibility_off_outlined),
+    // Jose, 2026-11-16: the automatic win-back texts.
+    if (widget.session.me?.can(leadsRecoveryPermission) == true)
+      ('recovery', 'Recovery', Icons.replay_outlined),
+    // Jose, 2026-11-17: whose calls each RingCentral number takes.
+    if (widget.session.me?.can(leadsPhoneLinesPermission) == true)
+      ('phone_lines', 'Phone lines', Icons.phone_forwarded_outlined),
   ];
 
   static const _allManageTabs = [
@@ -635,6 +680,8 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
         if (_tab == 'stats') _statsOpened = true;
         if (_tab == 'office_hours') _officeHoursOpened = true;
         if (_tab == 'hidden') _hiddenOpened = true;
+        if (_tab == 'recovery') _recoveryOpened = true;
+        if (_tab == 'phone_lines') _phoneLinesOpened = true;
       }),
     ),
   );
@@ -663,6 +710,16 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
       : const SizedBox.shrink();
 
   bool _hiddenOpened = false;
+  bool _recoveryOpened = false;
+  bool _phoneLinesOpened = false;
+
+  Widget _phoneLines() => _phoneLinesOpened
+      ? LeadsPhoneLines(api: widget.api, session: widget.session)
+      : const SizedBox.shrink();
+
+  Widget _recovery() => _recoveryOpened
+      ? LeadsRecovery(api: widget.api, session: widget.session)
+      : const SizedBox.shrink();
 
   Widget _hidden() => _hiddenOpened
       ? LeadsHidden(api: widget.api, session: widget.session)
@@ -993,15 +1050,11 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
           // Only where there are enough to lose one in.
           if (total > 6) ...[
             const SizedBox(height: 10),
-            TextField(
+            ListSearch(
               key: const ValueKey('accounts-search'),
               controller: _search,
+              hint: 'Find an account',
               onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: 'Find an account',
-                prefixIcon: Icon(Icons.search, size: 18),
-              ),
             ),
           ],
         ],
@@ -1623,7 +1676,7 @@ class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
               options: [
                 const SearchOption(value: null, label: 'Company level'),
                 for (final b in branchOptions(
-                  widget.session.me?.franchises ?? const [],
+                  widget.session.me?.switchableFranchises ?? const [],
                   widget.session.me?.companies ?? const [],
                 ))
                   SearchOption(value: b.id, label: b.label),

@@ -1,8 +1,10 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/contracts.dart';
 import '../../core/deep_links.dart';
 import '../../core/hr.dart';
@@ -101,6 +103,7 @@ class _OnboardingTabState extends State<OnboardingTab> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _searchDelay?.cancel();
     super.dispose();
   }
@@ -124,7 +127,17 @@ class _OnboardingTabState extends State<OnboardingTab> {
     super.initState();
     _open = widget.link?.id;
     _load();
+    // A new hire filling in their papers: page one re-read as they go.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'hr_invitations'},
+      (_) {
+        if (_page == 1 && !_fetching) return _load(quiet: true);
+      },
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void didUpdateWidget(OnboardingTab old) {
@@ -134,7 +147,8 @@ class _OnboardingTabState extends State<OnboardingTab> {
     }
   }
 
-  Future<void> _load({int page = 1}) async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     if (page > 1 && _fetching) return;
 
     final request = ++_request;
@@ -143,8 +157,10 @@ class _OnboardingTabState extends State<OnboardingTab> {
       // A spinner only when there is nothing to keep — see AsyncBody.
       _loading = page == 1 && _rows.isEmpty;
       _fetching = true;
-      _error = null;
-      _pageError = null;
+      if (!quiet) {
+        _error = null;
+        _pageError = null;
+      }
     });
 
     final answers = await Future.wait([
@@ -159,6 +175,15 @@ class _OnboardingTabState extends State<OnboardingTab> {
     if (!mounted || request != _request) return;
 
     final onboardings = answers[0];
+    if (quiet && !onboardings.ok) {
+      // And the spinner off: a failed quiet re-read on an empty list left it
+      // turning forever (full-code audit, 2026-11-27).
+      setState(() {
+        _fetching = false;
+        _loading = false;
+      });
+      return;
+    }
     final catalogue = answers[1];
 
     setState(() {
@@ -378,21 +403,16 @@ class _OnboardingTabState extends State<OnboardingTab> {
     alignment: Alignment.centerLeft,
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 320),
-      child: TextField(
+      child: ListSearch(
         key: const ValueKey('tour-hr-onboarding-search'),
-        decoration: const InputDecoration(
-          hintText: 'Search by name or email',
-          prefixIcon: Icon(Icons.search),
-          isDense: true,
-          border: OutlineInputBorder(),
-        ),
+        hint: 'Search by name or email',
         onChanged: (value) {
-          _searchDelay?.cancel();
-          _searchDelay = Timer(const Duration(milliseconds: 300), () {
-            _search = value.trim();
-            _load();
-          });
-        },
+            _searchDelay?.cancel();
+            _searchDelay = Timer(const Duration(milliseconds: 300), () {
+              _search = value.trim();
+              _load();
+            });
+          },
       ),
     ),
   );
@@ -482,6 +502,11 @@ class _OnboardingTabState extends State<OnboardingTab> {
                       'cancel onboardings',
                     ),
                     child: TextButton(
+                      // Red: it stops somebody's onboarding (phone audit
+                      // 2026-11-04), not a way to back out of a form.
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(context).colorScheme.error,
+                      ),
                       onPressed: _mayCreate ? () => _cancel(row) : null,
                       child: const Text('Cancel'),
                     ),
@@ -716,7 +741,10 @@ class _StartPanelState extends State<_StartPanel> {
 
   Future<void> _load() async {
     final answers = await Future.wait([
-      widget.api.get('/hr/invitations'),
+      // The server's largest page, not its default 50: the newest 50 hid
+      // older invitations from this picker (full-code audit, 2026-11-27).
+      // ponytail: 200 is the server cap; page through if an org outgrows it.
+      widget.api.get('/hr/invitations', {'per_page': '200'}),
       widget.api.get('/hr/contracts'),
       widget.api.get('/hr/people/scope-options'),
     ]);

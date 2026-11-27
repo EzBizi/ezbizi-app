@@ -65,15 +65,7 @@ class DayHours {
   int get hashCode => Object.hash(closed, open, close);
 }
 
-const List<String> weekdayLongNames = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-];
+const List<String> weekdayLongNames = longWeekdays;
 
 /// A week nobody has edited yet: weekdays open, weekend shut. A guess, but a
 /// guess somebody can correct in two clicks beats seven empty rows.

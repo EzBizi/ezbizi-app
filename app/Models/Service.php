@@ -30,6 +30,11 @@ class Service extends Model implements StatesRetention
 
     /** @use HasFactory<ServiceFactory> */
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES): filed where its company and branch are. */
+    protected static string $changeType = 'services';
+
     use HasAttachments;
     use HasFactory;
     use HasUuids;

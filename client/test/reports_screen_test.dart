@@ -531,7 +531,9 @@ void main() {
     );
   });
 
-  testWidgets('average talk time shows, and a dash when there is none', (
+  // Design 170, option 8 (Jose, 2026-11-03): People is Phone and Sales;
+  // average talk left the table. An absent value is still a dash, never 0.
+  testWidgets('People has no talk average, and no 0:00 for an absent one', (
     tester,
   ) async {
     await _pumpReports(
@@ -547,22 +549,8 @@ void main() {
 
     await _performanceTab(tester, 'People');
 
-    // The day's average card left the figures (Jose's order, 2026-10-05);
-    // each person's average is still in the table.
-    expect(find.text('2:28'), findsNothing);
-    expect(find.text('3:05'), findsOneWidget); // 185s, Trey Brannan
-
-    // Ranya Lara answered nothing. No average is a different fact from an
-    // average of zero, and "0:00" would read as a real short call.
-    //
-    // findsWidgets rather than findsOneWidget since 2026-09-17: she now shows
-    // a dash in TWO columns, avg talk and conversion, and both are right. The
-    // rule this test protects is that an absent value is never rendered as a
-    // zero — counting dashes was a proxy for it that a new column invalidates
-    // without anything being wrong.
-    expect(find.text('—'), findsWidgets);
+    expect(find.text('3:05'), findsNothing); // Trey Brannan's 185s
     expect(find.text('0:00'), findsNothing);
-    expect(find.text('0%'), findsNothing);
   });
 
   testWidgets('a refused Workiz account is named, not folded away', (
@@ -937,6 +925,169 @@ void main() {
     expect(find.widgetWithText(ChoiceChip, 'Report Builder'), findsNothing);
     expect(find.widgetWithText(ChoiceChip, 'Performance'), findsNothing);
   });
+
+  // Jose, 2026-11-16: one range for every tab, still there after leaving.
+  testWidgets('the date range survives leaving Reports and coming back', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final froms = <String?>[];
+    final api = ApiClient(
+      client: MockClient((request) async {
+        final path = request.url.path;
+        if (path.endsWith('/me')) {
+          return _json({
+            'data': {
+              ..._me,
+              'permissions': ['reports.view', 'reports.jobs.view'],
+              'modules': [],
+            },
+          });
+        }
+        if (path.endsWith('/reports/jobs')) {
+          froms.add(request.url.queryParameters['from']);
+          return _json({
+            'data': {'rows': [], 'count': 0, 'total': 0},
+          });
+        }
+        return _json({'data': []});
+      }),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+    final now = DateTime(2026, 11, 16, 12);
+    Widget reports() => MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: ReportsScreen(api: api, session: session, now: () => now),
+      ),
+    );
+
+    await tester.pumpWidget(reports());
+    await tester.pumpAndSettle();
+    expect(froms.last, '2026-11-10');
+
+    await tester.tap(find.text('Last 30 days'));
+    await tester.pumpAndSettle();
+    expect(froms.last, '2026-10-18');
+
+    // Away to another module, then back.
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    await tester.pumpWidget(reports());
+    await tester.pumpAndSettle();
+    expect(froms.last, '2026-10-18');
+  });
+
+  // Jose, 2026-11-16: a pin in a report table's headings, pinned until this
+  // person unpins it, and remembered for them.
+  testWidgets(
+    'the headings start pinned and an unpin is saved for this person',
+    (tester) async {
+      final saved = <Object?>[];
+      await _pumpReports(
+        tester,
+        permissions: const ['reports.view', 'reports.jobs.view'],
+        onRequest: (request) {
+          if (request.url.path.endsWith('/me/preferences')) {
+            saved.add(jsonDecode(request.body));
+            return _json({'data': {}});
+          }
+          if (request.url.path.endsWith('/reports/jobs')) {
+            return _json({
+              'data': {
+                'rows': [
+                  {
+                    'id': 'J1',
+                    'serial': 'J1',
+                    'client': 'Ann Lee',
+                    'source': 'LS Ads',
+                    'status': 'Submitted',
+                    'total': 300.5,
+                  },
+                ],
+                'count': 1,
+                'total': 300.5,
+              },
+            });
+          }
+          return null;
+        },
+      );
+
+      final pin = find.byKey(const ValueKey('heading-pin'));
+      expect(pin, findsOneWidget);
+      expect(find.byIcon(Icons.push_pin), findsOneWidget);
+
+      await tester.tap(pin);
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.push_pin_outlined), findsOneWidget);
+      expect(saved, [
+        {
+          'preferences': {'reports.pin_headings': false},
+        },
+      ]);
+    },
+  );
+
+  testWidgets('design 199: Jobs is one tab holding Overview, Cancelled and '
+      'Pending, each on its own grant; the one opened is kept', (tester) async {
+    final asked = <String>[];
+    await _pumpReports(
+      tester,
+      permissions: const [
+        'reports.view',
+        'reports.library.view',
+        'reports.cancelled.view',
+        'reports.pending.view',
+      ],
+      onRequest: (r) {
+        final path = r.url.path;
+        if (path.contains('/reports/cancelled') ||
+            path.contains('/reports/pending') ||
+            path.contains('/reports/jobs')) {
+          asked.add(path.split('/').last);
+          return _json({
+            'data': {
+              'rows': <dynamic>[],
+              'count': 0,
+              'value_minor': 0,
+              'all': 0,
+              'created': 0,
+              'statuses': <dynamic>[],
+              'reasons': <dynamic>[],
+              'sources': <dynamic>[],
+              'techs': <dynamic>[],
+            },
+          });
+        }
+        if (path.endsWith('/me/preferences')) return _json({'data': {}});
+        return null;
+      },
+    );
+
+    // No Cancelled jobs / Pending jobs chips beside the others: one Jobs.
+    expect(find.widgetWithText(ChoiceChip, 'Cancelled jobs'), findsNothing);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Jobs'));
+    await tester.pumpAndSettle();
+    final family = find.byKey(const ValueKey('reports-jobs-tabs'));
+    expect(family, findsOneWidget);
+    // Overview is not granted here, so it is not drawn.
+    expect(
+      find.descendant(of: family, matching: find.text('Overview')),
+      findsNothing,
+    );
+    expect(asked.last, 'cancelled');
+
+    await tester.tap(
+      find.descendant(of: family, matching: find.text('Pending')),
+    );
+    await tester.pumpAndSettle();
+    expect(asked.last, 'pending');
+    expect(find.byKey(const ValueKey('reports-jobs-pending')), findsOneWidget);
+  });
 }
 
 /// Somebody who may read reports and not build them.
@@ -993,6 +1144,8 @@ Future<void> _pumpReports(
       if (path.endsWith('/reports')) {
         return _json({'data': reports});
       }
+      // Every report sent (2026-11-25): none here.
+      if (path.endsWith('/reports/sent')) return _json({'data': []});
 
       return _json({'message': 'Nothing stubbed for $path.'}, 500);
     }),

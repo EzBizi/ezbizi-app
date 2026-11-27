@@ -17,6 +17,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class FieldRecording extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A recording made, transcribed or flagged is its technician's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['field', User::class, 'user_id'];
+
     use HasUuids;
 
     /** Ninety days, unless a manager flagged it (an incident, a training example). */
@@ -29,7 +34,7 @@ class FieldRecording extends Model implements HoldsPersonalData
 
     protected $fillable = [
         'organization_id', 'user_id', 'job_id', 'started_at', 'ended_at', 'stop_reason',
-        'duration_s', 'chunk_count', 'total_bytes', 'events', 'customer_told', 'flagged', 'flag_reason', 'flagged_by',
+        'duration_s', 'chunk_count', 'total_bytes', 'events', 'customer_told', 'summary', 'summarized_at', 'flagged', 'flag_reason', 'flagged_by',
     ];
 
     protected function casts(): array
@@ -40,6 +45,8 @@ class FieldRecording extends Model implements HoldsPersonalData
             'events' => 'array',
             'flagged' => 'bool',
             'customer_told' => 'bool',
+            'summary' => 'array',
+            'summarized_at' => 'datetime',
         ];
     }
 
@@ -83,6 +90,11 @@ class FieldRecording extends Model implements HoldsPersonalData
     public function job(): BelongsTo
     {
         return $this->belongsTo(Job::class);
+    }
+
+    public function segments(): HasMany
+    {
+        return $this->hasMany(FieldRecordingSegment::class, 'recording_id')->orderBy('started_at');
     }
 
     public function chunks(): HasMany

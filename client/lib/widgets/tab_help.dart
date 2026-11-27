@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/tab_tours.dart';
+import '../core/timestamps.dart';
 import 'help_video_io.dart'
     if (dart.library.js_interop) 'help_video_web.dart'
     as native;
@@ -49,9 +50,6 @@ class HelpVideo {
   final List<({int at, String label})> chapters;
   final String? captionsUrl;
 }
-
-String _clock(int seconds) =>
-    '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
 
 /// Every tab's video, fetched once per sign-in and shared by every header.
 final _videos = Expando<Future<Map<String, HelpVideo>>>();
@@ -189,7 +187,7 @@ class TabHelpButtons extends StatelessWidget {
             if (video == null) return const SizedBox.shrink();
             final length = video.seconds == null
                 ? ''
-                : ' · ${_clock(video.seconds!)}';
+                : ' · ${formatClock(Duration(seconds: video.seconds!))}';
             return IconButton(
               key: const Key('tab-help-video'),
               tooltip: 'Watch how $label works$length',
@@ -624,10 +622,10 @@ Future<void> playHelpVideo(
     builder: (_) => _VideoPanel(video: video, label: label, player: player),
   );
 
-  if (small != true) {
-    player.dispose();
-    return;
-  }
+  // Closed: the panel disposes the player itself, once its exit animation
+  // has stopped drawing VideoPlayer. Disposing here, while the panel still
+  // slid out, threw "No active player with ID n" on Android.
+  if (small != true) return;
 
   late final OverlayEntry entry;
   entry = OverlayEntry(
@@ -666,6 +664,9 @@ class _VideoPanelState extends State<_VideoPanel> {
   bool _downloading = false;
   OverlayEntry? _full;
 
+  /// Set when "Keep it small" hands the player on to the corner window.
+  bool _handedOn = false;
+
   @override
   void initState() {
     super.initState();
@@ -684,6 +685,7 @@ class _VideoPanelState extends State<_VideoPanel> {
   @override
   void dispose() {
     if (_full != null) _leaveFullscreen();
+    if (!_handedOn) widget.player.dispose();
     super.dispose();
   }
 
@@ -759,13 +761,18 @@ class _VideoPanelState extends State<_VideoPanel> {
 
     return SidePanel(
       title: video.title ?? 'How ${widget.label} works',
-      subtitle: video.seconds == null ? null : _clock(video.seconds!),
+      subtitle: video.seconds == null
+          ? null
+          : formatClock(Duration(seconds: video.seconds!)),
       width: 480,
       actions: [
         if (!_cannotPlay)
           OutlinedButton(
             key: const Key('help-video-small'),
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () {
+              _handedOn = true;
+              Navigator.of(context).pop(true);
+            },
             child: const Text('Keep it small'),
           ),
       ],
@@ -822,7 +829,7 @@ class _VideoPanelState extends State<_VideoPanel> {
                       ),
                       selectedTileColor: theme.colorScheme.primaryContainer,
                       leading: Text(
-                        _clock(c.at),
+                        formatClock(Duration(seconds: c.at)),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.primary,
                           fontWeight: FontWeight.w700,

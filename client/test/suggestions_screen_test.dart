@@ -156,6 +156,55 @@ void main() {
     expect(find.byIcon(Icons.delete_outline), findsNothing);
   });
 
+  // Jose, 2026-11-17: "so people know their stuff is being implemented".
+  testWidgets('an approved suggestion shows how far along it is; a denied one does not', (
+    tester,
+  ) async {
+    await _pump(tester, _listing([
+      {..._row(id: 'a', status: 'approved', note: 'Yes.'), 'progress': 'building'},
+      _row(id: 'b', status: 'denied', note: 'No.'),
+    ]));
+
+    expect(find.byKey(const ValueKey('suggestion-progress-a')), findsWidgets);
+    expect(find.text('Being built · step 2 of 5'), findsWidgets);
+    expect(find.byKey(const ValueKey('suggestion-progress-b')), findsNothing);
+  });
+
+  testWidgets('releasing in the release on its way shows its live percent', (
+    tester,
+  ) async {
+    final rows = [
+      {
+        ..._row(id: 'a', status: 'approved', note: 'Yes.'),
+        'progress': 'releasing',
+        'release_version': '0.0.0584',
+      },
+    ];
+    await _pump(tester, (request) async {
+      if (request.url.path.endsWith('/release/upcoming')) {
+        return _json({'data': {'version': '0.0.0584', 'percent': 40}});
+      }
+      return _listing(rows)(request);
+    });
+
+    expect(find.text('v0.0.0584 is on its way · 40%'), findsWidgets);
+
+    await tester.pumpWidget(const SizedBox()); // stops the percent poll
+  });
+
+  testWidgets('live names its release', (tester) async {
+    await _pump(tester, _listing([
+      {
+        ..._row(id: 'a', status: 'approved', note: 'Yes.'),
+        'progress': 'live',
+        'release_version': '0.0.0584',
+      },
+    ]));
+
+    expect(find.text('Live in v0.0.0584'), findsWidgets);
+    expect(find.textContaining('step'), findsNothing);
+  });
+
   /// `SuggestionsController::frozen` is the server's own sentence for each of
   /// the three states Edit/Withdraw vacate. Matched, not paraphrased.
   testWidgets('the frozen sentence is exact for a suggestion being read', (

@@ -41,8 +41,6 @@ class BusinessProfileApiTest extends TestCase
                 'categories' => ['primaryCategory' => ['name' => 'categories/gcid:chimney_sweep', 'displayName' => 'Chimney sweep']],
                 'serviceItems' => [['structuredServiceItem' => ['serviceTypeId' => 'job_type_id:chimney_inspection']]],
             ]),
-            'mybusinessverifications.googleapis.com/v1/locations/55:getVoiceOfMerchantState' => Http::response(['hasVoiceOfMerchant' => true, 'hasBusinessAuthority' => true]),
-            'mybusinessverifications.googleapis.com/v1/locations/55/verifications' => Http::response(['verifications' => [['method' => 'PHONE_CALL', 'state' => 'COMPLETED']]]),
         ]);
 
         $this->inTenant($t['org'], function () use ($t) {
@@ -61,9 +59,6 @@ class BusinessProfileApiTest extends TestCase
             $cs = $api->categoriesAndServices($location);
             $this->assertSame('Chimney sweep', $cs['primary']['displayName']);
             $this->assertCount(1, $cs['services']);
-            $standing = $api->standing($location);
-            $this->assertTrue($standing['has_voice_of_merchant']);
-            $this->assertSame('COMPLETED', $standing['verifications'][0]['state']);
 
             try {
                 $api->replaceServices($location, []);

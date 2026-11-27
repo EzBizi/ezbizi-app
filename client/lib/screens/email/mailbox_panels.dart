@@ -7,11 +7,13 @@ import 'package:flutter/services.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/scope_choice_field.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'consent_window.dart';
 import 'mailbox_settings.dart';
+import '../../core/soft_keyboard.dart';
 
 /// The three acts that set a shared inbox up, each in a side panel.
 ///
@@ -121,6 +123,48 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
   /// The one picked address, when exactly one is -- the single-add path.
   String? get _pickedAddress => _picked.length == 1 ? _picked.first : null;
 
+  /// Who gets access, as `organization`, `company:<id>` or `franchise:<id>`.
+  /// Asked on every add (Jose 11-12), defaulting to where another inbox at the
+  /// same domain is filed, else where the person is working. Never empty.
+  String? _place;
+  bool _placeTouched = false;
+  Timer? _suggestTimer;
+
+  String get _viewPlace {
+    final scope = widget.session.me!.scope;
+    return scope.type == 'organization' || scope.id == null
+        ? 'organization'
+        : '${scope.type}:${scope.id}';
+  }
+
+  String get _chosenPlace => _place ?? _viewPlace;
+
+  Map<String, String> get _places {
+    final me = widget.session.me!;
+    return {
+      'organization': 'Entire organization',
+      for (final c in me.companies) 'company:${c.id}': c.name,
+      for (final f in me.franchises) 'franchise:${f.id}': f.name,
+    };
+  }
+
+  void _suggestPlace(String address) {
+    _suggestTimer?.cancel();
+    if (_placeTouched || !address.contains('@')) return;
+    _suggestTimer = Timer(const Duration(milliseconds: 400), () async {
+      final response = await widget.api.get(
+        '/email/mailboxes/suggest-scope?address=${Uri.encodeComponent(address.trim())}',
+      );
+      final data = response.ok ? response.data : null;
+      if (!mounted || _placeTouched) return;
+      setState(
+        () => _place = data is Map
+            ? '${data['scope_type']}:${data['scope_id']}'
+            : null,
+      );
+    });
+  }
+
   /// Some of a batch went in and the panel stayed open to report the rest, so
   /// closing it must still tell the list to reload.
   bool _addedSome = false;
@@ -183,6 +227,7 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
 
   @override
   void dispose() {
+    _suggestTimer?.cancel();
     _address.dispose();
     _displayName.dispose();
     _directorySearch.dispose();
@@ -207,8 +252,10 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
     final me = widget.session.me!;
 
     final response = await widget.api.post('/email/mailboxes', {
-      'scope_type': me.scope.type,
-      'scope_id': me.scope.id ?? me.organization.id,
+      'scope_type': _chosenPlace.split(':').first,
+      'scope_id': _chosenPlace.contains(':')
+          ? _chosenPlace.split(':').last
+          : me.organization.id,
       'address': _fromDirectory ? (_pickedAddress ?? '') : _address.text.trim(),
       'display_name': _displayName.text.trim(),
       'provider': provider.value,
@@ -254,8 +301,10 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
     final me = widget.session.me!;
 
     final response = await widget.api.post('/email/mailboxes/workspace-batch', {
-      'scope_type': me.scope.type,
-      'scope_id': me.scope.id ?? me.organization.id,
+      'scope_type': _chosenPlace.split(':').first,
+      'scope_id': _chosenPlace.contains(':')
+          ? _chosenPlace.split(':').last
+          : me.organization.id,
       'addresses': [
         for (final address in _picked)
           {'address': address, 'display_name': _nameFor(address)},
@@ -303,6 +352,7 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
         _displayName.text = _nameFor(_picked.first);
       }
     });
+    if (_picked.length == 1) _suggestPlace(_picked.first);
   }
 
   Widget _directoryField() {
@@ -339,7 +389,7 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
         TextFormField(
           key: const Key('email-directory-search'),
           controller: _directorySearch,
-          autofocus: true,
+          autofocus: autofocusOnOpen,
           enabled: !_saving,
           decoration: InputDecoration(
             labelText: 'Search the directory',
@@ -441,9 +491,8 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
     return SidePanel(
       title: 'Add a shared inbox',
       subtitle:
-          'It will belong to ${me.scope.fullPath}. Everything under Email is '
-          'kept to one part of the business, so switch where you are working '
-          'before adding it if that is not right.',
+          'Everything under Email is kept to one part of the business: pick '
+          'who gets access below.',
       actions: [
         TextButton(
           onPressed: _saving
@@ -482,8 +531,12 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
             else
               TextFormField(
                 controller: _address,
-                autofocus: true,
+                autofocus: autofocusOnOpen,
                 keyboardType: TextInputType.emailAddress,
+                onChanged: (v) {
+                  _server.currentState?.suggestFor(v);
+                  _suggestPlace(v);
+                },
                 decoration: const InputDecoration(
                   labelText: 'Address',
                   hintText: 'info@example.com',
@@ -516,6 +569,27 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
                           'inboxes on the list.'
                     : null,
               ),
+            const SizedBox(height: 16),
+            ScopeChoiceField(
+              key: const ValueKey('email-add-access'),
+              value: _chosenPlace,
+              label: 'Who gets access',
+              helperText: _fromDirectory && _picked.length > 1
+                  ? 'Each address goes where other inboxes at its domain are '
+                        '(office@phl with the PHL branch); the rest go here.'
+                  : 'Filled in from other inboxes at the same domain, else '
+                        'where you are working. A company covers its branches.',
+              helperMaxLines: 3,
+              places: _places,
+              companies: me.companies,
+              branches: me.franchises,
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() {
+                      _place = v;
+                      _placeTouched = true;
+                    }),
+            ),
             const SizedBox(height: 16),
             if (widget.providers.isEmpty)
               const ErrorNote(
@@ -705,6 +779,15 @@ class _MailServerFieldsState extends State<_MailServerFields> {
 
     _imapEncryption = _encryption('imap_encryption', _tls);
     _smtpEncryption = _encryption('smtp_encryption', _starttls);
+  }
+
+  /// A Gmail address fills Gmail's servers, so adding one is the address and
+  /// an app password, as on A1 Tools (Jose, 11-05). Never over typed values.
+  void suggestFor(String address) {
+    final domain = address.trim().toLowerCase().split('@').last;
+    if (domain != 'gmail.com' && domain != 'googlemail.com') return;
+    if (_imapHost.text.trim().isEmpty) _imapHost.text = 'imap.gmail.com';
+    if (_smtpHost.text.trim().isEmpty) _smtpHost.text = 'smtp.gmail.com';
   }
 
   String _text(String key) {
@@ -908,8 +991,6 @@ class ConnectMailboxPanel extends StatefulWidget {
     this.imapPorts = const [],
     this.smtpPorts = const [],
     this.openConsent = openConsentWindow,
-    this.pollEvery = const Duration(seconds: 2),
-    this.waitAtMost = const Duration(minutes: 5),
   });
 
   final ApiClient api;
@@ -936,8 +1017,8 @@ class ConnectMailboxPanel extends StatefulWidget {
   /// somebody left open at lunchtime. Five minutes is long enough to find a
   /// password, sign in and pick an account; past that this stops and says so,
   /// rather than sitting there looking like it is still working.
-  final Duration pollEvery;
-  final Duration waitAtMost;
+  static const pollEvery = Duration(seconds: 2);
+  static const waitAtMost = Duration(minutes: 5);
 
   @override
   State<ConnectMailboxPanel> createState() => _ConnectMailboxPanelState();
@@ -1111,9 +1192,9 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
         _error =
             'EzBizi could not open the $label sign-in window. On the web that '
             'is usually the browser blocking new windows for this site — allow '
-            'them and press the button again. On the desktop and phone apps '
-            'this is not built yet; connect the address from a browser and it '
-            'stays connected everywhere.';
+            'them and press the button again. In the desktop and phone apps, '
+            'connect the address from a browser instead; it then stays '
+            'connected everywhere.';
       });
 
       return;
@@ -1196,10 +1277,10 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
       // first one's success and close on it.
       _flow = data is Map<String, dynamic> ? data['flow'] as String? : null;
       _asksLeft =
-          widget.waitAtMost.inMilliseconds ~/
-          (widget.pollEvery.inMilliseconds == 0
+          ConnectMailboxPanel.waitAtMost.inMilliseconds ~/
+          (ConnectMailboxPanel.pollEvery.inMilliseconds == 0
               ? 1
-              : widget.pollEvery.inMilliseconds);
+              : ConnectMailboxPanel.pollEvery.inMilliseconds);
     });
 
     _askAgainLater();
@@ -1207,7 +1288,7 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
 
   void _askAgainLater() {
     _poll?.cancel();
-    _poll = Timer(widget.pollEvery, _hasItConnectedYet);
+    _poll = Timer(ConnectMailboxPanel.pollEvery, _hasItConnectedYet);
   }
 
   void _stopWaiting() {
@@ -1341,7 +1422,7 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
         _step = _Step.idle;
         _notice =
             'EzBizi has stopped waiting for $_serviceLabel — nothing came back '
-            'for ${_minutes(widget.waitAtMost)}. Nothing has changed. If you '
+            'for ${_minutes(ConnectMailboxPanel.waitAtMost)}. Nothing has changed. If you '
             'finished signing in after that, press the button again and it will '
             'pick the answer straight up.';
       });
@@ -1746,14 +1827,12 @@ class ConnectWorkspacePanel extends StatefulWidget {
     super.key,
     required this.api,
     this.openConsent = openConsentWindow,
-    this.pollEvery = const Duration(seconds: 2),
-    this.waitAtMost = const Duration(minutes: 5),
   });
 
   final ApiClient api;
   final OpenConsentWindow openConsent;
-  final Duration pollEvery;
-  final Duration waitAtMost;
+  static const pollEvery = ConnectMailboxPanel.pollEvery;
+  static const waitAtMost = ConnectMailboxPanel.waitAtMost;
 
   @override
   State<ConnectWorkspacePanel> createState() => _ConnectWorkspacePanelState();
@@ -1843,10 +1922,10 @@ class _ConnectWorkspacePanelState extends State<ConnectWorkspacePanel> {
       _window = window;
       _flow = data is Map<String, dynamic> ? data['flow'] as String? : null;
       _asksLeft =
-          widget.waitAtMost.inMilliseconds ~/
-          (widget.pollEvery.inMilliseconds == 0
+          ConnectWorkspacePanel.waitAtMost.inMilliseconds ~/
+          (ConnectWorkspacePanel.pollEvery.inMilliseconds == 0
               ? 1
-              : widget.pollEvery.inMilliseconds);
+              : ConnectWorkspacePanel.pollEvery.inMilliseconds);
     });
 
     _askAgainLater();
@@ -1854,7 +1933,7 @@ class _ConnectWorkspacePanelState extends State<ConnectWorkspacePanel> {
 
   void _askAgainLater() {
     _poll?.cancel();
-    _poll = Timer(widget.pollEvery, _ask);
+    _poll = Timer(ConnectWorkspacePanel.pollEvery, _ask);
   }
 
   Future<void> _ask() async {
@@ -1949,7 +2028,7 @@ class _ConnectWorkspacePanelState extends State<ConnectWorkspacePanel> {
           TextField(
             controller: _domain,
             enabled: !_busy,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(
               labelText: 'Company domain',
               hintText: 'a-1chimney.com',

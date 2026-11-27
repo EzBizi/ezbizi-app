@@ -2,6 +2,8 @@ import '../../widgets/step_timeline.dart';
 import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/centred_page.dart';
+
 import '../../core/api_client.dart';
 import '../../core/branch_options.dart';
 import '../../core/timestamps.dart';
@@ -35,6 +37,31 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   final _search = TextEditingController();
   String? _error;
   String? _empty;
+
+  /// Why there is nothing to start, said before the search (Jose 11-24: a role
+  /// with no named inspection saw a blank tab). Null until /startable answers.
+  String? _nothingOffered;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkOffered();
+  }
+
+  Future<void> _checkOffered() async {
+    final response = await widget.api.get('/inspections/startable');
+    if (!mounted || !response.ok) return;
+    if ((response.data as List? ?? const []).isEmpty) {
+      setState(
+        () => _nothingOffered =
+            response.body['message'] as String? ?? _noneOffered,
+      );
+    }
+  }
+
+  static const _noneOffered =
+      'No inspection is granted to your role. Ask an admin to tick one under '
+      'Roles & permissions › Inspection › Named inspections.';
   List<Map<String, dynamic>> _hits = const [];
   List<Map<String, dynamic>> _picker = const [];
   Map<String, dynamic>? _scope;
@@ -163,8 +190,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     setState(() {
       _picker = rows;
       _empty = rows.isEmpty
-          ? (response.body['message'] as String? ??
-              'This organization has not offered any inspections to this role yet.')
+          ? (response.body['message'] as String? ?? _noneOffered)
           : null;
     });
   }
@@ -309,20 +335,20 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
 
   /// What gets sent. Text fields and photo fields, in one map.
   Map<String, dynamic> _answers() => {
-        for (final e in _fields.entries) e.key: e.value.text,
-        for (final e in _photos.entries) e.key: e.value,
-        for (final e in _checks.entries) e.key: e.value,
-        for (final e in _work.entries) e.key: e.value,
-      };
+    for (final e in _fields.entries) e.key: e.value.text,
+    for (final e in _photos.entries) e.key: e.value,
+    for (final e in _checks.entries) e.key: e.value,
+    for (final e in _work.entries) e.key: e.value,
+  };
 
   /// Every screen this version declares, shown or not.
   ///
   /// Kept separate from [_screensOf] because saving and freezing reason about
   /// all of them while the step strip only walks the visible ones.
   List<Map<String, dynamic>> _allScreensOf(Map<String, dynamic> run) => [
-        for (final s in (run['screens'] as List? ?? const []))
-          if (s is Map) Map<String, dynamic>.from(s),
-      ];
+    for (final s in (run['screens'] as List? ?? const []))
+      if (s is Map) Map<String, dynamic>.from(s),
+  ];
 
   /// The screens actually asked, given what has been answered so far.
   ///
@@ -340,9 +366,9 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
 
   /// Every field this screen declares, shown or not.
   List<Map<String, dynamic>> _allFieldsOf(Map<String, dynamic> screen) => [
-        for (final f in (screen['fields'] as List? ?? const []))
-          if (f is Map) Map<String, dynamic>.from(f),
-      ];
+    for (final f in (screen['fields'] as List? ?? const []))
+      if (f is Map) Map<String, dynamic>.from(f),
+  ];
 
   /// The building code frozen onto this field at publish, if it cites one.
   ///
@@ -374,14 +400,20 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (title.isNotEmpty)
-              Text(title,
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                title,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             if (body.isNotEmpty) ...[
               if (title.isNotEmpty) const SizedBox(height: 2),
-              Text(body,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(
+                body,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ],
         ),
@@ -433,7 +465,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   }
 
   /// This one field's label if it is required and empty, otherwise null.
-  String? _missingLabel(Map<String, dynamic> field, Map<String, dynamic> answers) {
+  String? _missingLabel(
+    Map<String, dynamic> field,
+    Map<String, dynamic> answers,
+  ) {
     final rule = field['required_if'];
     var needs = field['required'] == true;
 
@@ -449,7 +484,9 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     // A photo, signature or multi-choice answer is a list, and an empty one is
     // the missing case. `''` would never match it and a required photo would
     // wave everybody through.
-    final empty = value is List ? value.isEmpty : value.toString().trim().isEmpty;
+    final empty = value is List
+        ? value.isEmpty
+        : value.toString().trim().isEmpty;
 
     return empty ? '${field['label'] ?? field['key']}' : null;
   }
@@ -461,7 +498,9 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     if (screens.isEmpty) return;
     final missing = _missingOn(screens[_screen.clamp(0, screens.length - 1)]);
     if (missing != null) {
-      setState(() => _blocked = '$missing needs an answer before you can continue.');
+      setState(
+        () => _blocked = '$missing needs an answer before you can continue.',
+      );
       return;
     }
     await _save();
@@ -507,6 +546,12 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
       return _resumePanel(context);
     }
 
+    if (_nothingOffered != null) {
+      return Padding(
+        padding: const EdgeInsets.all(DashboardCard.padding),
+        child: Center(child: DashboardNote(_nothingOffered!)),
+      );
+    }
     if (_scope == null) return _searchPage(context);
 
     return Padding(
@@ -560,71 +605,59 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   /// Nothing chosen yet: one search bar, centred, that suggests as you type.
   ///
   /// Jose, 2026-10-26: "as simple as possible, sort of like the scheduling
-  /// one". Centred on a desk; on a phone it sits in the top third, clear of
-  /// the keyboard. The bar stays put while suggestions open beneath it.
+  /// one". Centred on a desk; on a phone it sits at the top, clear of the
+  /// keyboard. The bar stays put while suggestions open beneath it.
   Widget _searchPage(BuildContext context) {
     final theme = Theme.of(context);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final phone = constraints.maxWidth < 600;
-        // The bar's centre on the line: half-way down, or a third on a phone.
-        // 28 is half the bar's height.
-        final top = (constraints.maxHeight * (phone ? 1 / 3 : 1 / 2) - 28)
-            .clamp(16.0, double.infinity);
-
-        return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(16, top, 16, 24),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SuggestSearchField(
-                    key: const Key('inspection-search-bar'),
-                    fieldKey: const ValueKey('tour-inspection-search'),
-                    controller: _search,
-                    hintText: 'Client name, phone or job number',
-                    prefixIcon: const Icon(Icons.search),
-                    debounce: const Duration(milliseconds: 250),
-                    enterPicksFirst: true,
-                    suggestions: [for (final hit in _hits) _suggestion(hit)],
-                    onChanged: _doSearch,
-                    onSubmitted: _doSearch,
-                    onPick: (i) => _pickHit(_hits[i]),
-                    onDismiss: () => setState(() => _hits = const []),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_hits.isEmpty)
-                    Text(
-                      "Type a client's name, a phone or a job number",
-                      key: const Key('inspection-search-hint'),
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 8),
-                    ErrorNote(_error!),
-                  ],
-                  if (_empty != null) ...[
-                    const SizedBox(height: 8),
-                    DashboardNote(_empty!),
-                  ],
-                ],
+    // The bar's centre half-way down on a desk (28 is half its height).
+    return CentredPage(
+      anchor: 28,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SuggestSearchField(
+            key: const Key('inspection-search-bar'),
+            fieldKey: const ValueKey('tour-inspection-search'),
+            controller: _search,
+            hintText: 'Client name, phone or job number',
+            prefixIcon: const Icon(Icons.search),
+            debounce: const Duration(milliseconds: 250),
+            enterPicksFirst: true,
+            suggestions: [for (final hit in _hits) _suggestion(hit)],
+            onChanged: _doSearch,
+            onSubmitted: _doSearch,
+            onPick: (i) => _pickHit(_hits[i]),
+            onDismiss: () => setState(() => _hits = const []),
+          ),
+          const SizedBox(height: 8),
+          if (_hits.isEmpty)
+            Text(
+              "Type a client's name, a phone or a job number",
+              key: const Key('inspection-search-hint'),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-          ),
-        );
-      },
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            ErrorNote(_error!),
+          ],
+          if (_empty != null) ...[
+            const SizedBox(height: 8),
+            DashboardNote(_empty!),
+          ],
+        ],
+      ),
     );
   }
 
   Widget _resumePanel(BuildContext context) {
     final named = _choice?['named'];
-    final label = named is Map ? '${named['name'] ?? 'this inspection'}' : 'this inspection';
+    final label = named is Map
+        ? '${named['name'] ?? 'this inspection'}'
+        : 'this inspection';
 
     return Padding(
       key: const Key('inspection-resume-panel'),
@@ -644,7 +677,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           FilledButton(onPressed: _resume, child: const Text('Resume')),
           const SizedBox(height: 8),
           if (_mayDiscard)
-            OutlinedButton(onPressed: _startAgain, child: const Text('Start again')),
+            OutlinedButton(
+              onPressed: _startAgain,
+              child: const Text('Start again'),
+            ),
         ],
       ),
     );
@@ -663,7 +699,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   Widget _control(Map<String, dynamic> field, Map<String, dynamic> run) {
     final key = '${field['key']}';
     final label = '${field['label'] ?? key}';
-    final widgetKey = Key('field-$key');
+    // No key for a divider or alert: they have no `key`, and two of them on one
+    // screen shared Key('field-null'), which corrupted the ListView in a
+    // release build (Bar 11-24: step 2 drew half and took no clicks).
+    final widgetKey = field['key'] == null ? null : Key('field-$key');
 
     switch ('${field['type'] ?? 'text'}') {
       case 'photo':
@@ -697,23 +736,26 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
         final current = _fields[key]?.text ?? '';
 
         return SearchPickerField<String>(
-                 key: widgetKey,
-                 value: options.contains(current) && current != '' ? current : null,
-                 label: label,
-                 options: [
+          key: widgetKey,
+          value: options.contains(current) && current != '' ? current : null,
+          label: label,
+          options: [
             for (final choice in choices)
               SearchOption(value: choice.value, label: choice.label),
             // An answer already given against an option since removed. Dropping
             // it silently would change a saved answer by redrawing the screen.
             if (current != '' && !options.contains(current))
-              SearchOption(value: current, label: '$current — no longer offered'),
+              SearchOption(
+                value: current,
+                label: '$current — no longer offered',
+              ),
           ],
-                 onChanged: (value) {
+          onChanged: (value) {
             _fields[key]?.text = value ?? '';
             setState(() {});
             _save();
           },
-               );
+        );
 
       case 'divider':
         // A heading between fields. Not a control, so it takes no key and
@@ -727,7 +769,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
               if (label.isNotEmpty)
                 Text(label, style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 6),
-              Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+              Divider(
+                height: 1,
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
             ],
           ),
         );
@@ -747,16 +792,20 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (title.isNotEmpty)
-                Text(title,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSecondaryContainer,
-                        )),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  ),
+                ),
               if (body.isNotEmpty) ...[
                 if (title.isNotEmpty) const SizedBox(height: 4),
-                Text(body,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSecondaryContainer,
-                        )),
+                Text(
+                  body,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  ),
+                ),
               ],
             ],
           ),
@@ -786,7 +835,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           controller: _fields[key],
           minLines: 3,
           maxLines: 6,
-          decoration: InputDecoration(labelText: label, alignLabelWithHint: true),
+          decoration: InputDecoration(
+            labelText: label,
+            alignLabelWithHint: true,
+          ),
         );
 
       case 'email':
@@ -936,10 +988,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
             ErrorNote(_blocked!),
             const SizedBox(height: 8),
           ],
-          FilledButton(
-            onPressed: _next,
-            child: Text(last ? 'Submit' : 'Next'),
-          ),
+          FilledButton(onPressed: _next, child: Text(last ? 'Submit' : 'Next')),
         ],
       ),
     );

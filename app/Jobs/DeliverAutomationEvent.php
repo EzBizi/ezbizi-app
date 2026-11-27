@@ -34,6 +34,23 @@ class DeliverAutomationEvent implements ShouldBeUnique, ShouldQueue
     public function __construct(public readonly string $eventId) {}
 
     /**
+     * Events a person is waiting on: a missed call, a new lead, a customer's
+     * reply, a complaint. They go to their own queue so a bulk backfill on
+     * the default one cannot hold them (desk, 2026-11-18: 9,314 board events
+     * kept missed calls waiting 20 minutes). The queue name is config, and
+     * stays "default" until a worker listens on the realtime one.
+     */
+    public const REALTIME = ['reports.call.missed', 'lead.missed_call', 'lead.customer_replied', 'lead.received', 'lead.call_complaint'];
+
+    public static function queueFor(AutomationEvent $event): void
+    {
+        $job = static::dispatch((string) $event->getKey());
+        if (in_array($event->event_key, self::REALTIME, true)) {
+            $job->onQueue((string) config('queue.automations_realtime', 'default'));
+        }
+    }
+
+    /**
      * One delivery attempt per event, whatever else is queued.
      *
      * ShouldBeUnique is what makes this real. Declaring uniqueId() alone did

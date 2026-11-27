@@ -17,7 +17,9 @@ Four reads, in this order, and none of them takes long:
 2. **The board** (`H:\Development\integrations-board`, http://localhost:8787) — is
    this already a track? Create it if not. Tick steps *in the same turn* as the work.
 3. **`docs/agents/inbox/`** — a second agent works this repo and we never share a
-   chat. Read the mail before starting.
+   chat. Read the mail before starting. *(Since September many role sessions work
+   here at once; reach one through [docs/SESSIONS.md](SESSIONS.md), and the inbox is
+   the fallback when a role is unstaffed.)*
 4. **The nearest existing module.** Not the docs — the code. Reports was written by
    reading `Phone/CallsController.php` and `PhoneNumberAccess`, because a report is
    the same access question in aggregate form.
@@ -103,7 +105,8 @@ client shows *that* sentence. Two copies of a refusal reason drift.
 php artisan test --filter=PhoneReportTest
 ```
 
-The full backend suite is the **deploy gate** — run once, by `scripts/deploy.sh`, at
+The full backend suite is the **deploy gate** — run once, by `scripts/deploy.sh --gates`
+(gates are off by default), or on its own by `scripts/preflight-backend.sh`, at
 the end. It is not a development loop, and running it by hand "to be sure" is how a
 session turns into a day.
 
@@ -148,7 +151,8 @@ Then, in Flutter:
 - Plain words for humans. Never a section number, a class name, or a word like
   "immutable" on screen.
 - `flutter analyze` must be clean before you go near the deploy script — it is a hard
-  gate and it will stop the release.
+  gate and it will stop the release when gates run (`--gates`), and the merger runs it
+  on the merged tree ([DEVELOPMENT-RULES](DEVELOPMENT-RULES.md)).
 
 ---
 
@@ -167,6 +171,13 @@ it untouched — length made a wrong thing look considered.
 
 ## 7 · Shipping
 
+> **Superseded for module sessions.** Do not run the release scripts yourself: push
+> your branch to `origin` and ask the deploy desk to cut ([SESSIONS](SESSIONS.md));
+> send your release-note line with the request, because the desk writes
+> `client/lib/core/version_history.dart` (its header says so). Gates are **off by
+> default** — `--gates` turns them on. [DEPLOY](DEPLOY.md) is the source of truth for
+> the scripts and flags; the steps below are kept as a description of what a cut does.
+
 ```bash
 ./scripts/deploy.sh
 ```
@@ -174,21 +185,23 @@ it untouched — length made a wrong thing look considered.
 Commit first: the gate pins `GATED_SHA` with `git rev-parse main` and tests that
 commit, not your working tree — and pushes the same SHA, so what was gated is what
 ships. `client/VERSION` is bumped once per release by whoever cuts it, not in every
-contributing commit; see `StartUp.md` §9. `--code` skips the Flutter build.
+contributing commit (`scripts/release.sh` bumps and commits it); see §9 of the
+[former StartUp](history/2026-09-08-startup.md). `--code` skips the Flutter build.
 
 The script is the gate and it is the only way to ship:
 
-1. Working tree syncs to the sandbox at `/opt/ezbizi-test` on the box, and the
+1. With `--gates`, the pinned commit (`git archive <sha>`, not the working tree) is
+   extracted into the sandbox at `/opt/ezbizi-test` on the box, and the
    **backend suite runs there on MySQL** — its own `.env.testing`, its own database,
    a lock so two runs cannot collide.
-2. `flutter analyze` and `flutter test`, locally.
+2. With `--gates`, `flutter analyze` and `flutter test`, locally, in a worktree at the pinned SHA.
 3. Web client built and stamped with `client/VERSION`.
 4. **Code pushed first, UI second** — the UI goes straight live with no staging step,
    so the reverse order puts a new client in front of an old API.
 5. The release backs up the database, migrates, syncs the permission catalogue,
    health-checks as the serving user, and only then swaps the symlink.
 
-Red anywhere means nothing ships. Trust it; do not pre-run its suite by hand.
+Red anywhere means nothing ships — when the gates ran. Trust it; do not pre-run its suite by hand.
 
 **Never** edit on the server as a way of shipping, and never point a sandbox at the
 production database (`scripts/sandbox.sh <name> --verify` proves it is not).

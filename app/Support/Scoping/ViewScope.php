@@ -172,21 +172,7 @@ class ViewScope
      */
     private static function switchedOff(string $type, string $id): bool
     {
-        if ($type === self::FRANCHISE) {
-            $franchise = Franchise::find($id);
-            if ($franchise === null) {
-                return false;
-            }
-            if (! $franchise->is_active) {
-                return true;
-            }
-            $company = $franchise->company;
-        } else {
-            $company = Company::find($id);
-        }
-
-        return $company !== null
-            && (! $company->is_active || ($company->parent !== null && ! $company->parent->is_active));
+        return $type === self::FRANCHISE ? Franchise::isSwitchedOff($id) : Company::isSwitchedOff($id);
     }
 
     public static function forStoredAutomationScope(User $user, ?string $type, ?string $id): self
@@ -273,6 +259,19 @@ class ViewScope
 
             default => $reachable->pluck('id')->all(),
         };
+    }
+
+    /**
+     * [franchiseIds] less the switched-off places: what a list or picker OF
+     * BRANCHES offers (Jose, 2026-11-10: switched-off companies "should not
+     * show up anywhere on the app"). Records filed on one still read through
+     * [franchiseIds]; only the branch itself stops being listed.
+     *
+     * @return string[]
+     */
+    public function switchedOnFranchiseIds(): array
+    {
+        return Franchise::query()->whereKey($this->franchiseIds())->switchedOn()->pluck('id')->all();
     }
 
     /**

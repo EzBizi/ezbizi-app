@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\Setting;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
 
@@ -33,6 +34,28 @@ class SettingsResolver
     public function __construct(
         private readonly SettingRegistry $registry,
     ) {}
+
+    /**
+     * An organization-level setting by organization id, without loading it:
+     * the current tenant's when null, the default when there is neither (an
+     * unsaved model). For commands that read several tenants' values.
+     */
+    public static function forOrganization(string $key, ?string $organizationId = null): mixed
+    {
+        $tenant = app(TenantContext::class);
+        $organizationId ??= $tenant->id();
+        $resolver = app(self::class);
+
+        if ($organizationId === null) {
+            return $resolver->registry->getOrFail($key)->default;
+        }
+
+        $organization = (new Organization)->forceFill(['id' => $organizationId]);
+
+        return $organizationId === $tenant->id()
+            ? $resolver->get($key, $organization)
+            : $tenant->run($organization, fn () => $resolver->get($key, $organization));
+    }
 
     /**
      * The effective value for this scope.

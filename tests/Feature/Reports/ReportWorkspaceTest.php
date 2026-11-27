@@ -6,7 +6,7 @@ use App\Jobs\SendWhatsAppPeriodReports;
 use App\Models\Automation;
 use App\Models\Franchise;
 use App\Models\WhatsAppGroup;
-use App\Models\WhatsAppPendingReport;
+use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppReportBatch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -50,7 +50,7 @@ class ReportWorkspaceTest extends TestCase
     public function test_send_now_goes_to_each_person_who_may_see_it(): void
     {
         config(['services.meta.whatsapp_token' => 'a-token-for-the-fake']);
-        Http::fake(['*' => Http::response(['messages' => [['id' => 'wamid.OUT1']]])]);
+        Http::fake(['*/media' => Http::response(['id' => 'MEDIA-1']), '*' => fn () => Http::response(['messages' => [['id' => 'wamid.'.Str::random(10)]]])]);
         $t = $this->provisionTenant('Alpha');
         $viewer = $this->userWithRole($t, 'Viewer', ['leads.view']);
         DB::table('whatsapp_numbers')->insert(['id' => (string) Str::uuid(), 'organization_id' => $t['org']->id,
@@ -63,7 +63,7 @@ class ReportWorkspaceTest extends TestCase
 
         $this->signedInAs($t['admin'])->postJson('/api/v1/reports/texts/weekly_reviews/send', ['user_ids' => [$t['admin']->id, $viewer->id]])
             ->assertOk()->assertJsonPath('data.sent', 1);
-        $this->assertSame(['13055550123'], $this->inTenant($t['org'], fn () => WhatsAppPendingReport::query()->pluck('counterparty')->all()));
+        $this->assertSame(['13055550123'], $this->inTenant($t['org'], fn () => WhatsAppMessage::query()->distinct()->pluck('counterparty')->all()));
     }
 
     public function test_the_batch_steps_and_approve_for_the_approval_group_only(): void
@@ -93,7 +93,11 @@ class ReportWorkspaceTest extends TestCase
     {
         $t = $this->provisionTenant('Alpha');
         $this->signedInAs($t['admin'])->getJson('/api/v1/reports/period?from=2026-10-01&to=2026-10-07&format=json')->assertOk()
-            ->assertJsonPath('data.sheets.Created.0', ['Branch', 'Source', 'Jobs', 'Done', 'Open', 'Canceled', 'Gross']);
+            ->assertJsonPath('data.sheets.Created.0', ['Branch', 'Source', 'Jobs', 'Done', 'Open', 'Canceled', 'Gross'])
+            // The PDF's KPIs on the screen and in Excel too (Jose, 2026-11-03).
+            ->assertJsonPath('data.sheets.Key figures.0.2', 'Close rate %')
+            ->assertJsonPath('data.sheets.Cancellations.0', ['Branch', 'Reason', 'Canceled', 'Share %'])
+            ->assertJsonPath('data.sheets.Technicians.0.4', 'Tech-caused canc');
         $this->signedInAs($t['admin'])->getJson('/api/v1/reports/period?from=2026-10-01&to=2026-10-07&format=json&report=job_profitability')->assertOk()
             ->assertJsonPath('data.sheets.Jobs.0.0', 'Branch');
     }

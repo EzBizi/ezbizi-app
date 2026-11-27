@@ -34,6 +34,31 @@ class ErrorNote extends StatelessWidget {
   }
 }
 
+/// A load that failed, in place of the pane it was loading: the [ErrorNote]
+/// and a Try again that calls [onRetry].
+class ErrorRetry extends StatelessWidget {
+  const ErrorRetry(this.message, {super.key, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ErrorNote(message),
+          const SizedBox(height: 12),
+          TextButton(onPressed: onRetry, child: const Text('Try again')),
+        ],
+      ),
+    );
+  }
+}
+
 /// A one-line outcome in a floating snack bar, red when [isError].
 void showFloatingSnack(
   BuildContext context,

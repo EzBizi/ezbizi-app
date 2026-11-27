@@ -61,6 +61,10 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // Set only in the box gate's .env.testing ("SET SESSION
+                // sql_log_bin=0"), so its migrate:fresh stops writing ~16 GB/day
+                // of production binlog. Unset everywhere else, and filtered out.
+                Mysql::ATTR_INIT_COMMAND => env('DB_INIT_COMMAND'),
             ]) : [],
         ],
 
@@ -81,6 +85,10 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // Set only in the box gate's .env.testing ("SET SESSION
+                // sql_log_bin=0"), so its migrate:fresh stops writing ~16 GB/day
+                // of production binlog. Unset everywhere else, and filtered out.
+                Mysql::ATTR_INIT_COMMAND => env('DB_INIT_COMMAND'),
             ]) : [],
         ],
 

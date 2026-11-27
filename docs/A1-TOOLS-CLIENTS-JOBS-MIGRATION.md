@@ -1,5 +1,14 @@
 # A1 Tools clients, jobs and money history into EzBizi
 
+> **Status 2026-11-13: FINISHED 2026-09-29 — this is history, not a plan.** A1 Tools was
+> switched off on 2026-09-28. The one-off commands named below (`customers:import-a1-tools`,
+> `jobs:import-a1-estimates`, `ezbizi:workiz-merge-twins`, `inspection:import-a1-reports`) were
+> deleted in `2795b58b2` (2026-10-09); only `ezbizi:backfill-workiz` remains. The scratchpad
+> inventory path below no longer exists. The dumps and run logs named below are still in
+> `/home/ubuntu/manual-dumps/` on the app box (checked 2026-11-13). "EzBizi has no billing"
+> is no longer true: `estimates` and `invoices` are modules, and production holds the 2,231
+> imported estimates — see `EZBIZI-TODO.md` #36.
+
 Coordinated by the deploy desk. This file is the single source of truth for this
 part: Jose's decisions, what was measured, who builds what, and the order. It
 holds no customer data. The inventory stays on this machine only:

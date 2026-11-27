@@ -5,6 +5,8 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/roles_screen.dart';
 import 'package:ezbizi_client/screens/settings_shell.dart';
+import 'package:ezbizi_client/widgets/phone_bottom_bar.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -131,6 +133,59 @@ void main() {
     expect(sent!['permissions'], ['customers.edit', 'customers.view']);
   });
 
+  /// Jose, 2026-11-17: "Lead Managers should not be desktop monitored". A
+  /// tick done TO the role opens nothing, and closing the module keeps it.
+  testWidgets('a passive tick does not open the module, nor close with it', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    Map<String, dynamic>? sent;
+    final monitoring = _catalogueModule(
+      'monitoring',
+      'Monitoring',
+      actions: const [
+        ('view', 'View'),
+        ('control', 'Control desktops remotely'),
+        ('unmonitored', 'Their own PC is not screen-monitored'),
+      ],
+      passive: const ['unmonitored'],
+    );
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Lead Manager', permissions: const [])],
+      catalogue: [monitoring],
+      onPatch: (body) => sent = body,
+    );
+
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Monitoring'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('About them'), findsOneWidget);
+    bool? moduleOpen() =>
+        tester.widget<Checkbox>(_tabCheckbox('monitoring').first).value;
+
+    await tester.tap(find.byKey(const ValueKey('action:monitoring.unmonitored')));
+    await tester.pumpAndSettle();
+    expect(moduleOpen(), isFalse,
+        reason: 'Not monitoring.view: being unmonitored opens nothing.');
+
+    // The control: an ordinary action still opens the module...
+    await tester.tap(find.byKey(const ValueKey('action:monitoring.control')));
+    await tester.pumpAndSettle();
+    expect(moduleOpen(), isTrue);
+
+    // ...and closing the module clears it, but keeps the passive tick.
+    await tester.tap(_tabCheckbox('monitoring').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    expect(sent!['permissions'], ['monitoring.unmonitored']);
+  });
+
   /// The payload is the keys, and only the keys.
   testWidgets('what is saved is exactly the permissions the role holds', (
     tester,
@@ -167,6 +222,124 @@ void main() {
   /// NAME — an organization is free to create a role called "Administrators",
   /// and matching the word is the same class of bug as the server-side
   /// short-circuit this whole change removes.
+  // Design 208: a role's phone bar, chosen beside a live phone, saved alone.
+  testWidgets('the mobile bar picks a tab slot and saves only the bar', (
+    tester,
+  ) async {
+    _wide(tester);
+    final patches = <Map<String, dynamic>>[];
+    await _pumpRoles(
+      tester,
+      roles: [
+        _role('r-2', 'Technician', permissions: const ['jobs.view']),
+      ],
+      onPatch: patches.add,
+    );
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+
+    final open = find.byKey(const ValueKey('role-mobile-bar-open'));
+    await tester.ensureVisible(open);
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('role-mobile-bar-slot-0')),
+        matching: find.byType(SearchPickerField<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Jobs › Estimates').last);
+    await tester.pumpAndSettle();
+
+    final phone = find.byKey(const ValueKey('role-mobile-bar-phone'));
+    expect(
+      find.descendant(of: phone, matching: find.text('Estimates')),
+      findsOneWidget,
+      reason: 'the live phone redraws with the new slot',
+    );
+
+    await tester.ensureVisible(find.byKey(const ValueKey('role-mobile-bar-save')));
+    await tester.tap(find.byKey(const ValueKey('role-mobile-bar-save')));
+    await tester.pumpAndSettle();
+    expect(patches.last, {
+      'mobile_bar': [
+        {'module': 'jobs', 'tab': 'estimates'},
+      ],
+    });
+  });
+
+  // Jose, 2026-11-24: "this is hard to view, you can't tell stuff apart".
+  testWidgets('the mobile bar preview is a readable 360 px phone', (
+    tester,
+  ) async {
+    _wide(tester);
+    await _pumpRoles(
+      tester,
+      roles: [
+        _role('r-2', 'Technician', permissions: const ['jobs.view']),
+      ],
+    );
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    final open = find.byKey(const ValueKey('role-mobile-bar-open'));
+    await tester.ensureVisible(open);
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('role-mobile-bar-slot-0')),
+        matching: find.byType(SearchPickerField<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Jobs › Estimates').last);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    final phone = find.byKey(const ValueKey('role-mobile-bar-phone'));
+    expect(tester.getSize(phone).width, greaterThanOrEqualTo(360));
+    final bar = find.descendant(of: phone, matching: find.byType(PhoneBottomBar));
+    final labels = [
+      for (final e in find
+          .descendant(of: bar, matching: find.byType(Text))
+          .evaluate())
+        if ((e.widget as Text).data != null) e,
+    ];
+    expect(labels, hasLength(5));
+    final rects = [for (final e in labels) tester.getRect(find.byWidget(e.widget))];
+    for (var i = 0; i < rects.length; i++) {
+      final t = labels[i].widget as Text;
+      expect(t.style?.fontSize, greaterThanOrEqualTo(11), reason: t.data);
+      for (var j = i + 1; j < rects.length; j++) {
+        expect(rects[i].overlaps(rects[j]), isFalse, reason: t.data);
+      }
+    }
+    expect(
+      find.descendant(of: bar, matching: find.text('Work Hours (default)')),
+      findsOneWidget,
+      reason: 'the default slot says so, in full',
+    );
+    final defaultText = tester.widget<Text>(
+      find.descendant(of: bar, matching: find.text('Work Hours (default)')),
+    );
+    expect(defaultText.style?.color?.a, 1.0, reason: 'no faint grey');
+
+    IconData iconIn(String key) => tester
+        .widget<Icon>(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(Icon),
+          ),
+        )
+        .icon!;
+    expect(
+      iconIn('role-mobile-bar-item-jobs:estimates'),
+      isNot(iconIn('role-mobile-bar-item-jobs')),
+      reason: "a tab slot has its own icon, not its module's",
+    );
+  });
+
   testWidgets('the built-in administrator opens, and cannot be changed', (
     tester,
   ) async {
@@ -574,6 +747,42 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Inboxes'), findsOneWidget);
+    });
+
+    // Jose 11-10: "No inboxes granted" read as "Lucas cannot read office@nj".
+    testWidgets('a role with no inboxes says how many of its people were given '
+        'some by name', (tester) async {
+      _wide(tester);
+      await _pumpRoles(
+        tester,
+        roles: [
+          _role(
+            'r-2',
+            'Local Manager',
+            permissions: const ['email.view'],
+            users: 14,
+            ownInboxes: 9,
+          ),
+        ],
+        catalogue: [
+          _catalogueModule(
+            'email',
+            'Email',
+            actions: const [('view', 'View')],
+            inboxes: [_inbox('mb-1', 'office@nj.a-1chimney.com')],
+          ),
+        ],
+      );
+      await tester.tap(_firstRole);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining(
+          '9 of its 14 people have inboxes given to them by name',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('The tab on its own opens none'), findsNothing);
     });
 
     /// The control that carries the whole point: the tab is one grant and the
@@ -1109,6 +1318,58 @@ void main() {
     expect(find.textContaining('Needs'), findsNothing);
   });
 
+  testWidgets('a tab inside another tab sits under it, as the app draws it', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Manager', permissions: const [])],
+      catalogue: [
+        _catalogueModule(
+          'marketing',
+          'Marketing',
+          actions: const [
+            ('view', 'Social Media Management'),
+            ('compose.view', 'Compose'),
+            ('ez_calls.view', 'EZ Calls'),
+            ('edit', 'Edit'),
+          ],
+          tabs: const ['view', 'compose.view', 'ez_calls.view'],
+          within: const {
+            'compose.view': 'Social Media Management',
+            'ez_calls.view': 'Calls',
+          },
+        ),
+      ],
+    );
+
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Marketing'));
+    await tester.pumpAndSettle();
+
+    // Under a tab that is a tick of its own: indented, no extra heading.
+    expect(
+      find.byKey(const ValueKey('tab-nested:marketing.compose.view')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('tab-group:marketing:Social Media Management')),
+      findsNothing,
+    );
+    // Under a group with no tick (Leads › Calls): its name as a heading.
+    expect(
+      find.byKey(const ValueKey('tab-group:marketing:Calls')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('tab-nested:marketing.view')),
+      findsNothing,
+    );
+  });
+
   testWidgets('a tick the module describes says what it lets someone do', (
     tester,
   ) async {
@@ -1234,7 +1495,23 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('action:training.assign')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('not ticked'), findsOneWidget);
+    // Why it will not take effect, in plain words (roles audit 2026-11-24),
+    // on the row and again in "What this role sees".
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('requirement:training.assign')),
+          )
+          .data,
+      "Won't work: also tick Monitor training",
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('sees:training')),
+        matching: find.textContaining('also tick Monitor training'),
+      ),
+      findsOneWidget,
+    );
 
     // The screen NEVER ticks the other box. The server refuses rather than
     // implying, because monitor is the larger disclosure -- a screen that
@@ -1246,6 +1523,105 @@ void main() {
           )
           .value,
       isFalse,
+    );
+  });
+
+  testWidgets('a tab waiting on another module names it, select all ticks a '
+      'module, search finds a tab, and the panel lists what opens', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Manager', permissions: const [])],
+      catalogue: [
+        _catalogueModule(
+          'ai_assistance',
+          'AI Assistance',
+          actions: const [
+            ('view', 'View'),
+            ('manage', 'Edit answers and settings'),
+            ('ai.view', 'AI'),
+            ('staff_bot.view', 'Staff bot'),
+          ],
+          tabs: const ['ai.view', 'staff_bot.view'],
+          requires: const {
+            'staff_bot.view': ['reviews.view'],
+          },
+        ),
+        _catalogueModule(
+          'reviews',
+          'Reviews',
+          actions: const [('view', 'View')],
+        ),
+      ],
+    );
+
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('AI Assistance'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('action:ai_assistance.staff_bot.view')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const ValueKey('requirement:ai_assistance.staff_bot.view'),
+            ),
+          )
+          .data,
+      "Won't show: also tick Reviews › View",
+    );
+    // The panel opens nothing that is waiting.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('sees:ai_assistance')),
+        matching: find.textContaining('opens, with no tab ticked'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('select-all:ai_assistance')));
+    await tester.pumpAndSettle();
+    for (final key in [
+      'ai_assistance.manage',
+      'ai_assistance.ai.view',
+      'ai_assistance.staff_bot.view',
+    ]) {
+      expect(
+        tester.widget<CheckboxListTile>(find.byKey(ValueKey('action:$key'))).value,
+        isTrue,
+        reason: key,
+      );
+    }
+    expect(find.text('Clear all in AI Assistance'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('sees:ai_assistance')),
+        matching: find.textContaining('AI'),
+      ),
+      findsWidgets,
+    );
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const ValueKey('role-search')),
+        matching: find.byType(TextField),
+      ),
+      'staff',
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('module:reviews')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('action:ai_assistance.staff_bot.view')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('action:ai_assistance.manage')),
+      findsNothing,
     );
   });
 
@@ -1665,6 +2041,25 @@ Future<void> _pumpRoles(
       return _json({'data': roles.first});
     }
 
+    // Design 208: what this role may put on the phone's bottom bar.
+    if (request.url.path.endsWith('/mobile-bar/options')) {
+      return _json({
+        'data': {
+          'modules': [
+            {
+              'module': 'jobs',
+              'label': 'Jobs',
+              'tabs': [
+                {'tab': 'estimates', 'label': 'Estimates'},
+              ],
+            },
+            {'module': 'customers', 'label': 'Customers', 'tabs': []},
+            {'module': 'work_hours', 'label': 'Work Hours', 'tabs': []},
+          ],
+        },
+      });
+    }
+
     return _json({'data': roles});
   }));
 
@@ -1740,8 +2135,10 @@ Map<String, dynamic> _role(
   List<String> inboxes = const [],
   bool editable = true,
   int users = 1,
+  int ownInboxes = 0,
   List<Map<String, String>>? people,
 }) => {
+  'people_with_own_inboxes': ownInboxes,
   'id': id,
   'name': name,
   'is_administrator': !editable,
@@ -1798,6 +2195,8 @@ Map<String, dynamic> _catalogueModule(
   Map<String, List<String>> requires = const {},
   Map<String, String> descriptions = const {},
   List<String> tabs = const [],
+  Map<String, String> within = const {},
+  List<String> passive = const [],
 }) => {
   'key': key,
   'label': label,
@@ -1820,6 +2219,8 @@ Map<String, dynamic> _catalogueModule(
         'requires': requires[action] ?? const <String>[],
         'description': ?descriptions[action],
         if (tabs.contains(action)) 'tab': true,
+        'within': ?within[action],
+        if (passive.contains(action)) 'passive': true,
       },
   ],
   'inboxes': ?inboxes,

@@ -1,9 +1,12 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
+import '../../core/soft_keyboard.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/status_pill.dart';
@@ -45,7 +48,11 @@ class CallHistoryPane extends StatefulWidget {
     required this.onPick,
     this.reloadToken = 0,
     this.onRows,
+    this.bottomPadding = 4,
   });
+
+  /// Room under the last row, for a button floating over the list.
+  final double bottomPadding;
 
   final ApiClient api;
 
@@ -84,10 +91,17 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
   void initState() {
     super.initState();
     _load();
+    // A call ringing, answered or ended anywhere: re-read quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'phone_calls'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _searchDebounce?.cancel();
     super.dispose();
   }
@@ -117,13 +131,14 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
     if (old.reloadToken != widget.reloadToken) _load();
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final query = _query.trim();
     final response = await widget.api.get('/phone/calls', {
       'per_page': '40',
       if (query.isNotEmpty) 'q': query,
     });
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       _loading = false;
@@ -173,10 +188,11 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
       ),
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
+    final header = <Widget>[
+      // Typing on a phone the heading and the filter chips fold, so the
+      // search keeps the calls in view (mobile review 11-24).
+      FoldWhileTyping(
+        child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
           child: Row(
             children: [
@@ -192,27 +208,22 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
             ],
           ),
         ),
-        // Its own row under the heading: this column is about 210 wide
-        // beside the pad, too narrow to share a line with the title.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-          child: SizedBox(
-            child: TextField(
-              key: const ValueKey('comm-call-history-search'),
-              onChanged: _search,
-              textAlignVertical: TextAlignVertical.center,
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: 'Search name or number',
-                prefixIcon: Icon(Icons.search, size: 18),
-                prefixIconConstraints: BoxConstraints(minWidth: 36),
-                border: OutlineInputBorder(),
-              ),
-            ),
+      ),
+      // Its own row under the heading: this column is about 210 wide
+      // beside the pad, too narrow to share a line with the title.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        child: SizedBox(
+          child: ListSearch(
+            key: const ValueKey('comm-call-history-search'),
+            hint: 'Search name or number',
+            onChanged: _search,
           ),
         ),
-        if (missed > 0 || voicemail > 0)
-          Padding(
+      ),
+      if (missed > 0 || voicemail > 0)
+        FoldWhileTyping(
+          child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -225,36 +236,66 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
               ),
             ),
           ),
-        Divider(height: 1, color: EzBiziTheme.edge(context)),
-        Expanded(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null
-              ? Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(_error!, style: theme.textTheme.bodySmall),
-                )
-              : _rows.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(
-                    _query.trim().isNotEmpty
-                        ? 'Nothing matches "${_query.trim()}".'
-                        : 'No calls yet. Ones you make and take show up here.',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                )
-              : shown.isEmpty && _query.trim().isNotEmpty
-              ? Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(
-                    'Nothing matches "${_query.trim()}".',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                )
-              : _list(theme, shown),
         ),
-      ],
+      Divider(height: 1, color: EzBiziTheme.edge(context)),
+    ];
+    final Widget body = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : _error != null
+        ? Padding(
+            padding: const EdgeInsets.all(14),
+            child: Text(_error!, style: theme.textTheme.bodySmall),
+          )
+        : _rows.isEmpty
+        ? Padding(
+            padding: const EdgeInsets.all(14),
+            child: Text(
+              _query.trim().isNotEmpty
+                  ? 'Nothing matches "${_query.trim()}".'
+                  : 'No calls yet. Ones you make and take show up here.',
+              style: theme.textTheme.bodySmall,
+            ),
+          )
+        : shown.isEmpty && _query.trim().isNotEmpty
+        ? Padding(
+            padding: const EdgeInsets.all(14),
+            child: Text(
+              'Nothing matches "${_query.trim()}".',
+              style: theme.textTheme.bodySmall,
+            ),
+          )
+        : _list(theme, shown);
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Keyboard added back, so focusing the search never flips this.
+        final view = View.of(context);
+        final room =
+            box.maxHeight + view.viewInsets.bottom / view.devicePixelRatio;
+        if (room >= 360) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ...header,
+              Expanded(child: body),
+            ],
+          );
+        }
+        // Short (an iPhone Duo's cover screen): the heading, search and chips
+        // scroll away with the calls instead of leaving them no room (they
+        // overflowed by 3 px there).
+        return NestedScrollView(
+          headerSliverBuilder: (context, _) => [
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: header,
+              ),
+            ),
+          ],
+          body: body,
+        );
+      },
     );
   }
 
@@ -278,13 +319,22 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
       items.add(_Run(row));
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 4),
-      itemCount: items.length,
-      itemBuilder: (context, i) {
-        final item = items[i];
-        if (item is String) return _heading(theme, item);
-        return _tile((item as _Run), theme);
+    // The COLUMN's width decides whether the tag sits under the time, not
+    // the screen's: beside the dial pad on a computer the column is ~290 px,
+    // and a tag column plus the clock left the name ~70 px ("Rach…",
+    // "+1 (77…"), UI pass 2026-11-17.
+    return LayoutBuilder(
+      builder: (context, box) {
+        final stack = box.maxWidth < 480;
+        return ListView.builder(
+          padding: EdgeInsets.only(bottom: widget.bottomPadding),
+          itemCount: items.length,
+          itemBuilder: (context, i) {
+            final item = items[i];
+            if (item is String) return _heading(theme, item);
+            return _tile((item as _Run), theme, stack: stack);
+          },
+        );
       },
     );
   }
@@ -325,7 +375,7 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
     return null;
   }
 
-  Widget _tile(_Run run, ThemeData theme) {
+  Widget _tile(_Run run, ThemeData theme, {required bool stack}) {
     final row = run.first;
     final peer = row.peer;
     final muted = theme.colorScheme.onSurfaceVariant;
@@ -383,17 +433,6 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
               ),
             ),
           ],
-          if (row.peerName != null || row.callerKind == 'colleague') ...[
-            const SizedBox(width: 6),
-            const StatusPill('Teammate'),
-          ] else if (row.customerId != null ||
-              row.callerKind == 'customer') ...[
-            const SizedBox(width: 6),
-            const StatusPill('Customer', tone: Tone.info),
-          ] else if (row.callerKind == 'lead') ...[
-            const SizedBox(width: 6),
-            const StatusPill('Lead', tone: Tone.review),
-          ],
         ],
       ),
       subtitle: Text(
@@ -406,12 +445,50 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      // WHEN, right-aligned. Under a day heading the clock is enough.
-      trailing: Text(
-        at == null ? '' : _clock(at),
-        style: theme.textTheme.bodySmall?.copyWith(color: muted),
-      ),
+      // WHEN, right-aligned. Under a day heading the clock is enough. The tag
+      // sits in a fixed column just left of it so tags line up down the list
+      // (design 187); on a phone it goes under the time instead.
+      trailing: _whenAndTag(row, at, muted, theme, stack: stack),
       onTap: peer.startsWith('+') ? () => widget.onPick(peer) : null,
+    );
+  }
+
+  Widget _whenAndTag(
+    CallRow row,
+    DateTime? at,
+    Color muted,
+    ThemeData theme, {
+    required bool stack,
+  }) {
+    final when = Text(
+      at == null ? '' : _clock(at),
+      style: theme.textTheme.bodySmall?.copyWith(color: muted),
+    );
+    final tag = row.peerName != null || row.callerKind == 'colleague'
+        ? const StatusPill('Teammate')
+        : row.customerId != null || row.callerKind == 'customer'
+        ? const StatusPill('Customer', tone: Tone.info)
+        : row.callerKind == 'lead'
+        ? const StatusPill('Lead', tone: Tone.review)
+        : null;
+    if (stack) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [when, ?tag],
+      );
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 88,
+          child: Align(alignment: Alignment.centerRight, child: tag),
+        ),
+        const SizedBox(width: 8),
+        when,
+      ],
     );
   }
 

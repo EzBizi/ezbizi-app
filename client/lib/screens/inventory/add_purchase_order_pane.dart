@@ -173,78 +173,62 @@ class _AddPurchaseOrderPaneState extends State<AddPurchaseOrderPane> {
         (_companyId != null || _atOrganization) &&
         _readyLines.isNotEmpty;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return formPane(
+      context,
+      'New purchase order',
+      showBack: widget.showBack,
+      busy: _busy,
+      onCancel: widget.onCancel,
+      onSave: canSave ? _save : null,
+      saveLabel: 'Save draft',
+      loading: _loading,
       children: [
-        paneHeader(
-          context,
-          'New purchase order',
-          showBack: widget.showBack,
-          onBack: _busy ? null : widget.onCancel,
+        InventoryPlaceFields(
+          me: _me,
+          companyId: _companyId,
+          franchiseId: _franchiseId,
+          enabled: !_busy,
+          onCompanyChanged: (v) => setState(() {
+            _companyId = v;
+            _franchiseId = null;
+          }),
+          onFranchiseChanged: (v) =>
+              setState(() => _franchiseId = v),
         ),
-        Expanded(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      InventoryPlaceFields(
-                        me: _me,
-                        companyId: _companyId,
-                        franchiseId: _franchiseId,
-                        enabled: !_busy,
-                        onCompanyChanged: (v) => setState(() {
-                          _companyId = v;
-                          _franchiseId = null;
-                        }),
-                        onFranchiseChanged: (v) =>
-                            setState(() => _franchiseId = v),
-                      ),
-                      const SizedBox(height: 12),
-                      SearchPickerField<String>(
-                        value: _vendorId,
-                        label: 'Vendor',
-                        options: [
-                          for (final v in _vendors)
-                            SearchOption(value: v['id'] as String?, label: v['name'] as String? ?? ''),
-                        ],
-                        onChanged: _busy
-                            ? null
-                            : (v) => setState(() => _vendorId = v),
-                      ),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton(
-                          onPressed: _busy
-                              ? null
-                              : () => setState(() => _addingVendor = true),
-                          child: const Text('New vendor'),
-                        ),
-                      ),
-                      ...orderLineFields(
-                        lines: _lines,
-                        items: _items,
-                        busy: _busy,
-                        financials: _financials,
-                        keyPrefix: 'po',
-                        amountLabel: 'Unit cost',
-                        changed: () => setState(() {}),
-                      ),
-                      if (_error != null) ...[
-                        const SizedBox(height: 8),
-                        ErrorNote(_error!),
-                      ],
-                    ],
-                  ),
-                ),
+        const SizedBox(height: 12),
+        SearchPickerField<String>(
+          value: _vendorId,
+          label: 'Vendor',
+          options: [
+            for (final v in _vendors)
+              SearchOption(value: v['id'] as String?, label: v['name'] as String? ?? ''),
+          ],
+          onChanged: _busy
+              ? null
+              : (v) => setState(() => _vendorId = v),
         ),
-        paneFooter(
-          onCancel: _busy ? null : widget.onCancel,
-          onSave: canSave ? _save : null,
-          saveLabel: 'Save draft',
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: _busy
+                ? null
+                : () => setState(() => _addingVendor = true),
+            child: const Text('New vendor'),
+          ),
         ),
+        ...orderLineFields(
+          lines: _lines,
+          items: _items,
+          busy: _busy,
+          financials: _financials,
+          keyPrefix: 'po',
+          amountLabel: 'Unit cost',
+          changed: () => setState(() {}),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          ErrorNote(_error!),
+        ],
       ],
     );
   }

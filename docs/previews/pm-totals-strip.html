@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PM totals strip</title>
+<style>
+:root{--bg:#f6f8f9;--paper:#fff;--ink:#14191c;--muted:#5d6970;--line:#dde3e6;
+--ok:#1e7a46;--okc:#e3f4ea;--cau:#9a6400;--cauc:#fdf1d8;--pri:#00739a;--pric:#dff1f8}
+.dark{--bg:#0c1014;--paper:#151b20;--ink:#e8eef1;--muted:#93a1a8;--line:#26313a;
+--ok:#6fd49a;--okc:#173626;--cau:#f2c063;--cauc:#3a2d10;--pri:#5fc8ea;--pric:#0f3443}
+body{margin:0;font:14px/1.4 Inter,Segoe UI,Roboto,sans-serif;background:#e9edef;color:#14191c}
+.wrap{max-width:1200px;margin:0 auto;padding:24px 16px}
+h1{margin:0 0 4px}h2{margin:32px 0 6px;font-size:18px}.cap{color:#4c575d;margin:0 0 12px;max-width:820px}
+.rec{background:#00739a;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}.trio{display:grid;grid-template-columns:2fr 1fr;gap:12px}
+@media(max-width:900px){.pair,.trio{grid-template-columns:1fr}}
+.frame{background:var(--bg);color:var(--ink);border-radius:10px;padding:16px;border:1px solid #cfd6da}
+.frame.phone{max-width:390px}
+.lbl{font-size:11px;color:#4c575d;margin:0 0 4px;font-weight:600}
+.muted{color:var(--muted)}
+/* 1 tinted tiles */
+.t1{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.t1 div{border-radius:10px;padding:12px 14px}.t1 span{display:block;font-size:12px;font-weight:600}.t1 b{font-size:22px;font-variant-numeric:tabular-nums}
+.ok{background:var(--okc);color:var(--ok)}.cau{background:var(--cauc);color:var(--cau)}.pri{background:var(--pric);color:var(--pri)}
+/* 2 accent cards */
+.t2{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.t2 div{background:var(--paper);border:1px solid var(--line);border-left:4px solid;border-radius:10px;padding:10px 14px;display:flex;gap:12px;align-items:center}
+.t2 i{width:34px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-weight:800;flex:0 0 auto}
+.t2 span{display:block;font-size:12px;color:var(--muted)}.t2 b{font-size:20px;font-variant-numeric:tabular-nums}
+/* 3 segmented bar */
+.t3{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px}
+.t3 .top{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px}.t3 .top b{font-size:22px}
+.bar{display:flex;height:12px;border-radius:99px;overflow:hidden;margin:10px 0}
+.bar .p{background:var(--ok)}.bar .r{background:var(--cau)}
+.leg{display:flex;gap:18px;flex-wrap:wrap;font-size:13px}.leg i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+/* 4 pills */
+.t4{display:flex;gap:8px;flex-wrap:wrap}.t4 span{border-radius:99px;padding:5px 12px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.phone .t1,.phone .t2{grid-template-columns:1fr}
+.phone .t1 div{display:flex;justify-content:space-between;align-items:baseline}.phone .t1 b{font-size:18px}
+</style></head><body><div class="wrap">
+<h1>Project Management · totals strip</h1>
+<p class="cap">Today: three lines of plain text. Four ways to make the figures read at a glance. Paid = green, Remaining = amber (not red: an open balance is normal, not a problem), Total = brand. Figures from Jose's screenshot.</p>
+
+<template id="o1"><div class="t1"><div class="ok"><span>Paid</span><b>$488,247.72</b></div><div class="cau"><span>Remaining</span><b>$499,530.34</b></div><div class="pri"><span>Total of jobs</span><b>$973,417.87</b></div></div></template>
+<template id="o2"><div class="t2"><div style="border-left-color:var(--ok)"><i class="ok">✓</i><p style="margin:0"><span>Total paid</span><b>$488,247.72</b></p></div><div style="border-left-color:var(--cau)"><i class="cau">⏳</i><p style="margin:0"><span>Remaining balance</span><b>$499,530.34</b></p></div><div style="border-left-color:var(--pri)"><i class="pri">$</i><p style="margin:0"><span>Total of jobs</span><b>$973,417.87</b></p></div></div></template>
+<template id="o3"><div class="t3"><div class="top"><span class="muted">Total of jobs</span><b>$973,417.87</b></div><div class="bar"><div class="p" style="width:49.4%"></div><div class="r" style="width:50.6%"></div></div><div class="leg"><span><i style="background:var(--ok)"></i>Paid <b>$488,247.72</b> <span class="muted">· 49%</span></span><span><i style="background:var(--cau)"></i>Remaining <b>$499,530.34</b> <span class="muted">· 51%</span></span></div></div></template>
+<template id="o4"><div class="t4"><span class="ok">Paid $488,247.72</span><span class="cau">Remaining $499,530.34</span><span class="pri">Total $973,417.87</span></div></template>
+
+<h2>1 · Tinted stat tiles <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Three equal tiles, the figure large. Reads fastest; equal-size siblings. On phone they stack as label-left, figure-right rows.</p><div data-o="o1"></div>
+<h2>2 · Cards with icon and accent bar</h2>
+<p class="cap">White cards with a coloured left edge and icon. Quieter colour, more chrome; takes more height.</p><div data-o="o2"></div>
+<h2>3 · Paid vs remaining bar</h2>
+<p class="cap">One card: the total, then a bar split paid/remaining with shares. Shows progress, which the tiles don't. Note: Paid + Remaining here ($987,778) is more than the total, so the bar uses each against their sum; worth checking the figures first.</p><div data-o="o3"></div>
+<h2>4 · Compact pills</h2>
+<p class="cap">Smallest: one line of tinted pills. Fits above a list, but the figures are as small as today's.</p><div data-o="o4"></div>
+</div>
+<script>
+document.querySelectorAll('[data-o]').forEach(h=>{const t=document.getElementById(h.dataset.o).innerHTML;
+h.innerHTML=`<div class="trio"><div><p class="lbl">Desktop · dark</p><div class="frame dark">${t}</div><p class="lbl" style="margin-top:10px">Desktop · light</p><div class="frame">${t}</div></div><div><p class="lbl">Phone · dark</p><div class="frame dark phone">${t}</div><p class="lbl" style="margin-top:10px">Phone · light</p><div class="frame phone">${t}</div></div></div>`});
+</script></body></html>

@@ -50,6 +50,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MonitoringFloorPlan extends Model implements StatesRetention
 {
     use BelongsToTenant, HasUuids;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'monitoring_floor_plans';
+
+    /** Filed where it is assigned (ChangeFeed). */
+    public function changeFeedPlace(): array
+    {
+        return [$this->assigned_company_id, $this->assigned_franchise_id];
+    }
+
 
     protected $table = 'monitoring_floor_plans';
 

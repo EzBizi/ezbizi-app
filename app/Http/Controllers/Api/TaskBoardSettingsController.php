@@ -2,12 +2,19 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Jobs\ArchiveMondayGroup;
+use App\Jobs\MoveMondayGroup;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
+use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\TaskStatus;
 use App\Support\Audit\AuditLogger;
+use App\Support\Integrations\DisconnectCode;
+use App\Support\Tasks\BoardRules;
+use App\Support\Tasks\ColumnConverter;
+use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -58,7 +65,13 @@ class TaskBoardSettingsController extends Controller
             $this->uniqueStatusName($taskBoard, $input['name'], except: $row->id);
         }
 
-        DB::transaction(function () use ($row, $input, $request) {
+        abort_if(($input['retired'] ?? false) && ($input['is_default'] ?? $row->is_default), 422, 'The default label cannot be retired. Choose another default first.');
+
+        DB::transaction(function () use ($row, $input, $request, $taskBoard) {
+            // One default per board.
+            if ($input['is_default'] ?? false) {
+                $taskBoard->statuses()->whereKeyNot($row->id)->update(['is_default' => false]);
+            }
             $row->fill($input);
             $doneChanged = $row->isDirty('is_done');
             $this->audit->logChange('task_board.status_updated', $row, $request->user());
@@ -129,14 +142,33 @@ class TaskBoardSettingsController extends Controller
         $input = $request->validate($this->columnRules(required: false));
         $type = $input['type'] ?? $row->type;
 
+        // A new type carries the values over where it can (Jose, 2026-11-09)
+        // and says first how many it cannot; accept_loss goes ahead anyway.
+        $plan = null;
         if ($type !== $row->type && $row->values()->exists()) {
-            throw ValidationException::withMessages(['type' => 'This column has values: its type cannot change.']);
+            $target = $row->replicate();
+            $target->type = $type;
+            $target->settings = $this->settings($type, array_key_exists('settings', $input) ? $input['settings'] : $row->settings);
+            $plan = app(ColumnConverter::class)->plan($row, $target);
+            $lost = count(array_filter($plan['rows'], fn ($r) => $r === null));
+            if ($lost > 0 && ! $request->boolean('accept_loss')) {
+                throw ValidationException::withMessages(['type' => trans_choice(
+                    ':count value cannot become '.$type.' and would be cleared.|:count values cannot become '.$type.' and would be cleared.',
+                    $lost, ['count' => $lost])]);
+            }
         }
 
-        DB::transaction(function () use ($row, $input, $type, $request) {
+        DB::transaction(function () use ($row, $input, $type, $request, $plan) {
             $row->fill(array_intersect_key($input, array_flip(['name', 'position', 'hidden'])));
             $row->type = $type;
-            if (array_key_exists('settings', $input) || $type !== $row->getOriginal('type')) {
+            if ($plan !== null) {
+                $row->settings = $this->settings($type, ['options' => $plan['options']] + ($input['settings'] ?? $row->settings ?? []));
+                foreach ($plan['rows'] as $id => $values) {
+                    $values === null
+                        ? TaskColumnValue::query()->whereKey($id)->delete()
+                        : TaskColumnValue::query()->whereKey($id)->update($values);
+                }
+            } elseif (array_key_exists('settings', $input) || $type !== $row->getOriginal('type')) {
                 $row->settings = $this->settings($type, array_key_exists('settings', $input) ? $input['settings'] : $row->settings);
                 // A value pointing at an option that no longer exists is cleared.
                 if (in_array($type, TaskColumn::WITH_OPTIONS, true)) {
@@ -183,9 +215,32 @@ class TaskBoardSettingsController extends Controller
     {
         $this->authorize('update', $taskBoard);
         $row = TaskGroup::query()->where('board_id', $taskBoard->id)->findOrFail($group);
-        $row->fill($request->validate($this->groupRules(required: false)));
+        $input = $request->validate($this->groupRules(required: false));
+        $moveTo = array_key_exists('position', $input) ? (int) $input['position'] : null;
+        unset($input['position']);
+        $row->fill($input);
+        $pushed = array_values(array_filter([$row->isDirty('name') ? 'title' : null, $row->isDirty('colour') ? 'color' : null]));
         $this->audit->logChange('task_board.group_updated', $row, $request->user());
         $row->save();
+        // Rename and colour go to Monday too (Jose 11-25: every setting, both ways).
+        if ($pushed !== [] && str_starts_with((string) $row->external_ref, 'monday:')) {
+            \App\Jobs\PushMondayGroup::dispatchIf(config('services.monday.enabled'), (string) $taskBoard->id, (string) $row->id, $pushed);
+        }
+        if ($moveTo !== null) {
+            // A place in the board's order (Jose 11-19: groups could not be reordered): the others
+            // renumbered around it, and Monday's twin moved after its new neighbour there.
+            $order = TaskGroup::query()->where('board_id', $taskBoard->id)->whereKeyNot($row->id)->orderBy('position')->get()->values();
+            $at = max(0, min($moveTo, $order->count()));
+            $order->splice($at, 0, [$row]);
+            foreach ($order as $i => $g) {
+                if ($g->position !== $i) {
+                    $g->forceFill(['position' => $i])->save();
+                }
+            }
+            if (str_starts_with((string) $row->external_ref, 'monday:') && str_starts_with((string) $taskBoard->external_ref, 'monday:')) {
+                MoveMondayGroup::dispatchIf(config('services.monday.enabled'), (string) $taskBoard->id, (string) $row->id);
+            }
+        }
 
         return response()->json(['data' => self::presentGroup($row)]);
     }
@@ -202,6 +257,8 @@ class TaskBoardSettingsController extends Controller
         if (! $moveTo && Task::query()->where('group_id', $row->id)->exists()) {
             throw ValidationException::withMessages(['move_to' => 'This group has tasks: choose a group to move them to.']);
         }
+        // A delete takes a fresh authenticator code (Jose 11-19), the integrations' step-up.
+        app(DisconnectCode::class)->require($request, 'delete this group');
 
         // Deleted tasks move too: the group's FK would otherwise hard-delete them.
         $to = $moveTo
@@ -209,20 +266,131 @@ class TaskBoardSettingsController extends Controller
                 ?? throw ValidationException::withMessages(['move_to' => 'That group is not on this board.'])
             : TaskGroup::query()->where('board_id', $taskBoard->id)->whereKeyNot($row->id)->orderBy('position')->first();
 
+        $live = Task::query()->where('group_id', $row->id)->pluck('id');
         DB::transaction(function () use ($row, $to, $request) {
             Task::query()->withTrashed()->where('group_id', $row->id)->update(['group_id' => $to->id]);
             $this->audit->log('task_board.group_deleted', $row, actor: $request->user());
             $row->delete();
         });
+        // Monday follows: each moved task goes to its new group there; Monday's emptied group is
+        // archived (never delete_group, which deletes its items) once its items have moved.
+        foreach (Task::query()->whereIn('id', $live)->get() as $task) {
+            app(MondayOutbox::class)->record($task, ['group']);
+        }
+        if (str_starts_with((string) $row->external_ref, 'monday:') && str_starts_with((string) $taskBoard->external_ref, 'monday:')) {
+            ArchiveMondayGroup::dispatchIf(config('services.monday.enabled'), (string) $taskBoard->id, substr($row->external_ref, 7))->delay(now()->addMinutes(3));
+        }
 
         return response()->noContent();
+    }
+
+    /** Monday's "Duplicate this group": "Duplicate of …" just below, with or without its tasks. */
+    public function duplicateGroup(Request $request, TaskBoard $taskBoard, string $group): JsonResponse
+    {
+        $this->authorize('update', $taskBoard);
+        $row = TaskGroup::query()->where('board_id', $taskBoard->id)->findOrFail($group);
+        $withItems = $request->boolean('with_items');
+        $copy = DB::transaction(function () use ($taskBoard, $row, $withItems, $request) {
+            TaskGroup::query()->where('board_id', $taskBoard->id)->where('position', '>', $row->position)->increment('position');
+            $copy = TaskGroup::query()->create(['organization_id' => $taskBoard->organization_id, 'board_id' => $taskBoard->id,
+                'name' => mb_substr('Duplicate of '.$row->name, 0, 100), 'colour' => $row->colour, 'position' => $row->position + 1]);
+            if ($withItems) {
+                $writer = app(TaskWriter::class);
+                foreach (Task::query()->where('group_id', $row->id)->whereNull('parent_task_id')->orderBy('position')->get() as $t) {
+                    $writer->create($taskBoard, [
+                        'title' => $t->title, 'group_id' => $copy->id, 'status_id' => $t->status_id, 'due_on' => $t->due_on?->toDateString(),
+                        'assignee_user_ids' => $t->owners()->pluck('user_id')->map(fn ($id) => (string) $id)->all(),
+                        'values' => $t->values()->get()->mapWithKeys(fn ($v) => [$v->column_id => \App\Http\Controllers\Api\TasksController::valueOf($v)])->filter(fn ($v) => $v !== null)->all(),
+                    ], $request->user());
+                }
+            }
+            $this->audit->log('task_board.group_duplicated', $copy, actor: $request->user());
+
+            return $copy;
+        });
+
+        return response()->json(['data' => self::presentGroup($copy)], 201);
+    }
+
+    /** Monday's "Move to board": the group and its tasks to another board (its group of that name, made if missing). */
+    public function moveGroupToBoard(Request $request, TaskBoard $taskBoard, string $group): JsonResponse
+    {
+        $this->authorize('update', $taskBoard);
+        $row = TaskGroup::query()->where('board_id', $taskBoard->id)->findOrFail($group);
+        $target = TaskBoard::query()->findOrFail($request->validate(['board_id' => ['required', 'uuid']])['board_id']);
+        $this->authorize('update', $target);
+        abort_if($target->id === $taskBoard->id, 422, 'That is this board.');
+        $to = TaskGroup::query()->where('board_id', $target->id)->whereNull('archived_at')->get()
+            ->first(fn ($g) => mb_strtolower(trim($g->name)) === mb_strtolower(trim($row->name)))
+            ?? (function () use ($target, $row) {
+                // On top, as Monday puts a moved group.
+                TaskGroup::query()->where('board_id', $target->id)->increment('position');
+
+                return TaskGroup::query()->create(['organization_id' => $target->organization_id, 'board_id' => $target->id, 'name' => $row->name,
+                    'colour' => $row->colour, 'position' => 0]);
+            })();
+        $writer = app(TaskWriter::class);
+        $n = 0;
+        foreach (Task::query()->where('group_id', $row->id)->whereNull('parent_task_id')->orderBy('position')->get() as $t) {
+            $writer->move($t, $to, null, $request->user());
+            $n++;
+        }
+        if ($taskBoard->groups()->count() > 1 && ! Task::query()->withTrashed()->where('group_id', $row->id)->exists()) {
+            $this->audit->log('task_board.group_moved', $row, ['board_id' => $target->id], actor: $request->user());
+            $row->delete();
+        }
+
+        return response()->json(['data' => ['group_id' => $to->id, 'board_id' => $target->id, 'moved' => $n]]);
+    }
+
+    /** Monday's "Archive group": off the board with its tasks (archived on Monday too); Restore brings both back. */
+    public function archiveGroup(Request $request, TaskBoard $taskBoard, string $group): JsonResponse
+    {
+        $this->authorize('update', $taskBoard);
+        $row = TaskGroup::query()->where('board_id', $taskBoard->id)->findOrFail($group);
+        if ($taskBoard->groups()->count() <= 1) {
+            throw ValidationException::withMessages(['group' => 'A board needs at least one group.']);
+        }
+        $at = now();
+        $writer = app(TaskWriter::class);
+        DB::transaction(function () use ($row, $at, $writer, $request) {
+            $row->forceFill(['archived_at' => $at])->save();
+            foreach (Task::query()->where('group_id', $row->id)->whereNull('parent_task_id')->get() as $t) {
+                $writer->delete($t, $request->user());
+            }
+            $this->audit->log('task_board.group_archived', $row, actor: $request->user());
+        });
+        if (str_starts_with((string) $row->external_ref, 'monday:') && str_starts_with((string) $taskBoard->external_ref, 'monday:')) {
+            ArchiveMondayGroup::dispatchIf(config('services.monday.enabled'), (string) $taskBoard->id, substr($row->external_ref, 7))->delay(now()->addMinutes(3));
+        }
+
+        return response()->json(['data' => self::presentGroup($row) + ['archived_at' => $at->toIso8601String()]]);
+    }
+
+    public function restoreGroup(Request $request, TaskBoard $taskBoard, string $group): JsonResponse
+    {
+        $this->authorize('update', $taskBoard);
+        $row = TaskGroup::query()->where('board_id', $taskBoard->id)->whereNotNull('archived_at')->findOrFail($group);
+        $writer = app(TaskWriter::class);
+        DB::transaction(function () use ($row, $writer, $request) {
+            // The tasks the archive took, not ones deleted before it.
+            foreach (Task::onlyTrashed()->where('group_id', $row->id)->whereNull('parent_task_id')->where('deleted_at', '>=', $row->archived_at->copy()->subSecond())->get() as $t) {
+                $writer->restore($t, $request->user());
+            }
+            $row->forceFill(['archived_at' => null])->save();
+            $this->audit->log('task_board.group_restored', $row, actor: $request->user());
+        });
+
+        return response()->json(['data' => self::presentGroup($row)]);
     }
 
     // ── Shapes ───────────────────────────────────────────────────────────
 
     public static function presentStatus(TaskStatus $s): array
     {
-        return ['id' => $s->id, 'name' => $s->name, 'colour' => $s->colour, 'position' => $s->position, 'is_done' => $s->is_done];
+        return ['id' => $s->id, 'name' => $s->name, 'colour' => $s->colour, 'position' => $s->position, 'is_done' => $s->is_done,
+            // Gap review P1: the label a new task starts on, and a label kept on its tasks but out of the pickers.
+            'is_default' => (bool) $s->is_default, 'retired' => (bool) $s->retired];
     }
 
     public static function presentColumn(TaskColumn $c): array
@@ -239,7 +407,11 @@ class TaskBoardSettingsController extends Controller
 
     public static function presentGroup(TaskGroup $g): array
     {
-        return ['id' => $g->id, 'name' => $g->name, 'colour' => $g->colour, 'position' => $g->position];
+        // A role group's job, under its heading (management's board rules, Jose 11-17).
+        $roles = BoardRules::rolesOf((string) $g->name);
+
+        return ['id' => $g->id, 'name' => $g->name, 'colour' => $g->colour, 'position' => $g->position,
+            'purpose' => $roles === [] ? null : implode(' ', array_map(fn ($r) => BoardRules::PURPOSE[$r], $roles))];
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
@@ -262,7 +434,7 @@ class TaskBoardSettingsController extends Controller
         $taken = $board->statuses()->get()
             ->contains(fn (TaskStatus $s) => $s->id !== $except && mb_strtolower($s->name) === mb_strtolower($name));
         if ($taken) {
-            throw ValidationException::withMessages(['name' => 'This board already has a status with that name.']);
+            throw ValidationException::withMessages(['name' => "There is already a status called {$name} on this board."]);
         }
     }
 
@@ -271,6 +443,10 @@ class TaskBoardSettingsController extends Controller
      * with a stable id generated for any option that has none; other types
      * carry no options.
      */
+    /** The words a formula may use: its functions (the client's evalFormula) and TRUE/FALSE. */
+    private const FORMULA_WORDS = ['IF', 'AND', 'OR', 'NOT', 'VALUE', 'CONCATENATE', 'FLOOR', 'CEILING', 'ROUND', 'MOD', 'ABS',
+        'MIN', 'MAX', 'SUM', 'AVERAGE', 'LEN', 'UPPER', 'LOWER', 'LEFT', 'RIGHT', 'TRUE', 'FALSE'];
+
     private function settings(string $type, ?array $settings): ?array
     {
         $out = [];
@@ -283,6 +459,43 @@ class TaskBoardSettingsController extends Controller
         }
         if (in_array($type, TaskColumn::WITH_OPTIONS, true)) {
             $out['options'] = $this->options($settings['options'] ?? []);
+        }
+        if (in_array($type, ['number', 'currency', 'formula'], true)) {
+            foreach (['format' => TaskColumn::FORMATS, 'footer' => TaskColumn::FOOTERS] as $k => $allowed) {
+                if (isset($settings[$k])) {
+                    in_array($settings[$k], $allowed, true)
+                        ?: throw ValidationException::withMessages(["settings.$k" => 'One of '.implode(', ', $allowed).'.']);
+                    $out[$k] = $settings[$k];
+                }
+            }
+        }
+        if ($type === 'formula') {
+            // Monday's formula language with columns as [Name]; the client works it out.
+            // Checked here only for size and balanced brackets and quotes.
+            $expr = $settings['expression'] ?? null;
+            $bare = is_string($expr) ? preg_replace(['/"(?:[^"]|"")*"/u', '/\[[^\[\]]{1,255}\]/u'], ['""', '1'], $expr) : null;
+            if ($bare === null || mb_strlen($expr) > 2000 || substr_count($bare, '(') !== substr_count($bare, ')')
+                || trim($expr) === '' || preg_match('/[\[\]{};`$]/', $bare) || str_contains($bare, chr(92))
+                || collect(preg_match_all('/[A-Za-z_]\w*/', $bare, $m) ? $m[0] : [])->contains(fn ($w) => ! in_array(strtoupper($w), self::FORMULA_WORDS, true))) {
+                throw ValidationException::withMessages(['settings.expression' => 'Columns in [brackets], numbers, "text", + - × ÷ & and functions like IF, CONCATENATE, FLOOR, MOD.']);
+            }
+            $out['expression'] = $expr;
+        }
+        if ($type === 'rating') {
+            $max = $settings['max'] ?? 5;
+            is_int($max) && $max >= 1 && $max <= 10
+                ?: throw ValidationException::withMessages(['settings.max' => 'A top rating from 1 to 10.']);
+            $out['max'] = $max;
+        }
+        if ($type === 'mirror') {
+            // Which connect column to follow, and which column of the tasks it names to show.
+            foreach (['connect_column_id', 'column_id'] as $k) {
+                $id = $settings[$k] ?? null;
+                if ($id !== null && (! is_string($id) || ! TaskColumn::query()->whereKey($id)->exists())) {
+                    throw ValidationException::withMessages(["settings.$k" => 'That column does not exist.']);
+                }
+                $out[$k] = $id;
+            }
         }
 
         return $out === [] ? null : $out;
@@ -305,7 +518,10 @@ class TaskBoardSettingsController extends Controller
                 throw ValidationException::withMessages(["settings.options.{$i}.id" => 'Two options share an id.']);
             }
             $colour = $o['colour'] ?? null;
-            $out[$id] = ['id' => $id, 'label' => trim($label), 'colour' => is_string($colour) ? mb_substr($colour, 0, 16) : null];
+            $out[$id] = ['id' => $id, 'label' => trim($label), 'colour' => is_string($colour) ? mb_substr($colour, 0, 16) : null]
+                // Retired (Jose, 2026-11-09, monday's deactivated label): kept on
+                // the tasks that have it, left out of every picker.
+                + (($o['retired'] ?? false) === true ? ['retired' => true] : []);
         }
 
         return array_values($out);
@@ -319,6 +535,8 @@ class TaskBoardSettingsController extends Controller
             'name' => [...$req, 'string', 'max:100'],
             'colour' => ['sometimes', 'nullable', 'string', 'max:16'],
             'is_done' => ['sometimes', 'boolean'],
+            'is_default' => ['sometimes', 'boolean'],
+            'retired' => ['sometimes', 'boolean'],
             'position' => ['sometimes', 'integer', 'min:0'],
         ];
     }
@@ -331,6 +549,7 @@ class TaskBoardSettingsController extends Controller
             'name' => [...$req, 'string', 'max:100'],
             'type' => [...$req, Rule::in(TaskColumn::TYPES)],
             'settings' => ['sometimes', 'nullable', 'array'],
+            'accept_loss' => ['sometimes', 'boolean'],
             'hidden' => ['sometimes', 'boolean'],
             'position' => ['sometimes', 'integer', 'min:0'],
         ];

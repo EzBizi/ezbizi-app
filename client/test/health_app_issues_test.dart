@@ -72,6 +72,34 @@ void main() {
     expect(find.textContaining('native calls in flight: none'), findsOneWidget);
   });
 
+  // UI queue 168: one row per error, whatever the web build named its class.
+  testWidgets('the same error from two places is one row with the reports added', (tester) async {
+    Map<String, dynamic> p(String id, String suffix, int n) => {
+      'fingerprint': id, 'kind': 'dart_error',
+      'message': 'Bad state: RenderBox was not laid out: minified:$suffix',
+      'total': n, 'people': 1, 'modules': ['leads'], 'platforms': ['web'],
+      'versions': ['0.0.0515'], 'last_seen_at': '2026-11-02 20:44:26',
+    };
+    await pump(tester, {'days': 7, 'problems': [p('a', 'axf', 2), p('b', 'a3o', 3)]});
+
+    expect(find.byKey(const ValueKey('health-issue-a')), findsOneWidget);
+    expect(find.byKey(const ValueKey('health-issue-b')), findsNothing);
+    expect(find.textContaining('5× by 1 person'), findsOneWidget);
+    expect(find.textContaining('1 problems, 5 reports'), findsOneWidget);
+  });
+
+  testWidgets('a check that needs attention is listed above the healthy ones', (tester) async {
+    await pump(tester, {
+      'days': 7,
+      'problems': [
+        {'fingerprint': 'x', 'kind': 'freeze', 'message': 'Stuck', 'total': 1, 'people': 1, 'last_seen_at': 'now'},
+      ],
+    });
+    final issues = tester.getTopLeft(find.byKey(const Key('health-app-issues'))).dy;
+    final backups = tester.getTopLeft(find.text('Backups')).dy;
+    expect(issues, lessThan(backups));
+  });
+
   testWidgets('nothing reported reads as healthy', (tester) async {
     await pump(tester, {'days': 7, 'problems': <dynamic>[]});
     expect(find.text('No errors, crashes or freezes reported in the last 7 days.'), findsOneWidget);

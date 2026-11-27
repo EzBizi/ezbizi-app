@@ -1,3 +1,4 @@
+import '../../widgets/image_gallery.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -61,11 +62,21 @@ class WorkizExtras {
 }
 
 /// A file that the browser can draw as a picture.
-bool isPicture(String name, String url) {
-  final probe = (name.contains('.') ? name : Uri.tryParse(url)?.path ?? '')
-      .toLowerCase();
-  return const ['.jpg', '.jpeg', '.png', '.gif', '.webp'].any(probe.endsWith);
-}
+/// By the name or the link: "whatsapp image 2026-11-25 at 10.32.11" has a
+/// dot but no extension, its link does (Adeline 01a2137d, 2026-11-25).
+bool isPicture(String name, String url) => [
+  name,
+  Uri.tryParse(url)?.path ?? '',
+].any(
+  (p) => const [
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.webp',
+    '.heic',
+  ].any(p.toLowerCase().endsWith),
+);
 
 Future<void> _open(String url) =>
     launchUrl(Uri.parse(url), webOnlyWindowName: '_blank');
@@ -528,7 +539,18 @@ class _WorkizFilesState extends State<WorkizFiles> {
                         borderRadius: BorderRadius.circular(8),
                         child: InkWell(
                           key: ValueKey('job-photo-$i'),
-                          onTap: () => setState(() => _viewing = i),
+                          onTap: () => showImageGallery(
+                            context,
+                            start: i,
+                            images: [
+                              for (final p in pictures)
+                                (
+                                  name: p.name,
+                                  image: NetworkImage(p.url, webHtmlElementStrategy: WebHtmlElementStrategy.prefer),
+                                  download: () => _open(p.url),
+                                ),
+                            ],
+                          ),
                           child: Tooltip(
                             message: pictures[i].name,
                             child: _Picture(

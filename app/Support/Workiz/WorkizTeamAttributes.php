@@ -21,10 +21,10 @@ final class WorkizTeamAttributes
     public static function fromPayload(array $member): array
     {
         return [
-            'remote_id' => self::text($member['id'] ?? null) ?? '',
-            'name' => self::text($member['name'] ?? null),
+            'remote_id' => WorkizValue::text($member['id'] ?? null) ?? '',
+            'name' => WorkizValue::text($member['name'] ?? null),
             'email' => self::email($member['email'] ?? null),
-            'role' => self::text($member['role'] ?? null),
+            'role' => WorkizValue::text($member['role'] ?? null),
             'is_field_tech' => self::bool($member['fieldTech'] ?? null),
 
             // Defaults to ACTIVE when absent. Workiz keeps leavers for ever
@@ -40,17 +40,6 @@ final class WorkizTeamAttributes
         ];
     }
 
-    private static function text(mixed $value): ?string
-    {
-        if ($value === null || is_array($value) || is_bool($value)) {
-            return null;
-        }
-
-        $text = trim((string) $value);
-
-        return $text === '' ? null : $text;
-    }
-
     /**
      * Lower-cased, because it is the only thing that can propose a link to an
      * EzBizi user and a match that is case-sensitive fails on the difference
@@ -58,7 +47,7 @@ final class WorkizTeamAttributes
      */
     private static function email(mixed $value): ?string
     {
-        $text = self::text($value);
+        $text = WorkizValue::text($value);
 
         return $text === null ? null : mb_strtolower($text);
     }
@@ -93,7 +82,7 @@ final class WorkizTeamAttributes
         $out = [];
 
         foreach ($items as $item) {
-            $text = self::text($item);
+            $text = WorkizValue::text($item);
 
             if ($text !== null) {
                 $out[] = $text;

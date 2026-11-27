@@ -2,10 +2,11 @@
 
 namespace App\Support\Notifications;
 
+use App\Http\Controllers\Api\NotificationsController;
 use App\Models\Assignment;
 use App\Models\AutomationEvent;
-use App\Models\DeviceToken;
 use App\Models\Company;
+use App\Models\DeviceToken;
 use App\Models\Franchise;
 use App\Models\Notification;
 use App\Models\Role;
@@ -13,6 +14,7 @@ use App\Models\User;
 use App\Notifications\NotificationNotice;
 use App\Support\Access\ScopeReach;
 use App\Support\Automations\CarriesAutomationScope;
+use App\Support\Modules\ModuleRegistry;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
@@ -105,7 +107,22 @@ class NotificationDispatcher
         array $roleIds = [],
         array $userIds = [],
         bool $urgent = false,
+        /*
+         * What kind of event this is, e.g. `task.assigned` (KINDS). Lets each
+         * person switch a kind off, and groups a burst of the same kind on the
+         * same record into one row (Jose, 2026-11-17: task board coverage).
+         */
+        ?string $kind = null,
     ): int {
+        // Automations name no kind; Monday files them under Automations
+        // (Jose, 2026-11-25), so each person can switch them off.
+        $named = $kind !== null;
+        $kind ??= match (true) {
+            $subject instanceof \App\Models\Automation => 'automation.failed',
+            $source === 'automation' => 'automation.notify',
+            default => null,
+        };
+
         if (! $this->allows($source, $subject, $inAppOnly)) {
             return 0;
         }
@@ -118,6 +135,9 @@ class NotificationDispatcher
 
         $recipients = $this->withoutFlooded($recipients, $automationId);
         $recipients = $this->onlyThoseFollowing($recipients, $subject, $source, $eventId);
+        // Grouping is for kinds a caller names (task events); automations keep
+        // ringing each time, under their own flood cap (0.0.0647 gate).
+        $recipients = $this->withoutMutedOrRepeatedKind($recipients, $kind, $named ? $subject : null, $title);
 
         if ($recipients->isEmpty()) {
             return 0;
@@ -131,6 +151,7 @@ class NotificationDispatcher
             'organization_id' => $this->tenant->idOrFail(),
             'user_id' => $user->getKey(),
             'source' => $source,
+            'kind' => $kind === null ? null : mb_substr($kind, 0, 40),
             'title' => $title,
             'body' => $body,
             'urgent' => $urgent,
@@ -203,8 +224,13 @@ class NotificationDispatcher
          * Read as "anything but an explicit false", so everybody who has never
          * touched it — every user that exists today — keeps their alerts.
          */
+        // And per module (Jose, 2026-11-13: "choose notifications from specific
+        // modules"): a muted module still lands in the list, it just does not
+        // pop up, push or email.
+        $module = $this->moduleOf($subject, $automationId, $eventId);
         $alertable = $told->filter(
             fn (User $user) => ($user->preferences['notifications.alerts'] ?? true) !== false
+                && ($module === null || ! in_array($module, $user->preferences['notifications.muted_modules'] ?? [], true))
         )->values();
 
         $emailed = $this->mayEmail($source, $inAppOnly) ? $this->alsoByEmail($alertable, $title, $body, $scope, $this->pushHeader($scope, $subject)) : 0;
@@ -225,6 +251,19 @@ class NotificationDispatcher
          * dismissed with a swipe and costs nobody else anything. The 200-row
          * cap above already bounds it.
          */
+        // Per-kind email, each person's own choice (Monday's "Email" column).
+        // Independent of the organization's email switch: it is opt-in, one
+        // kind at a time, by the person who will receive it.
+        if ($kind !== null && $emailed === 0 && ! $inAppOnly) {
+            $emailed = $this->emailEach(
+                $alertable->filter(fn (User $u) => in_array($kind, $u->preferences['notifications.email_kinds'] ?? [], true)),
+                $title, $body, $this->pushHeader($scope, $subject),
+            );
+        }
+
+        // Monday's "Received directly on your device" master switch.
+        $alertable = $alertable->filter(fn (User $u) => ($u->preferences['notifications.push'] ?? true) !== false)->values();
+
         $pushed = $inAppOnly ? 0 : $this->alsoByPush($alertable, $title, $body, $scope, $urgent || $this->isUrgent($source, $eventId), $rowIds, $this->pushHeader($scope, $subject));
 
         /*
@@ -283,7 +322,7 @@ class NotificationDispatcher
         }
 
         return in_array(
-            \App\Models\AutomationEvent::query()->whereKey($eventId)->value('event_key'),
+            AutomationEvent::query()->whereKey($eventId)->value('event_key'),
             ['lead.received', 'reports.call.missed', 'phone.call.missed'],
             true,
         );
@@ -297,6 +336,8 @@ class NotificationDispatcher
         }
 
         $devices = DeviceToken::query()
+            // EzChat handsets get chat messages and call rings only (ChatController).
+            ->where('app', 'ezbizi')
             ->whereIn('user_id', $recipients->map->getKey()->all())
             ->get();
 
@@ -361,9 +402,9 @@ class NotificationDispatcher
      * needs more than this, the fix is a per-source number or a digest, not a
      * bigger constant.
      *
-     * @return int how many were actually emailed
      *
      * @param  Collection<int, User>  $recipients  already capped by the caller
+     * @return int how many were actually emailed
      */
     private function alsoByEmail(Collection $recipients, string $title, ?string $body, Model $scope, ?string $header = null): int
     {
@@ -555,13 +596,140 @@ class NotificationDispatcher
         return $chain;
     }
 
+    /**
+     * The kinds a person can switch off one by one, with the label shown in
+     * bell settings. Task Board's (Jose, 2026-11-17: "every aspect of task
+     * board is covered by notifications").
+     */
+    public const KINDS = [
+        'task.assigned' => 'Assigned to me',
+        'task.mentioned' => 'Mentioned',
+        'task.reply' => 'Any update on a task I follow (older notifications)',
+        'task.status' => 'Status changes',
+        'task.due' => 'Due soon and overdue',
+        'task.reminder' => 'My reminders',
+        'task.stale' => 'My tasks with no update for a week',
+        'task.digest' => 'Daily summary of my tasks',
+        'task.subitem_assigned' => 'Subitems assigned',
+        'task.moved' => 'Moved to my group',
+        'task.file' => 'Files added',
+        'task.created' => 'New tasks on my boards',
+        // Project Management parts (Jose, 2026-11-17).
+        'project_board.part_late' => 'A part is 3 days late',
+        'project_board.part_reminder' => 'A part reminder is due',
+        // HR (Merav, 2026-11-19).
+        'hr.onboarding_missing' => 'Unfinished onboardings at my branch',
+        // Monday's notification settings, full parity (Jose, 2026-11-25).
+        'task.update.owner' => 'Wrote an update on an item I own',
+        'task.update.subscribed' => "Wrote an update on an item I'm subscribed to",
+        'task.reply.thread' => 'Replied to a thread I commented on or reacted to',
+        'task.reply.mine' => 'Replied to an update I wrote',
+        'task.reaction' => 'Reactions to my update',
+        'task.invited' => 'Invitations to a board, item or team',
+        'task.update_deleted' => 'An update was deleted',
+        'automation.notify' => 'Automations with a "notify" step',
+        'automation.acted' => 'Changes made by an automation',
+        'automation.failed' => 'Automation failures',
+        'user.signed_up' => 'Signed up after I invited them',
+        'user.not_signed_up' => "Didn't sign up after I invited them",
+        'user.invite_pending' => 'Invite requests pending over 7 days',
+    ];
+
+    /**
+     * How the settings screen groups KINDS — Monday's own headings, then ours.
+     * A kind not listed here shows under "Other".
+     */
+    public const KIND_GROUPS = [
+        'Communication' => ['task.mentioned', 'task.update.owner', 'task.reply', 'task.update.subscribed', 'task.reply.thread', 'task.reply.mine', 'task.reaction'],
+        'Collaboration' => ['task.assigned', 'task.subitem_assigned', 'task.invited'],
+        'Automations' => ['automation.notify', 'automation.acted', 'automation.failed'],
+        'Sign-ups' => ['user.signed_up', 'user.not_signed_up'],
+        'Security' => ['task.update_deleted'],
+        'Admin' => ['user.invite_pending'],
+        'Task activity' => ['task.status', 'task.due', 'task.reminder', 'task.stale', 'task.digest', 'task.moved', 'task.file', 'task.created'],
+        'Project Management' => ['project_board.part_late', 'project_board.part_reminder'],
+        'HR' => ['hr.onboarding_missing'],
+    ];
+
+    /** Plain-text mail to each opted-in person; one failure never stops the rest. */
+    private function emailEach(Collection $recipients, string $title, ?string $body, string $header): int
+    {
+        $sent = 0;
+        foreach ($recipients as $recipient) {
+            try {
+                $recipient->withoutRelations()->notify(new NotificationNotice($title, $body, null, $header));
+                $sent++;
+            } catch (Throwable $exception) {
+                Log::warning('Notification email failed for one recipient.', [
+                    'user_id' => $recipient->getKey(), 'title' => $title, 'error' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        return $sent;
+    }
+
+    /** The catalogue the settings screen draws, grouped. */
+    public static function kindCatalogue(): array
+    {
+        $listed = array_merge(...array_values(self::KIND_GROUPS));
+        $groups = self::KIND_GROUPS + ['Other' => array_values(array_diff(array_keys(self::KINDS), $listed))];
+
+        return array_values(array_filter(array_map(fn (string $group, array $keys) => [
+            'group' => $group,
+            'kinds' => array_map(fn (string $k) => ['key' => $k, 'label' => self::KINDS[$k]], array_values(array_intersect($keys, array_keys(self::KINDS)))),
+        ], array_keys($groups), $groups), fn (array $g) => $g['kinds'] !== []));
+    }
+
+    /** Minutes within which a repeat of one kind on one record is one row. */
+    private const KIND_BURST_MINUTES = 10;
+
+    private function withoutMutedOrRepeatedKind(Collection $recipients, ?string $kind, ?Model $subject, string $title): Collection
+    {
+        if ($kind === null || $recipients->isEmpty()) {
+            return $recipients;
+        }
+
+        $recipients = $recipients->reject(
+            fn (User $user) => in_array($kind, $user->preferences['notifications.muted_kinds'] ?? [], true)
+        )->values();
+
+        if ($subject === null || $recipients->isEmpty()) {
+            return $recipients;
+        }
+
+        // ponytail: grouped by subject+title, not a stored kind column; add one if two kinds share a title.
+        $already = Notification::query()
+            ->where('subject_type', $subject::class)
+            ->where('subject_id', $subject->getKey())
+            ->where('title', $title)
+            ->where('created_at', '>=', now()->subMinutes(self::KIND_BURST_MINUTES))
+            ->whereIn('user_id', $recipients->map->getKey()->all())
+            ->pluck('user_id')
+            ->all();
+
+        return $recipients->reject(fn (User $user) => in_array($user->getKey(), $already, true))->values();
+    }
+
+    /** The module a notification belongs to — the same reading the bell list uses. */
+    private function moduleOf(?Model $subject, ?string $automationId, ?string $eventId): ?string
+    {
+        $eventKey = $eventId === null ? null : AutomationEvent::query()->whereKey($eventId)->value('event_key');
+
+        return match (true) {
+            $eventKey !== null => app(ModuleRegistry::class)->moduleKeyOfTrigger($eventKey),
+            $automationId !== null => NotificationsController::AUTOMATIONS_MODULE,
+            default => NotificationsController::SUBJECT_MODULES[$subject === null ? '' : $subject::class] ?? null,
+        };
+    }
+
     private function withoutFlooded(Collection $recipients, ?string $automationId): Collection
     {
         if ($automationId === null || $recipients->isEmpty()) {
             return $recipients;
         }
 
-        $flooded = \App\Models\Notification::query()
+        $flooded = Notification::query()
             ->where('automation_id', $automationId)
             ->where('created_at', '>=', now()->subMinutes(self::FLOOD_WINDOW_MINUTES))
             ->whereIn('user_id', $recipients->map->getKey()->all())

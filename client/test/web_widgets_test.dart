@@ -1605,15 +1605,15 @@ void main() {
     await tester.tap(_addPreset('social_links'));
     await tester.pumpAndSettle();
 
-    expect(find.text('[ezbizi_social_links preset="footer"]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_social_links preset="footer"]'), findsOneWidget);
 
     // The default keeps the bare shortcode, which is what every page that has
     // not asked for anything is already using.
-    expect(find.text('[ezbizi_social_links]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_social_links]'), findsOneWidget);
 
     // Named on the widget it belongs to: "footer" means one thing to a row of
     // icons and another to a list of towns, so the two do not share a name.
-    expect(find.text('[ezbizi_city_list preset="footer"]'), findsNothing);
+    expect(find.byTooltip('Copies [ezbizi_city_list preset="footer"]'), findsNothing);
   });
 
   /// `default` is what catches a typo — `preset="foter"` renders it rather
@@ -1685,7 +1685,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('[ezbizi_social_links preset="footericons"]'),
+      find.byTooltip('Copies [ezbizi_social_links preset="footericons"]'),
       findsOneWidget,
     );
   });
@@ -1802,7 +1802,7 @@ void main() {
     await tester.tap(_addPreset('hours_table'));
     await tester.pumpAndSettle();
 
-    expect(find.text('[ezbizi_hours_table preset="footer"]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_hours_table preset="footer"]'), findsOneWidget);
 
     await tester.tap(find.descendant(
       of: find.byKey(const ValueKey('preset:hours_table:footer')),
@@ -1820,8 +1820,8 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Rename'));
     await tester.pumpAndSettle();
 
-    expect(find.text('[ezbizi_hours_table preset="sidebar"]'), findsOneWidget);
-    expect(find.text('[ezbizi_hours_table preset="footer"]'), findsNothing);
+    expect(find.byTooltip('Copies [ezbizi_hours_table preset="sidebar"]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_hours_table preset="footer"]'), findsNothing);
 
     await tester.tap(find.descendant(
       of: find.byKey(const ValueKey('preset:hours_table:sidebar')),
@@ -1829,11 +1829,11 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('[ezbizi_hours_table preset="sidebar"]'), findsNothing);
+    expect(find.byTooltip('Copies [ezbizi_hours_table preset="sidebar"]'), findsNothing);
 
     // The default outlives every named one, which is what makes a mistyped
     // `preset=` render something rather than nothing.
-    expect(find.text('[ezbizi_hours_table]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_hours_table]'), findsOneWidget);
   });
 
   testWidgets('a viewer is offered no way to add or delete a preset', (
@@ -1850,7 +1850,7 @@ void main() {
 
     // Still shown the shortcode: reading which one a page should use is not
     // editing anything.
-    expect(find.text('[ezbizi_social_links]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_social_links]'), findsOneWidget);
   });
 
   /// Four widgets, each with a dropdown, a slider or two and a switch, is the
@@ -1881,7 +1881,7 @@ void main() {
     );
 
     expect(
-      find.text('[ezbizi_social_links preset="a-very-long-preset-name-indeed"]'),
+      find.byTooltip('Copies [ezbizi_social_links preset="a-very-long-preset-name-indeed"]'),
       findsOneWidget,
     );
   });

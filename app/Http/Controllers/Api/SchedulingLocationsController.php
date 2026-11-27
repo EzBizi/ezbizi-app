@@ -2,13 +2,18 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\BusinessLocation;
 use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\SchedulingLocationNote;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
+use App\Models\SocialConnection;
 use App\Models\WebLocation;
+use App\Models\ZipCentroid;
 use App\Support\Access\Refusal;
 use App\Support\Scoping\ViewScope;
+use App\Support\Web\Hours\BusinessProfileHours;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
@@ -22,8 +27,13 @@ use Illuminate\Validation\ValidationException;
  * feature that shows the closest location to the inputed address ... as well
  * as contact info for newbie dispatchers"; layout queue 49, desktop 1 / phone 4).
  *
- * Branches are the websites' store-locator rows (`web_locations`), which carry
- * coordinates already. A branch listed on several sites is one branch. Its
+ * Branches are the organization's connected Google Business Profile listings
+ * first (Jose, 2026-11-05: "GBP profiles as the source of truth for address,
+ * with the web management one as fallback"), then the websites' store-locator
+ * rows (`web_locations`) that no listing already stands for. A listing with no
+ * public address (a service-area listing) falls back to its website row. A
+ * listing's coordinates are its website row's when one matches, else its ZIP's
+ * centre (ZipCentroid, stored once found). A branch listed on several sites is one branch. Its
  * service area is the area holding its zip. Distances are straight-line miles:
  * drive time needs a paid routing service.
  */
@@ -40,7 +50,8 @@ class SchedulingLocationsController extends Controller
         $companies = Company::query()->pluck('name', 'id');
 
         $notes = SchedulingLocationNote::query()->with('editor:id,name')->get()
-            ->filter(fn (SchedulingLocationNote $n) => trim($n->text) !== '' && $scope->coversCompany($n->company_id))
+            ->filter(fn (SchedulingLocationNote $n) => trim($n->text) !== '' && $scope->coversCompany($n->company_id)
+                && ! Company::isSwitchedOff($n->company_id))
             ->map(fn (SchedulingLocationNote $n) => [
                 'company_id' => $n->company_id,
                 'company_name' => $companies[$n->company_id] ?? null,
@@ -131,31 +142,87 @@ class SchedulingLocationsController extends Controller
         $scope = ViewScope::forUser($request->user());
         $companies = Company::query()->pluck('name', 'id');
         $areas = $this->zipAreas($request);
+        $place = fn (?string $street, ?string $zip) => $this->street($street).'|'.$this->zip5($zip);
+        $digits = fn (?string $phone) => substr((string) preg_replace('/\D+/', '', (string) $phone), -10);
 
-        return WebLocation::query()
+        // A switched-off company or branch is not a place to send anybody
+        // (Jose, 2026-11-10); its website rows stay for Web Management.
+        $offCompanies = Company::query()->switchedOff()->pluck('id')->all();
+        $offPlaces = Franchise::query()->switchedOff()->pluck('id')->all();
+
+        $web = WebLocation::query()
             ->orderByRaw('site_id is not null')->orderBy('sort_order')->orderBy('name')
             ->get()
-            ->filter(fn (WebLocation $l) => $scope->coversCompany($l->company_id))
-            ->unique(fn (WebLocation $l) => mb_strtolower(trim((string) $l->address_line1)).'|'.$this->zip5($l->postal_code))
-            ->sortBy(fn (WebLocation $l) => [$companies[$l->company_id] ?? '', $l->name])
-            ->map(function (WebLocation $l) use ($companies, $areas) {
-                $area = $areas[$this->zip5($l->postal_code)] ?? null;
+            ->filter(fn (WebLocation $l) => $scope->coversCompany($l->company_id) && ! in_array($l->company_id, $offCompanies, true))
+            ->unique(fn (WebLocation $l) => $place($l->address_line1, $l->postal_code))
+            ->values();
+        // A site's row with no address beside a filled row for the same branch is the same branch, half-entered.
+        $filled = $web->filter(fn (WebLocation $l) => trim((string) $l->address_line1) !== '' && $this->zip5($l->postal_code) !== '');
+        $web = $web->reject(fn (WebLocation $l) => ($this->zip5($l->postal_code) === '' || trim((string) $l->address_line1) === '')
+            && $filled->contains(fn (WebLocation $f) => $f->id !== $l->id && ($f->name === $l->name || $digits($f->phone) === $digits($l->phone))))->values();
+
+        $listings = BusinessLocation::query()
+            ->whereNull('not_listed_since')
+            ->whereHas('connection', fn ($q) => $q->where('provider', BusinessProfileHours::KEY)->where('status', SocialConnection::STATUS_CONNECTED))
+            ->get()
+            // A listing filed on no branch is the company's, shown in each of its branch views (Desk, 2026-11-05).
+            ->filter(fn (BusinessLocation $b) => $scope->coversCompany($b->company_id)
+                && ($b->franchise_id === null || $scope->coversFranchise($b->franchise_id))
+                && ! in_array($b->company_id, $offCompanies, true) && ! in_array($b->franchise_id, $offPlaces, true));
+
+        $rows = collect();
+        $used = [];
+        foreach ($listings as $b) {
+            // The website row standing for the same place: same street and ZIP, else the same phone.
+            $match = $web->first(fn (WebLocation $l) => ! isset($used[$l->id]) && trim((string) $b->address_line1) !== ''
+                && $place($l->address_line1, $l->postal_code) === $place($b->address_line1, $b->postal_code))
+                ?? $web->first(fn (WebLocation $l) => ! isset($used[$l->id]) && $digits($b->phone) !== '' && $digits($l->phone) === $digits($b->phone));
+            if (trim((string) $b->address_line1) === '' && $match !== null) {
+                continue; // no public address on Google: the website row stands for it
+            }
+            if ($match !== null) {
+                $used[$match->id] = true;
+            }
+            $centre = $match === null && $this->zip5($b->postal_code) !== '' ? ZipCentroid::locate($this->zip5($b->postal_code)) : null;
+            // A service-area listing has no storefront: its first service place is its city ("Warren, MI, USA").
+            $served = array_map('trim', explode(',', (string) (($b->service_places ?? [])[0] ?? '')));
+            $city = $b->city ?: (count($served) >= 2 ? $served[0] : null);
+            $state = $b->state ?: (count($served) >= 3 && strlen($served[1]) === 2 ? $served[1] : null);
+            $rows->push(['source' => 'google_business_profile', 'id' => $b->id,
+                // The company is drawn beside it, so the place alone (Jose, 2026-11-09:
+                // "A1 Chimney · Rhode Island" read twice in the selected row).
+                'name' => $match?->name ?? ($city ?: $b->title),
+                'company_id' => $b->company_id, 'address_line1' => $b->address_line1, 'address_line2' => $b->address_line2,
+                'city' => $city, 'state' => $state, 'postal_code' => $b->postal_code, 'service_places' => $b->service_places ?? [],
+                'phone' => $b->phone ?: $match?->phone,
+                'email' => $match?->email, 'maps_url' => $match?->maps_url,
+                'latitude' => $match?->latitude ?? $centre?->latitude, 'longitude' => $match?->longitude ?? $centre?->longitude]);
+        }
+        foreach ($web as $l) {
+            if (isset($used[$l->id])) {
+                continue;
+            }
+            $rows->push(['source' => 'website', 'id' => $l->id, 'name' => $l->name, 'company_id' => $l->company_id, 'service_places' => [],
+                'address_line1' => $l->address_line1, 'address_line2' => $l->address_line2, 'city' => $l->city, 'state' => $l->state,
+                'postal_code' => $l->postal_code, 'phone' => $l->phone, 'email' => $l->email, 'maps_url' => $l->maps_url,
+                'latitude' => $l->latitude, 'longitude' => $l->longitude]);
+        }
+
+        return $rows
+            ->sortBy(fn (array $r) => [$companies[$r['company_id']] ?? '', $r['name']])
+            ->map(function (array $r) use ($companies, $areas) {
+                $area = $areas[$this->zip5($r['postal_code'])] ?? null;
+                $companyId = $r['company_id'];
+                unset($r['company_id']);
 
                 return ['row' => [
-                    'id' => $l->id,
-                    'name' => $l->name,
-                    'company' => ['id' => $l->company_id, 'name' => $companies[$l->company_id] ?? null],
-                    'address_line1' => $l->address_line1,
-                    'address_line2' => $l->address_line2,
-                    'city' => $l->city,
-                    'state' => $l->state,
-                    'postal_code' => $l->postal_code,
-                    'phone' => $l->phone,
-                    'email' => $l->email,
-                    'maps_url' => $l->maps_url,
-                    'latitude' => $l->latitude,
-                    'longitude' => $l->longitude,
-                    'service_area' => $area === null ? null : trim(($area->franchise?->name ?? '').' › '.$area->name, ' ›'),
+                    ...$r,
+                    'company' => ['id' => $companyId, 'name' => $companies[$companyId] ?? null],
+                    'latitude' => $r['latitude'] === null ? null : (float) $r['latitude'],
+                    'longitude' => $r['longitude'] === null ? null : (float) $r['longitude'],
+                    // No area holds its zip (a service-area listing has none): where Google says it works.
+                    'service_area' => $area !== null ? trim(($area->franchise?->name ?? '').' › '.$area->name, ' ›')
+                        : (collect($r['service_places'] ?? [])->map(fn ($p) => preg_replace('/,\s*USA$/', '', (string) $p))->take(3)->implode('; ') ?: null),
                     'area' => $area === null ? null : ['id' => $area->id, 'name' => $area->name],
                 ]];
             })
@@ -179,6 +246,18 @@ class SchedulingLocationsController extends Controller
         return $this->zipAreas($request)[$this->zip5($zip)] ?? null;
     }
 
+    /** A street as one comparable key: "473 Washington Avenue" and "473 Washington Ave." are one place. */
+    private function street(?string $raw): string
+    {
+        $s = mb_strtolower((string) $raw);
+        $s = preg_replace('/\s*(#|\bsuite\b|\bste\b|\bunit\b|\bapt\b).*$/', '', $s);
+        $s = preg_replace('/[^a-z0-9 ]+/', ' ', (string) $s);
+        $words = ['avenue' => 'ave', 'street' => 'st', 'road' => 'rd', 'drive' => 'dr', 'boulevard' => 'blvd', 'lane' => 'ln',
+            'court' => 'ct', 'place' => 'pl', 'parkway' => 'pkwy', 'highway' => 'hwy', 'north' => 'n', 'south' => 's', 'east' => 'e', 'west' => 'w'];
+
+        return implode(' ', array_map(fn ($w) => $words[$w] ?? $w, preg_split('/\s+/', trim((string) $s)) ?: []));
+    }
+
     /** First five digits, a New England zip's lost leading zero restored. */
     private function zip5(?string $raw): string
     {
@@ -198,7 +277,7 @@ class SchedulingLocationsController extends Controller
         // Photon unreachable or slow is a plain sentence on the q field, never a 500.
         try {
             $response = Http::timeout(6)
-                ->withHeaders(['User-Agent' => 'EzBizi/scheduling-locations (https://ezbizi.com; development@ezbizi.com)'])
+                ->withHeaders(['User-Agent' => 'EzBizi/scheduling-locations (https://ezbizi.com; '.config('ezbizi.contact_email').')'])
                 ->get(self::PHOTON, ['q' => $q, 'limit' => 5, 'lang' => 'en']);
         } catch (ConnectionException|RequestException) {
             throw ValidationException::withMessages(['q' => self::GEOCODER_UNAVAILABLE]);

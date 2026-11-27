@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core/address.dart';
+import 'core/app_window.dart';
 import 'core/api_client.dart';
 import 'core/contracts.dart';
 import 'core/deep_links.dart';
@@ -14,6 +15,7 @@ import 'core/files.dart';
 import 'core/live_view_service.dart';
 import 'core/mobile_view_window.dart';
 import 'core/module_screens.dart';
+import 'screens/phone/chat/chat_calls.dart';
 import 'screens/leads_screen.dart';
 import 'core/field_tracker.dart';
 import 'core/issue_reporter.dart';
@@ -31,15 +33,19 @@ import 'core/ui_strings.dart';
 import 'core/clock_window.dart';
 import 'core/version_gate.dart';
 import 'screens/lock_screen.dart';
+import 'widgets/app_zoom.dart';
+import 'widgets/phone_bottom_bar.dart';
 import 'widgets/in_page_back.dart';
 import 'widgets/controlled_banner.dart';
 import 'widgets/get_the_apps.dart';
 import 'widgets/open_destination.dart';
 import 'widgets/side_panel.dart';
+import 'widgets/view_as_panel.dart';
 import 'widgets/shift_reminder.dart';
 import 'screens/development_screen.dart';
 import 'screens/hr/onboarding_form.dart';
 import 'screens/invitation_screen.dart';
+import 'screens/join_link_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
@@ -55,17 +61,23 @@ import 'core/token_store.dart';
 import 'widgets/build_stamp.dart';
 import 'widgets/module_page_header.dart';
 import 'widgets/tab_help.dart';
+import 'widgets/open_in_window.dart';
 import 'widgets/notification_bell.dart';
 import 'widgets/profile_aura.dart';
 import 'widgets/scope_switcher.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/availability_button.dart';
+import 'widgets/broken_widget_card.dart';
+import 'widgets/callout.dart';
+import 'widgets/quick_search.dart';
 import 'widgets/incoming_call_bar.dart';
 import 'widgets/incoming_call_popup.dart';
 import 'core/phone_call_service.dart';
+import 'core/soft_keyboard.dart';
 import 'screens/phone/voice_view.dart';
 
 Future<void> main() async {
+  IssueReporter.markLaunch();
   // Bindings first: TokenStore.init reaches a platform channel (the keychain),
   // and a channel used before this call throws.
   WidgetsFlutterBinding.ensureInitialized();
@@ -83,8 +95,13 @@ Future<void> main() async {
   // Crashes, freezes and failed calls reach the staff console (2026-10-15).
   IssueReporter.install();
 
+  // One widget that throws draws a card, not a grey or black app.
+  BrokenWidgetCard.install();
+
   // A paired camera-bridge PC streams on its site key, signed in or not.
-  unawaited(startCameraBridge());
+  // Once per machine: never from a second window (AppWindow).
+  if (!AppWindow.secondary) unawaited(startCameraBridge());
+  AppWindow.watchFirst();
 
   runApp(const EzBiziApp());
 }
@@ -154,14 +171,8 @@ class _EzBiziAppState extends State<EzBiziApp> {
     // Never closes the app under a live call (Jose, 2026-10-09).
     // ...and only installs on its own once a person who takes calls here has
     // set Do Not Disturb (Jose, 2026-10-09).
-    DesktopUpdater.instance.guardCalls(
-      PhoneCallService.current,
-      () => PhoneCallService.current.busy,
-      availableForCalls: () =>
-          PhoneCallService.current.presenceHasLine &&
-          PhoneCallService.current.presence != 'dnd',
-    );
-    DesktopUpdater.instance.start();
+    // The first window updates; a second one would race it for the installer.
+    if (!AppWindow.secondary) _startUpdater();
     _session.addListener(_tellUpdaterWhoIsHere);
     _staffSession.addListener(_tellUpdaterWhoIsHere);
 
@@ -180,13 +191,28 @@ class _EzBiziAppState extends State<EzBiziApp> {
     }
   }
 
+  void _startUpdater() {
+    DesktopUpdater.instance.guardCalls(
+      PhoneCallService.current,
+      () => PhoneCallService.current.busy,
+      availableForCalls: () =>
+          PhoneCallService.current.presenceHasLine &&
+          PhoneCallService.current.presence != 'dnd',
+    );
+    DesktopUpdater.instance.start();
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'EzBizi',
       debugShowCheckedModeBanner: false,
+      scrollBehavior: dragClosesKeyboard,
       theme: EzBiziTheme.light(),
       darkTheme: EzBiziTheme.dark(),
+      // No cross-fade: every frame of the 200 ms lerp rebuilt each board
+      // cell on its own, ~12 full rebuilds on a big Task Board (Jose 11-24).
+      themeAnimationDuration: Duration.zero,
       /*
        * The signed-in person's choice (§2.1 category 6), falling back to the
        * device before anyone has signed in — there is nobody to have a
@@ -212,12 +238,19 @@ class _EzBiziAppState extends State<EzBiziApp> {
        * the shell is unaffected and appears either way; see IncomingCallPopup
        * for why both exist.
        */
-      builder: (context, child) => PageProblemBanner(
-        child: Stack(
-          children: [
-            ?child,
-            IncomingCallPopup(api: _api, session: _session),
-          ],
+      // Zoom on the desktop apps (Kimberly 01a213cf): everything below,
+      // popups and calls included, at the person's own level.
+      builder: (context, child) => AppZoom(
+        session: _session,
+        child: PageProblemBanner(
+          child: Stack(
+            children: [
+              ?child,
+              IncomingCallPopup(api: _api, session: _session),
+              // Chat calls (Twilio Video): the ring and the call, any screen.
+              ChatCallLayer(api: _api, session: _session),
+            ],
+          ),
         ),
       ),
       home: _home(),
@@ -334,6 +367,20 @@ class _EzBiziAppState extends State<EzBiziApp> {
     // Above the signed-in branch, though: somebody who follows an invitation
     // while already signed in elsewhere means to join the place that invited
     // them, and one account belongs to one organization (§4).
+    final joinLink = _inviteHandled ? null : Deployment.joinLink();
+
+    if (joinLink != null) {
+      return JoinLinkScreen(
+        api: _api,
+        session: _session,
+        link: joinLink,
+        onDone: () {
+          Files.clearQuery();
+          setState(() => _inviteHandled = true);
+        },
+      );
+    }
+
     final invite = _inviteHandled ? null : Deployment.inviteToken();
 
     if (invite != null) {
@@ -370,7 +417,10 @@ class _EzBiziAppState extends State<EzBiziApp> {
       // The lock is the server's answer, never a permission read here
       // (design 2026-09-08 §3.9). Phones never lock, whatever it says.
       if (_session.me!.timeClock.lock && ClockWindow.canLock) {
-        return LockScreen(api: _api, session: _session);
+        // One lock screen: a second window points at the first.
+        return AppWindow.secondary
+            ? _ClockInElsewhere(session: _session)
+            : LockScreen(api: _api, session: _session);
       }
 
       return HomeShell(api: _api, session: _session, address: _address);
@@ -454,13 +504,34 @@ enum _Rail { modules, pinned, staff, profile }
 const Key shellSidebarGroup = Key('shell-traversal-sidebar');
 const Key shellPageGroup = Key('shell-traversal-page');
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
+  /// The on-screen keyboard is up. Jose 11-24: "when the keyboard is on, you
+  /// can barely see stuff" (Leads > conversation: one message line visible).
+  /// On a phone it folds the chrome away: the company row, the state strip
+  /// and the page title. Set only when it flips, not on every frame of the
+  /// keyboard's slide.
+  bool _typing = false;
+
+  @override
+  void didChangeMetrics() {
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    final up = views.isNotEmpty && views.first.viewInsets.bottom > 0;
+    if (up != _typing && mounted) setState(() => _typing = up);
+  }
+
   /// For Android's Back, which closes the drawer before anything else.
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   /// The countdown before a scheduled shift ends (design 2026-09-08 §10.1).
-  late final ShiftReminderController _reminder;
+  ShiftReminderController? _reminder;
   Timer? _clockPoll;
+
+  /// Access changed elsewhere (an inbox granted, a role edited) reaches an
+  /// open app without a reload: /me is asked again every minute and when the
+  /// app comes back, and the page is keyed on its access_version (Jose,
+  /// 2026-11-10).
+  Timer? _accessPoll;
+  AppLifecycleListener? _accessOnResume;
   VoidCallback? _stopClockListening;
 
   _Rail _rail = _Rail.modules;
@@ -501,7 +572,7 @@ class _HomeShellState extends State<HomeShell> {
   /// class's own doc comment that the keep-alive fires unconditionally once
   /// this exists. Assigning it here forces that construction to happen
   /// exactly once, unconditionally, the moment the shell mounts.
-  late final MonitoringHeartbeat _heartbeat;
+  MonitoringHeartbeat? _heartbeat;
 
   /// This device's own periodic screen captures
   /// (2026-08-31-monitoring-screenshots). Same lifecycle as [_heartbeat] and
@@ -537,9 +608,53 @@ class _HomeShellState extends State<HomeShell> {
   /// whether to share and starts or stops itself; null off a phone.
   FieldTracker? _fieldTracker;
 
+  /// Ctrl+K / ⌘K from anywhere in the shell; set by _shell, which knows the
+  /// destinations (monday port, desk 2026-11-09).
+  VoidCallback? _quickSearch;
+
+  bool _quickSearchKey(KeyEvent event) {
+    final k = HardwareKeyboard.instance;
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.keyK &&
+        (k.isControlPressed || k.isMetaPressed) &&
+        _quickSearch != null) {
+      _quickSearch!();
+      return true;
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    HardwareKeyboard.instance.addHandler(_quickSearchKey);
+
+    // One-time tips: what this person already dismissed, and where a new
+    // dismissal is written.
+    Callouts.seen.value = {
+      for (final id
+          in widget.session.me?.preferences['callouts.seen'] as List? ??
+              const [])
+        '$id',
+    };
+    Callouts.ready = widget.session.me != null;
+    Callouts.onDismiss = (_) => widget.session.setPreference(
+      'callouts.seen',
+      Callouts.seen.value.toList(),
+    );
+
+    // No "match my device" any more (Jose 11-24): whoever is still on it, or
+    // never chose, keeps what their device shows now. After the frame, since
+    // a preference write rebuilds the app above this shell.
+    final theme = widget.session.me;
+    if (theme != null && !theme.themeChosen && !AppWindow.secondary) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.session.setPreference('appearance.theme', theme.theme);
+        }
+      });
+    }
 
     // SECURITY exemption: the Lead Developer's own device still beats (online)
     // and reports specs, but never captures, live-views or is remote-driven —
@@ -548,61 +663,23 @@ class _HomeShellState extends State<HomeShell> {
     // told, so it omits the `screenshot` capability from its beat.
     final exempt = widget.session.me?.screenMonitoringExempt ?? false;
 
-    _heartbeat = MonitoringHeartbeat(
-      widget.api,
-      screenMonitoringExempt: exempt,
-    );
-
-    // RGB lighting a manager sets in Monitoring, and the hardware inventory
-    // (motherboard, RAM, monitors…) that rides in specs. Windows only.
-    startLighting(widget.api);
-
-    // The availability icon, given a minute hand.
-    //
-    // Do Not Disturb set on the web now reaches the desktop's SERVER state
-    // immediately, and the desktop's ICON found out only when something else
-    // made it look — which in practice meant changing tabs. Jose: "the status
-    // now syncs across devices, which is good, but only displays the change
-    // once you change tabs."
-    //
-    // I had claimed the app coming forward would cover it. It does not, and
-    // his report is what showed that: two windows side by side never leave
-    // the screen, so `AppLifecycleState.resumed` never fires and the hook
-    // watching for it can only wait. That claim is corrected where I made it.
-    //
-    // A minute is the wrong answer for a phone ringing and the right one for
-    // an icon: what it prevents is somebody reading a stale dot for the rest
-    // of the afternoon. Anything that must be immediate — a call starting or
-    // ending — already notifies in the same frame.
-    _heartbeat.onBeat = PhoneCallService.current.presenceMayHaveChanged;
-    _fieldTracker = FieldTracker.startIfPhone(widget.api, widget.session);
-    // So no computer asks somebody who has the phone app to install it.
-    markPhoneAppUsed(widget.session);
-    if (!exempt) {
-      // The capture service tells the heartbeat how each attempt went, and
-      // the beat carries it to the server — otherwise a device that cannot
-      // capture at all is indistinguishable from one that has not tried yet.
-      _screenshots = ScreenshotService(
-        widget.api,
-        onOutcome: _heartbeat.reportCapture,
-      );
-      _liveView = LiveViewService(widget.api);
-      _remoteControl = RemoteControlService(widget.api);
-      _fileAccess = FileAccessService(widget.api);
-    }
-
-    _reminder = ShiftReminderController(
-      api: widget.api,
-      session: widget.session,
-      context: () => context,
-    );
-    _reminder.sync();
-    widget.session.addListener(_reminder.sync);
-    _stopClockListening = () => widget.session.removeListener(_reminder.sync);
+    // A second window (AppWindow) shows screens and nothing else: the
+    // heartbeat, monitoring, the shift reminder and the softphone run once,
+    // in the first window, or calls would ring and beats count twice.
+    if (!AppWindow.secondary) _startMachineServices(exempt);
 
     // One small block every minute while the organization has the clock on,
     // so an exemption, a schedule change or a server-side close reaches an
     // open app (design 2026-09-08 §3.12). Same cadence as the bell.
+    _accessPoll = Timer.periodic(
+      const Duration(seconds: 60),
+      (_) => widget.session.refresh(),
+    );
+    _accessOnResume = AppLifecycleListener(
+      onResume: widget.session.refresh,
+      onShow: widget.session.refresh,
+    );
+
     _clockPoll = Timer.periodic(const Duration(seconds: 60), (_) async {
       final status = widget.session.me?.timeClock;
       if (status == null ||
@@ -626,13 +703,28 @@ class _HomeShellState extends State<HomeShell> {
     //
     // Safe for somebody with no phone line: start() looks, finds nothing, and
     // leaves everything false.
-    _followScope();
-    widget.session.addListener(_followScope);
+    if (!AppWindow.secondary) {
+      _followScope();
+      widget.session.addListener(_followScope);
+    }
 
     _apply(widget.address?.path);
+    // A second window names what it opened on from the first frame.
+    if (_selected case final opened? when AppWindow.secondary) {
+      _titleWindow(opened);
+    }
     // The day-before email's "Open Booked vs available" link carries its day
     // in the query, which the address bar's path drops (UI queue 147).
-    if (DeepLinks.fromUri(Uri.base) case final link?) DeepLinks.open(link);
+    // Leads opens one lead through its constructor (see [_screenFor]); every
+    // other module takes the link from [DeepLinks].
+    if (DeepLinks.fromUri(AppWindow.start ?? Uri.base) case final link?) {
+      if (link.module == 'leads') {
+        _leadsOpen = link.id;
+      } else {
+        DeepLinks.open(link);
+      }
+    }
+    DeepLinks.module.addListener(_openRequestedModule);
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
       setState(() => _apply(path));
@@ -641,6 +733,7 @@ class _HomeShellState extends State<HomeShell> {
 
   /// Which view the desk was brought up for, so a change can be noticed.
   String? _deskScope;
+  String? _deskAccess;
 
   /// Try again for a desk that never came up, now that the view has moved.
   ///
@@ -664,6 +757,13 @@ class _HomeShellState extends State<HomeShell> {
   /// since navigated away from. Give it the scope's own line when somebody
   /// asks for that, and decide then what a lineless scope should do.
   void _followScope() {
+    // Access changed (a line or account granted): register on what is new.
+    final access = widget.session.me?.accessVersion;
+    if (access != _deskAccess) {
+      _deskAccess = access;
+      unawaited(PhoneCallService.current.syncAccounts());
+    }
+
     final scope = widget.session.me?.scope;
     final key = scope == null ? null : '${scope.type}:${scope.id}';
     if (key == _deskScope) return;
@@ -697,10 +797,75 @@ class _HomeShellState extends State<HomeShell> {
     unawaited(phone.restart(widget.api));
   }
 
+  /// What one machine runs once: see [initState].
+  void _startMachineServices(bool exempt) {
+    _heartbeat = MonitoringHeartbeat(
+      widget.api,
+      screenMonitoringExempt: exempt,
+    );
+
+    // RGB lighting a manager sets in Monitoring, and the hardware inventory
+    // (motherboard, RAM, monitors…) that rides in specs. Windows only.
+    startLighting(widget.api);
+
+    // The availability icon, given a minute hand.
+    //
+    // Do Not Disturb set on the web now reaches the desktop's SERVER state
+    // immediately, and the desktop's ICON found out only when something else
+    // made it look — which in practice meant changing tabs. Jose: "the status
+    // now syncs across devices, which is good, but only displays the change
+    // once you change tabs."
+    //
+    // I had claimed the app coming forward would cover it. It does not, and
+    // his report is what showed that: two windows side by side never leave
+    // the screen, so `AppLifecycleState.resumed` never fires and the hook
+    // watching for it can only wait. That claim is corrected where I made it.
+    //
+    // A minute is the wrong answer for a phone ringing and the right one for
+    // an icon: what it prevents is somebody reading a stale dot for the rest
+    // of the afternoon. Anything that must be immediate — a call starting or
+    // ending — already notifies in the same frame.
+    _heartbeat!.onBeat = () {
+      PhoneCallService.current.presenceMayHaveChanged();
+      // A phone account that just got its first line is picked up within a
+      // minute, without a reload (Jose, 2026-11-12).
+      unawaited(PhoneCallService.current.syncAccounts());
+    };
+    _fieldTracker = FieldTracker.startIfPhone(widget.api, widget.session);
+    // So no computer asks somebody who has the phone app to install it.
+    markPhoneAppUsed(widget.session);
+    if (!exempt) {
+      // The capture service tells the heartbeat how each attempt went, and
+      // the beat carries it to the server — otherwise a device that cannot
+      // capture at all is indistinguishable from one that has not tried yet.
+      _screenshots = ScreenshotService(
+        widget.api,
+        onOutcome: _heartbeat!.reportCapture,
+      );
+      _liveView = LiveViewService(widget.api);
+      _remoteControl = RemoteControlService(widget.api);
+      _fileAccess = FileAccessService(widget.api);
+    }
+
+    _reminder = ShiftReminderController(
+      api: widget.api,
+      session: widget.session,
+      context: () => context,
+    );
+    final reminder = _reminder!;
+    reminder.sync();
+    widget.session.addListener(reminder.sync);
+    _stopClockListening = () => widget.session.removeListener(reminder.sync);
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    HardwareKeyboard.instance.removeHandler(_quickSearchKey);
+    Callouts.ready = false;
     _stopListening?.call();
-    _heartbeat.dispose();
+    DeepLinks.module.removeListener(_openRequestedModule);
+    _heartbeat?.dispose();
     stopLighting();
     _fieldTracker?.dispose();
     // Null for an exempt session, where they were never constructed.
@@ -709,15 +874,17 @@ class _HomeShellState extends State<HomeShell> {
     _remoteControl?.dispose();
     _fileAccess?.dispose();
 
-    widget.session.removeListener(_followScope);
+    if (!AppWindow.secondary) widget.session.removeListener(_followScope);
 
     // stop(), not dispose(): the service is a singleton that outlives this
     // widget, and the next person to sign in is not this person.
-    PhoneCallService.current.stop();
+    if (!AppWindow.secondary) PhoneCallService.current.stop();
 
     _clockPoll?.cancel();
+    _accessPoll?.cancel();
+    _accessOnResume?.dispose();
     _stopClockListening?.call();
-    _reminder.dispose();
+    _reminder?.dispose();
 
     super.dispose();
   }
@@ -863,18 +1030,44 @@ class _HomeShellState extends State<HomeShell> {
     _rail = rail;
     _selected = id;
     widget.address?.push(_pathFor(rail, id));
-    unawaited(_heartbeat.enter(id));
+    unawaited(_heartbeat?.enter(id) ?? Future.value());
+    _titleWindow(id);
   });
 
   /// Another screen sending someone here ([OpenDestination]): read the id the
   /// way a typed URL is read, so a child module opens inside its parent.
+  void _openRequestedModule() {
+    final key = DeepLinks.module.value;
+    if (key == null || !mounted) return;
+    DeepLinks.module.value = null;
+    // Leads opens one lead through its constructor, not DeepLinks.
+    if (key == 'leads') {
+      if (DeepLinks.take('leads') case final lead?) {
+        _show(_Rail.modules, 'leads', openLead: lead.id);
+        return;
+      }
+    }
+    _open(key);
+  }
+
   void _open(String id) {
     setState(() {
       _leadsOpen = null;
       _apply(Address.pathOf(id));
     });
     widget.address?.push(_pathFor(_rail, _selected));
-    if (_selected case final shown?) unawaited(_heartbeat.enter(shown));
+    if (_selected case final shown?) {
+      unawaited(_heartbeat?.enter(shown) ?? Future.value());
+      _titleWindow(shown);
+    }
+  }
+
+  /// A second window says what it shows, so two EzBizis tell apart in the
+  /// taskbar and Alt-Tab.
+  void _titleWindow(String id) {
+    if (!AppWindow.secondary) return;
+    final label = widget.session.me?.module(id)?.label ?? id;
+    unawaited(AppWindow.setTitle('EzBizi — $label'));
   }
 
   /// "Your account" is reached from the avatar, not from a rail, so it has no
@@ -901,6 +1094,18 @@ class _HomeShellState extends State<HomeShell> {
   /// POST /auth/verify/resend answers identically whether or not the address
   /// matched, so there is no success to read out of it -- only that it was
   /// accepted. The sentence below says what we DID, never that it arrived.
+  /// "View as" (design 205): the picker; Exit returns to yourself.
+  void _viewAs() =>
+      showViewAsPanel(context, api: widget.api, session: widget.session);
+
+  Future<void> _exitViewAs() async {
+    final error = await widget.session.stopViewAs();
+    if (!mounted || error == null) return;
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(error)));
+  }
+
   Future<void> _resendConfirmation() async {
     final me = widget.session.me;
     if (me == null || _resendingConfirmation) return;
@@ -1006,7 +1211,7 @@ class _HomeShellState extends State<HomeShell> {
 
   Widget _shell(BuildContext context) {
     final me = widget.session.me!;
-    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final wide = _wideShell(context);
 
     // Labels beside icons, unless this person has collapsed it or prefers the
     // stacked "blocks" shape. Stored, so it survives a reload — a sidebar that
@@ -1087,13 +1292,11 @@ class _HomeShellState extends State<HomeShell> {
     // source means none of them has to know the order exists. `divideAfter`
     // holds positions in it, and is empty for everybody who has never dragged
     // anything.
-    final arranged = arrangeSidebar(
-      destinations,
-      me.navigationOrder,
-      (d) => d.id,
-    );
-    destinations = arranged.rows;
-    final divideAfter = arranged.divideAfter;
+    final laid = layoutSidebar(destinations, me.navigationOrder, (d) => d.id);
+    destinations = laid.rows;
+    final divideAfter = laid.divideAfter;
+    // Their sections (Jose 11-24), or the fixed groups until they arrange.
+    final headingAt = laid.headingAt;
 
     // Pinned to the bottom, under a rule and the empty space.
     //
@@ -1200,6 +1403,46 @@ class _HomeShellState extends State<HomeShell> {
     IssueReporter.module = shownId;
     IssueReporter.route = Address.pathOf(shownId);
 
+    // A phone with the keyboard up keeps only the toolbar and "Viewing as".
+    final folded = !wide && _typing;
+    // A phone on its side (or a 700+ tablet in portrait) has room in the bar:
+    // the company picker sits there and its own row goes, 44 px of a ~250 px
+    // landscape page (mobile review 11-24).
+    final roomyBar = !wide && MediaQuery.sizeOf(context).width >= 700;
+    final barStates = _BarStates(
+      // A state is not a control, and states already have a home here:
+      // `_timeClockNotice` is described in this file as sitting "as a
+      // one-line strip under the AppBar, same family as the two-factor
+      // chip". The chip was simply never put in it.
+      //
+      // On a phone that is not tidiness. Measured at 375 with both
+      // showing, the actions row runs off the right edge -- these two
+      // are conditional, so the worst case is worse than any screenshot
+      // of a healthy account.
+      twoFactor: !wide && !folded && me.twoFactorEnrolmentRequired,
+      readOnly: !wide && !folded && me.organization.isReadOnly,
+      // The third state this strip's own comment anticipated. It
+      // scrolls rather than wraps, so it does not push every screen
+      // down a row on a phone.
+      emailConfirmation: !wide && !folded && me.emailConfirmationRequired,
+      onTwoFactor: _showProfile,
+      onEmailConfirmation: _resendConfirmation,
+      // "View as" (design 205): on every screen, desktop and phone.
+      viewing: me.viewingAs == null
+          ? null
+          : ViewingAsStrip(
+              label: me.viewingAs!.label,
+              onSwitch: _viewAs,
+              onExit: _exitViewAs,
+            ),
+      // The company picker on its own row on a phone (live 0.0.0597 at 375:
+      // between the hamburger and the icons it got ~20 px and drew an
+      // empty box). Only when there is somewhere else to stand.
+      scope: !wide && !folded && !roomyBar && ScopeSwitcher.hasChoices(me)
+          ? ScopeSwitcher(api: widget.api, session: widget.session, block: true)
+          : null,
+    );
+
     final shell = Scaffold(
       key: _scaffoldKey,
       // The top bar belongs to the CHROME, not to the page.
@@ -1211,36 +1454,26 @@ class _HomeShellState extends State<HomeShell> {
       // deliberately different.
       //
       // PreferredSize because Scaffold.appBar demands one and a Theme is not:
-      // the height is the toolbar plus the one-pixel rule below it.
+      // the height is the toolbar plus what hangs below it (the rule, and on
+      // a phone the state strip and the company picker's row).
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight + 1),
+        preferredSize: Size.fromHeight(
+          (folded ? 0 : kToolbarHeight) + barStates.preferredSize.height,
+        ),
         child: _maybeThemed(
           EzBiziTheme.navigationOverride(me.theme),
           builder: (context) => AppBar(
+            // Typing on a phone the toolbar folds too (mobile review 11-24):
+            // menu, clock, calls, search and bell are not used mid-sentence,
+            // and 56 px is two more lines of a conversation. AppBar clips its
+            // toolbar, so at height 0 nothing in it draws or takes a tap.
+            toolbarHeight: folded ? 0 : null,
             // A rule under the top bar.
             //
             // The bar and the rail were both plain surface, so on a light theme
             // they met as one continuous white field and the sidebar read as part
             // of the header. One pixel fixes it; nothing else would.
-            bottom: _BarStates(
-              // A state is not a control, and states already have a home here:
-              // `_timeClockNotice` is described in this file as sitting "as a
-              // one-line strip under the AppBar, same family as the two-factor
-              // chip". The chip was simply never put in it.
-              //
-              // On a phone that is not tidiness. Measured at 375 with both
-              // showing, the actions row runs off the right edge -- these two
-              // are conditional, so the worst case is worse than any screenshot
-              // of a healthy account.
-              twoFactor: !wide && me.twoFactorEnrolmentRequired,
-              readOnly: !wide && me.organization.isReadOnly,
-              // The third state this strip's own comment anticipated. It
-              // scrolls rather than wraps, so it does not push every screen
-              // down a row on a phone.
-              emailConfirmation: !wide && me.emailConfirmationRequired,
-              onTwoFactor: _showProfile,
-              onEmailConfirmation: _resendConfirmation,
-            ),
+            bottom: barStates,
             leading: wide
                 ? IconButton(
                     tooltip: expanded
@@ -1304,10 +1537,11 @@ class _HomeShellState extends State<HomeShell> {
                 // and says nothing, which is worse than absence.
                 //
                 // So the wordmark, the rule and the company logo are dropped
-                // together below 900, and the switcher gets the whole slot. It
+                // together below 900, and the switcher gets a row of its own. It
                 // still NAMES the company in words, which is what the logo was
                 // saying in pixels -- nothing that identifies the business is
                 // lost, only a second copy of it.
+                if (roomyBar) return Row(children: [Flexible(child: switcher)]);
                 if (!wide) {
                   // The switcher draws NOTHING for a single-company business
                   // (`ScopeSwitcher.hasChoices`) — there is nowhere else to
@@ -1318,8 +1552,10 @@ class _HomeShellState extends State<HomeShell> {
                   // So when it has nothing to offer, the name is said plainly.
                   // Asking the switcher rather than re-deriving the condition
                   // here keeps one definition of "is there a choice".
+                  // With a choice, the switcher has its own row below
+                  // (`_BarStates.scope`).
                   return ScopeSwitcher.hasChoices(me)
-                      ? switcher
+                      ? const SizedBox.shrink()
                       : Text(
                           me.scope.label,
                           overflow: TextOverflow.ellipsis,
@@ -1395,9 +1631,8 @@ class _HomeShellState extends State<HomeShell> {
               // second setting. Two places that both claim to control the theme and
               // disagree is worse than one place that is hard to find.
               //
-              // Cycles system -> light -> dark rather than toggling two states: the
-              // default is "match my device", and a two-way switch would silently
-              // throw that away the first time anybody touched it.
+              // Two states, light and dark (Jose 11-24: "get rid of the middle
+              // matching your device mode"). A mixed theme flips by its page.
               // Desktop only, by Jose's word (2026-09-10): "we can get rid of
               // the light-dark mode switcher and have it only managed via your
               // account on mobile". It was always a shortcut to the account
@@ -1405,30 +1640,46 @@ class _HomeShellState extends State<HomeShell> {
               // path and never a capability -- which is the only reason it is
               // safe to drop rather than relocate.
               if (wide)
-                IconButton(
-                  tooltip: switch (me.theme) {
-                    'light' => 'Light — switch to dark',
-                    'dark' => 'Dark — match my device',
-                    _ => 'Matching your device — switch to light',
+                Builder(
+                  builder: (context) {
+                    final light =
+                        EzBiziTheme.modeFor(me.theme) == ThemeMode.light;
+                    return IconButton(
+                      tooltip: light
+                          ? 'Light — switch to dark'
+                          : 'Dark — switch to light',
+                      icon: Icon(
+                        light
+                            ? Icons.wb_sunny_outlined
+                            : Icons.dark_mode_outlined,
+                      ),
+                      onPressed: () => widget.session.setPreference(
+                        'appearance.theme',
+                        light ? 'dark' : 'light',
+                      ),
+                    );
                   },
-                  icon: Icon(switch (me.theme) {
-                    'light' => Icons.wb_sunny_outlined,
-                    'dark' => Icons.dark_mode_outlined,
-                    // Not brightness_auto: that glyph is a sun with an A, and
-                    // it sits next to the two-factor shield that also carries
-                    // an A. Contrast is the half-and-half circle — light and
-                    // dark in one mark, no letter.
-                    _ => Icons.contrast,
-                  }),
-                  onPressed: () => widget.session.setPreference(
-                    'appearance.theme',
-                    switch (me.theme) {
-                      'system' => 'light',
-                      'light' => 'dark',
-                      _ => 'system',
-                    },
-                  ),
                 ),
+              // "View as" a role or person (design 205): developers who are
+              // Administrators; lit while on, so it can be switched or left.
+              if (me.viewAsAvailable || me.viewingAs != null)
+                IconButton(
+                  key: const Key('shell-view-as'),
+                  tooltip: me.viewingAs == null
+                      ? 'View as a role or person'
+                      : 'Viewing as ${me.viewingAs!.label}',
+                  color: me.viewingAs == null
+                      ? null
+                      : ToneColours.of(context, Tone.caution).ink,
+                  icon: const Icon(Icons.switch_account_outlined),
+                  onPressed: _viewAs,
+                ),
+              IconButton(
+                key: const Key('shell-quick-search'),
+                tooltip: 'Search (Ctrl+K)',
+                icon: const Icon(Icons.search),
+                onPressed: _quickSearch,
+              ),
               NotificationBell(
                 api: widget.api,
                 // The shell already knows how to select a module; the bell
@@ -1670,8 +1921,15 @@ class _HomeShellState extends State<HomeShell> {
              */
             AnimatedBuilder(
               animation: PhoneCallService.current,
-              builder: (context, _) =>
+              builder: (context, _) => Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   voiceDeviceView(PhoneCallService.current.platformView),
+                  // One per other phone account (EverDoors, 2026-11-11).
+                  for (final view in PhoneCallService.current.extraViews)
+                    voiceDeviceView(view),
+                ],
+              ),
             ),
 
             /*
@@ -1863,10 +2121,12 @@ class _HomeShellState extends State<HomeShell> {
                         // theme and the page is the other.
                         EzBiziTheme.navigationOverride(me.theme),
                         builder: (context) => NavigationSidebar(
+                          api: widget.api,
                           expanded: expanded,
                           width: me.navigationWidth,
                           destinations: destinations,
                           divideAfter: divideAfter,
+                          headingAt: headingAt,
                           pinned: pinned,
                           staffOnly: staffOnly,
                           selectedIndex: railIndex,
@@ -1907,7 +2167,12 @@ class _HomeShellState extends State<HomeShell> {
                     child: FocusTraversalGroup(
                       key: shellPageGroup,
                       child: KeyedSubtree(
-                        key: ValueKey('${me.scope.type}:${me.scope.id}'),
+                        // And by what they may reach, so a grant made
+                        // elsewhere remounts the page and its lists reload.
+                        key: ValueKey(
+                          '${me.scope.type}:${me.scope.id}:${me.accessVersion}'
+                          ':${me.viewingAs?.label}',
+                        ),
                         // Their own account is the last fallback, and the only honest
                         // one: it is the single screen that is theirs by definition and
                         // cannot answer 403. It is what somebody whose role reaches no
@@ -1964,16 +2229,51 @@ class _HomeShellState extends State<HomeShell> {
        * No `leading` is set on this layout, so Scaffold supplies the button
        * that opens it.
        */
+      // Mobile review 2026-11-13, P7 (preview §3 A): on a phone, four
+      // modules one tap away at the bottom, and More opens the drawer.
+      // Design 206: also on the open iPhone Duo / an iPad mini, where the
+      // thumb is where it was folded; the sidebar takes over at 900.
+      bottomNavigationBar: wide ? null : _bottomBar(destinations),
       drawer: wide
           ? null
           : _navigationDrawer(
               destinations,
               divideAfter,
+              headingAt,
               pinned,
               staffOnly,
               (order) =>
                   widget.session.setPreference('navigation.order', order),
             ),
+    );
+    _quickSearch = () => showQuickSearch(
+      context,
+      api: widget.api,
+      screens: [
+        for (final d in destinations)
+          (
+            module: d.id,
+            record: null,
+            label: d.label,
+            detail: 'Screen',
+            icon: d.icon,
+          ),
+      ],
+      onOpen: (module, record) {
+        if (record != null && module == 'leads') {
+          return _show(_Rail.modules, 'leads', openLead: record);
+        }
+        if (record != null) {
+          DeepLinks.open(
+            DeepLink(
+              module: module,
+              type: module.substring(0, module.length - 1),
+              id: record,
+            ),
+          );
+        }
+        _open(module);
+      },
     );
     return OpenDestination(
       open: _open,
@@ -2027,43 +2327,88 @@ class _HomeShellState extends State<HomeShell> {
   /// Design 161 T1: one toolbar slot per module, filled by its screen.
   final Map<String, ValueNotifier<Widget?>> _toolbars = {};
 
+  /// D3: one primary-action slot per module, header right ([ModuleAction]).
+  final Map<String, ValueNotifier<Widget?>> _actions = {};
+
   Widget _titled(Destination destination) {
     final toolbar = _toolbars.putIfAbsent(
       destination.id,
       () => ValueNotifier<Widget?>(null),
     );
+    final action = _actions.putIfAbsent(
+      destination.id,
+      () => ValueNotifier<Widget?>(null),
+    );
+    // A phone on its side leaves a page ~200 px tall: every module's fixed
+    // header took it all and its list got 0 px (10 overflows, Android landscape
+    // 11-24). Under the floor the page keeps [_pageFloor] and scrolls. The same
+    // scroll view is there at every height, so turning the phone or opening
+    // the keyboard never rebuilds the screen. Typing on a portrait phone the
+    // floor is off and the keyboard fold above decides; on a phone on its side
+    // it stays, or ~150 px above the keyboard overflowed 7 modules' headers
+    // (Android landscape 11-25): the keyboard only narrows the window onto
+    // the same page, and the box being typed in is scrolled into it.
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        key: const Key('module-page-scroll'),
+        primary: false,
+        child: SizedBox(
+          height: _typing && MediaQuery.sizeOf(context).height >= 560
+              ? box.maxHeight
+              : math.max(box.maxHeight, _pageFloor),
+          child: _page(destination, toolbar, action),
+        ),
+      ),
+    );
+  }
+
+  /// Under this a module page scrolls as a whole. A portrait phone's page is
+  /// taller (iPhone SE ~480), so only a short window ever meets it.
+  static const double _pageFloor = 420;
+
+  Widget _page(
+    Destination destination,
+    ValueNotifier<Widget?> toolbar,
+    ValueNotifier<Widget?> action,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // UI queue 67: a phone's browser hears about the app on every page;
         // a computer, once, on the Dashboard. Both draw nothing otherwise.
-        PhoneAppBanner(session: widget.session),
-        ValueListenableBuilder<Widget?>(
-          valueListenable: toolbar,
-          builder: (context, bar, _) => ModulePageHeader(
-            title: destination.label,
-            subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
-            // UI queue 81: the walkthrough and the how-to video, as A1 Tools
-            // had them, each only where the tab has one.
-            beside: TabHelpButtons(
-              module: destination.id,
-              label: destination.label,
-              api: widget.api,
-              session: widget.session,
+        if (!_typing) PhoneAppBanner(session: widget.session),
+        _HiddenWhileTyping(
+          typing: _typing && (!_wideShell(context) || typingShort(context)),
+          child: ListenableBuilder(
+            listenable: Listenable.merge([toolbar, action]),
+            builder: (context, _) => ModulePageHeader(
+              actions: [?action.value],
+              title: destination.label,
+              subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
+              // UI queue 81: the walkthrough and the how-to video, as A1 Tools
+              // had them, each only where the tab has one.
+              beside: TabHelpButtons(
+                module: destination.id,
+                label: destination.label,
+                api: widget.api,
+                session: widget.session,
+              ),
+              toolbar: toolbar.value,
             ),
-            toolbar: bar,
           ),
         ),
-        TourOffer(
-          module: destination.id,
-          label: destination.label,
-          session: widget.session,
-        ),
+        if (!_typing)
+          TourOffer(
+            module: destination.id,
+            label: destination.label,
+            session: widget.session,
+          ),
         if (destination.id == 'dashboard')
           PhoneAppCard(session: widget.session),
         Expanded(
           child: ModuleToolbarScope(
             slot: toolbar,
+            action: action,
             child: destination.screen,
           ),
         ),
@@ -2071,9 +2416,77 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
+  /// The modules a field team uses all day, in order, when this person has
+  /// them; the rest of the four come from the top of their own sidebar.
+  static const _barFirst = ['jobs', 'scheduling', 'leads', 'phone'];
+
+  Widget _bottomBar(List<Destination> destinations) {
+    final byId = {for (final d in destinations) d.id: d};
+    // The role's own slots first (design 208, Jose 2026-11-23: "different
+    // for every role"), a module or one of its tabs; then the default fills
+    // whatever is left.
+    final slots = <(Destination, String?, String)>[
+      for (final m in widget.session.me?.mobileBar ?? const <MobileBarSlot>[])
+        if (byId[m.module] case final d?)
+          (d, m.tab, m.tab == null ? barLabel(d.id, d.label) : m.label),
+    ].take(4).toList();
+    for (final id in [..._barFirst, for (final d in destinations) d.id]) {
+      if (slots.length >= 4) break;
+      final d = byId[id];
+      if (d != null && !slots.any((s) => s.$1 == d && s.$2 == null)) {
+        slots.add((d, null, barLabel(d.id, d.label)));
+      }
+    }
+    final at = _rail == _Rail.modules
+        ? slots.indexWhere((s) => s.$1.id == _selected)
+        : -1;
+    // One shared bar with the Roles editor's preview (Jose 2026-11-24:
+    // "you can't tell stuff apart"): equal slots, readable labels, and a
+    // tab slot with its own icon.
+    return PhoneBottomBar(
+      key: const Key('phone-bottom-bar'),
+      selected: at,
+      items: [
+        for (final (d, tab, label) in slots)
+          () {
+            final (icon, badge) = slotIcon(d.icon, tab);
+            return PhoneBarItem(
+              icon: icon,
+              badge: badge,
+              label: label,
+              tooltip: tab == null ? d.label : '${d.label} › $label',
+              key: ValueKey(
+                'phone-bottom-${d.id}${tab == null ? '' : '-$tab'}',
+              ),
+            );
+          }(),
+        const PhoneBarItem(
+          icon: Icons.menu,
+          label: 'More',
+          key: Key('phone-bottom-more'),
+        ),
+      ],
+      onTap: (i) {
+        if (i == slots.length) {
+          _scaffoldKey.currentState?.openDrawer();
+          return;
+        }
+        final (d, tab, label) = slots[i];
+        // A tab slot: the module takes the link and opens on that tab.
+        if (tab != null) {
+          DeepLinks.open(
+            DeepLink(module: d.id, type: 'tab', id: tab, label: label),
+          );
+        }
+        _show(_Rail.modules, d.id);
+      },
+    );
+  }
+
   Widget _navigationDrawer(
     List<Destination> destinations,
     Set<int> divideAfter,
+    Map<int, String> headingAt,
     List<Destination> pinned,
     List<Destination> staffOnly,
     ValueChanged<List<String>> onArranged,
@@ -2086,14 +2499,17 @@ class _HomeShellState extends State<HomeShell> {
         bottom: false,
         child: Builder(
           builder: (context) {
-            Widget tile(Destination d, _Rail rail) => ListTile(
-              leading: Icon(d.icon),
-              title: Text(d.label),
-              selected: _rail == rail && _selected == d.id,
-              onTap: () {
-                Navigator.of(context).pop();
-                _show(rail, d.id);
-              },
+            Widget tile(Destination d, _Rail rail) => OpenInWindow(
+              path: AppWindow.pathFor(d.id),
+              child: ListTile(
+                leading: Icon(d.icon),
+                title: Text(d.label),
+                selected: _rail == rail && _selected == d.id,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _show(rail, d.id);
+                },
+              ),
             );
 
             final header = Padding(
@@ -2113,6 +2529,7 @@ class _HomeShellState extends State<HomeShell> {
                     child: _SidebarArranger(
                       destinations: destinations,
                       divideAfter: divideAfter,
+                      headingAt: headingAt,
                       onDone: (order) {
                         setState(() => _arrangingDrawer = false);
                         if (order != null) onArranged(order);
@@ -2129,6 +2546,7 @@ class _HomeShellState extends State<HomeShell> {
                 header,
                 const Divider(height: 1),
                 for (var i = 0; i < destinations.length; i++) ...[
+                  if (headingAt.containsKey(i)) _GroupHeading(headingAt[i]!),
                   tile(destinations[i], _Rail.modules),
                   // Their own rule, nameless, exactly where they put it. The
                   // last position can never be in the set, so this cannot draw
@@ -2167,7 +2585,7 @@ class _HomeShellState extends State<HomeShell> {
                           textStyle: Theme.of(context).textTheme.labelMedium,
                         ),
                       ),
-                      const BuildStamp(),
+                      BuildStamp(api: widget.api),
                     ],
                   ),
                 ),
@@ -2214,7 +2632,15 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
     required this.emailConfirmation,
     required this.onTwoFactor,
     required this.onEmailConfirmation,
+    this.scope,
+    this.viewing,
   });
+
+  /// The company picker's row on a phone, or null.
+  final Widget? scope;
+
+  /// The "Viewing as" strip (design 205), or null.
+  final Widget? viewing;
 
   final bool twoFactor;
   final bool readOnly;
@@ -2225,12 +2651,33 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
   bool get _any => twoFactor || readOnly || emailConfirmation;
 
   @override
-  Size get preferredSize => Size.fromHeight(_any ? 49 : 1);
+  Size get preferredSize => Size.fromHeight(
+    (_any ? 49 : 1) +
+        (scope == null ? 0 : 44) +
+        (viewing == null ? 0 : ViewingAsStrip.height),
+  );
 
   @override
   Widget build(BuildContext context) {
     final rule = Container(height: 1, color: EzBiziTheme.edge(context));
-    if (!_any) return rule;
+    final row = scope == null
+        ? null
+        : SizedBox(
+            key: const Key('top-bar-scope-row'),
+            height: 44,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+              child: scope,
+            ),
+          );
+    if (!_any) {
+      return row == null && viewing == null
+          ? rule
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [?viewing, ?row, rule],
+            );
+    }
 
     final scheme = Theme.of(context).colorScheme;
     final tint = scheme.errorContainer.withValues(alpha: 0.4);
@@ -2238,6 +2685,8 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        ?viewing,
+        ?row,
         SizedBox(
           height: 48,
           // Scrolls rather than wraps: two chips fit at 375, and a third state
@@ -2506,6 +2955,7 @@ Widget _maybeThemed(ThemeData? theme, {required WidgetBuilder builder}) =>
 /// reading the code reliably catches.
 class NavigationSidebar extends StatefulWidget {
   const NavigationSidebar({
+    this.api,
     super.key,
     required this.expanded,
     required this.width,
@@ -2521,7 +2971,14 @@ class NavigationSidebar extends StatefulWidget {
     this.onResized,
     this.onArranged,
     this.divideAfter = const {},
+    this.headingAt = const {},
   });
+
+  /// Group heading drawn above a position in [destinations].
+  final Map<int, String> headingAt;
+
+  /// For the version stamp's release bar; null where no client is built.
+  final ApiClient? api;
 
   final bool expanded;
 
@@ -2579,6 +3036,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
   bool _arranging = false;
 
   final TextEditingController _search = TextEditingController();
+  final ScrollController _railScroll = ScrollController();
 
   /// What is typed in the module filter. Empty means no filter at all.
   ///
@@ -2591,6 +3049,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
   @override
   void dispose() {
     _search.dispose();
+    _railScroll.dispose();
     super.dispose();
   }
 
@@ -2672,6 +3131,12 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
     // good when it was saved.
     final segments = <List<int>>[[]];
     for (final i in shown) {
+      // A heading starts a new rail too (filtering hides headings).
+      if (!filtering &&
+          widget.headingAt.containsKey(i) &&
+          segments.last.isNotEmpty) {
+        segments.add([]);
+      }
       segments.last.add(i);
       if (widget.divideAfter.contains(i)) segments.add([]);
     }
@@ -2723,301 +3188,398 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
         // animation, icon column, label style and row height are identical
         // because they are the same widget, not because constants were copied
         // out of its source.
-        child: Column(
-          children: [
-            // The filter, and only while there are labels to filter.
-            //
-            // Collapsed there is no search at all, not even an icon. The
-            // collapsed rail is for somebody who already knows where things are
-            // and wants their screen back; search is for FINDING, which implies
-            // wanting labels. An icon at 80px would be a control that only
-            // makes sense by first undoing the state you deliberately chose.
-            if (expanded && !arranging)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                child: TextField(
-                  controller: _search,
-                  onChanged: (value) => setState(() => _query = value),
-                  textInputAction: TextInputAction.search,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: UiStrings.t('shell.find_module'),
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                    prefixIconConstraints: const BoxConstraints(
-                      minWidth: 34,
-                      minHeight: 34,
-                    ),
-                    suffixIcon: filtering
-                        ? IconButton(
-                            icon: const Icon(Icons.close, size: 16),
-                            visualDensity: VisualDensity.compact,
-                            tooltip: UiStrings.t('shell.clear_filter'),
-                            onPressed: () => setState(() {
-                              _search.clear();
-                              _query = '';
-                            }),
-                          )
-                        : null,
-                    suffixIconConstraints: const BoxConstraints(
-                      minWidth: 34,
-                      minHeight: 34,
-                    ),
-                  ),
-                ),
-              ),
-
-            // How many of how many.
-            //
-            // With a filter on, "three modules match" and "three modules exist"
-            // look exactly alike, and one of them means the app has lost
-            // thirteen tabs. The total is what tells them apart.
-            if (filtering && shown.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Text(
-                  UiStrings.t('shell.modules_shown')
-                      .replaceFirst('{n}', '${shown.length}')
-                      .replaceFirst('{total}', '${widget.destinations.length}'),
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-
-            // The destinations scroll; the group below does NOT.
-            //
-            // A NavigationRail lays its destinations out in a Column and has no
-            // scrolling of its own. Inside a bare Expanded it therefore
-            // OVERFLOWED on a short window: past about 780px of sidebar the
-            // sixteen destinations drew straight over Settings and Development,
-            // and the ones underneath were unreachable rather than merely
-            // hidden — there was nothing to scroll with. Reported from a 900px
-            // screen, where Services sat on top of Settings.
-            //
-            // The rail still has to FILL the column when there is room, or it
-            // stops stretching and the selected-row highlight ends early. So it
-            // is a scroll view with a minimum height of whatever it was given:
-            // at full height nothing scrolls and this is identical to before;
-            // below that the list scrolls and the tail stays put.
-            //
-            // The tail is deliberately outside this. Going to Settings is often
-            // what somebody does BECAUSE they could not find a module in the
-            // list, so it is the last thing that should require scrolling to
-            // reach.
-            Expanded(
-              // Nothing matched is the state that matters more than the happy
-              // path: a sidebar with no modules in it and no explanation is
-              // indistinguishable from a broken one. So it names what was
-              // typed, says the list is filtered rather than empty, and points
-              // at the way back.
-              child: arranging
-                  ? _SidebarArranger(
-                      destinations: widget.destinations,
-                      divideAfter: widget.divideAfter,
-                      onDone: (order) {
-                        setState(() => _arranging = false);
-                        if (order != null) widget.onArranged!(order);
-                      },
-                    )
-                  : filtering && shown.isEmpty
-                  ? _noMatch(context, _query.trim())
-                  : LayoutBuilder(
-                      builder: (context, constraints) => SingleChildScrollView(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minHeight: constraints.maxHeight,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (var g = 0; g < segments.length; g++) ...[
-                                if (g > 0)
-                                  Divider(
-                                    height: 17,
-                                    thickness: 1,
-                                    indent: width * 0.15,
-                                    endIndent: width * 0.15,
-                                    color: scheme.outlineVariant,
-                                  ),
-                                IntrinsicHeight(
-                                  child: _rail(
-                                    context,
-                                    expanded: expanded,
-                                    width: width,
-                                    destinations: [
-                                      for (final i in segments[g])
-                                        widget.destinations[i],
-                                    ],
-                                    selectedIndex: within(segments[g]),
-                                    onSelected: (i) =>
-                                        widget.onSelected(segments[g][i]),
-                                    query: query,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
+        child: LayoutBuilder(
+          builder: (context, box) => Column(
+            children: [
+              // The filter, and only while there are labels to filter.
+              //
+              // Collapsed there is no search at all, not even an icon. The
+              // collapsed rail is for somebody who already knows where things are
+              // and wants their screen back; search is for FINDING, which implies
+              // wanting labels. An icon at 80px would be a control that only
+              // makes sense by first undoing the state you deliberately chose.
+              if (expanded && !arranging)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                  child: TextField(
+                    controller: _search,
+                    onChanged: (value) => setState(() => _query = value),
+                    textInputAction: TextInputAction.search,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: UiStrings.t('shell.find_module'),
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      prefixIconConstraints: const BoxConstraints(
+                        minWidth: 34,
+                        minHeight: 34,
+                      ),
+                      suffixIcon: filtering
+                          ? IconButton(
+                              icon: const Icon(Icons.close, size: 16),
+                              visualDensity: VisualDensity.compact,
+                              tooltip: UiStrings.t('shell.clear_filter'),
+                              onPressed: () => setState(() {
+                                _search.clear();
+                                _query = '';
+                              }),
+                            )
+                          : null,
+                      suffixIconConstraints: const BoxConstraints(
+                        minWidth: 34,
+                        minHeight: 34,
                       ),
                     ),
-            ),
+                  ),
+                ),
 
-            // The rule that says the group below is a different kind of thing:
-            // places you go to change how the work behaves, rather than places
-            // you go to do it.
-            //
-            // Inset to about 70% of the column. Edge to edge it reads as the
-            // bottom of the sidebar — a border, the same language as the right
-            // edge beside it. Pulled in, it reads as a break WITHIN one list,
-            // which is what it is.
-            Divider(
-              height: 17,
-              thickness: 1,
-              indent: width * 0.15,
-              endIndent: width * 0.15,
-              color: scheme.outlineVariant,
-            ),
+              // How many of how many.
+              //
+              // With a filter on, "three modules match" and "three modules exist"
+              // look exactly alike, and one of them means the app has lost
+              // thirteen tabs. The total is what tells them apart.
+              if (filtering && shown.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Text(
+                    UiStrings.t('shell.modules_shown')
+                        .replaceFirst('{n}', '${shown.length}')
+                        .replaceFirst(
+                          '{total}',
+                          '${widget.destinations.length}',
+                        ),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
 
-            // IntrinsicHeight because a rail's root column is mainAxisSize.max
-            // — it expects to own the full height. This asks it for exactly the
-            // height its destinations need.
-            IntrinsicHeight(
-              child: _rail(
-                context,
-                expanded: expanded,
-                width: width,
-                destinations: widget.pinned,
-                selectedIndex: widget.pinnedIndex,
-                onSelected: widget.onPinnedSelected,
+              // The destinations scroll; the group below does NOT.
+              //
+              // A NavigationRail lays its destinations out in a Column and has no
+              // scrolling of its own. Inside a bare Expanded it therefore
+              // OVERFLOWED on a short window: past about 780px of sidebar the
+              // sixteen destinations drew straight over Settings and Development,
+              // and the ones underneath were unreachable rather than merely
+              // hidden — there was nothing to scroll with. Reported from a 900px
+              // screen, where Services sat on top of Settings.
+              //
+              // The rail still has to FILL the column when there is room, or it
+              // stops stretching and the selected-row highlight ends early. So it
+              // is a scroll view with a minimum height of whatever it was given:
+              // at full height nothing scrolls and this is identical to before;
+              // below that the list scrolls and the tail stays put.
+              //
+              // The tail is deliberately outside this. Going to Settings is often
+              // what somebody does BECAUSE they could not find a module in the
+              // list, so it is the last thing that should require scrolling to
+              // reach.
+              Expanded(
+                // Keyed: the search field above it comes and goes with the
+                // collapse, and an unkeyed sibling shift remounted this whole
+                // list (and its scroll view) on every toggle.
+                key: const ValueKey('sidebar-list'),
+                // Nothing matched is the state that matters more than the happy
+                // path: a sidebar with no modules in it and no explanation is
+                // indistinguishable from a broken one. So it names what was
+                // typed, says the list is filtered rather than empty, and points
+                // at the way back.
+                child: arranging
+                    ? _SidebarArranger(
+                        destinations: widget.destinations,
+                        divideAfter: widget.divideAfter,
+                        headingAt: widget.headingAt,
+                        onDone: (order) {
+                          setState(() => _arranging = false);
+                          if (order != null) widget.onArranged!(order);
+                        },
+                      )
+                    : filtering && shown.isEmpty
+                    ? _noMatch(context, _query.trim())
+                    : Column(
+                        children: [
+                          Expanded(
+                            child: LayoutBuilder(
+                              // A visible thumb when the list is taller than the
+                              // window: without it the lower group just stopped
+                              // mid-row with no hint there was more (deep dive
+                              // 2026-11-02).
+                              builder: (context, constraints) => Stack(
+                                children: [
+                                  Scrollbar(
+                                    controller: _railScroll,
+                                    thumbVisibility: true,
+                                    child: SingleChildScrollView(
+                                      controller: _railScroll,
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                          minHeight: constraints.maxHeight,
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            for (
+                                              var g = 0;
+                                              g < segments.length;
+                                              g++
+                                            ) ...[
+                                              if (!filtering &&
+                                                  expanded &&
+                                                  widget.headingAt.containsKey(
+                                                    segments[g].first,
+                                                  ))
+                                                _GroupHeading(
+                                                  widget.headingAt[segments[g]
+                                                      .first]!,
+                                                )
+                                              else if (g > 0)
+                                                Divider(
+                                                  height: 17,
+                                                  thickness: 1,
+                                                  indent: width * 0.15,
+                                                  endIndent: width * 0.15,
+                                                  color: scheme.outlineVariant,
+                                                ),
+                                              IntrinsicHeight(
+                                                child: _rail(
+                                                  context,
+                                                  expanded: expanded,
+                                                  width: width,
+                                                  destinations: [
+                                                    for (final i in segments[g])
+                                                      widget.destinations[i],
+                                                  ],
+                                                  selectedIndex: within(
+                                                    segments[g],
+                                                  ),
+                                                  onSelected: (i) =>
+                                                      widget.onSelected(
+                                                        segments[g][i],
+                                                      ),
+                                                  query: query,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          // "More below" on its own row under the list while
+                          // rows remain under the fold (Jose 11-13 read the
+                          // cut-off list as modules MISSING). Drawn over the
+                          // list it covered a module name (desktop review
+                          // 2026-11-13, Top 6).
+                          _MoreBelow(
+                            controller: _railScroll,
+                            compact: !expanded,
+                          ),
+                        ],
+                      ),
               ),
-            ),
 
-            // And a third group, for staff only.
-            //
-            // Development sat in the group above, which said it was the same
-            // kind of thing as Settings. Settings configures the business and
-            // every administrator has it; this is the platform underneath the
-            // product (§4.2), it appears only when the server says this person
-            // is also EzBizi staff, and most people signed into this app will
-            // never see it.
-            //
-            // The whole group disappears with its rule when they are not, so
-            // nobody is left looking at a divider with nothing under it.
-            if (widget.staffOnly.isNotEmpty) ...[
-              Divider(
-                height: 17,
-                thickness: 1,
-                indent: width * 0.15,
-                endIndent: width * 0.15,
-                color: scheme.outlineVariant,
-              ),
-              IntrinsicHeight(
-                child: _rail(
-                  context,
-                  expanded: expanded,
-                  width: width,
-                  destinations: widget.staffOnly,
-                  selectedIndex: widget.staffIndex,
-                  onSelected: widget.onStaffSelected,
+              // The tail never takes more than half the column. It is fixed
+              // under the list, so in a short window (under ~460px) it left the
+              // list negative room and the column overflowed (Mobile, 11-24).
+              // At a normal height it is far under half and nothing changes;
+              // below that the tail scrolls too, and the list keeps its half.
+              ConstrainedBox(
+                key: const ValueKey('sidebar-tail'),
+                constraints: BoxConstraints(maxHeight: box.maxHeight / 2),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      // The rule that says the group below is a different kind of thing:
+                      // places you go to change how the work behaves, rather than places
+                      // you go to do it.
+                      //
+                      // Inset to about 70% of the column. Edge to edge it reads as the
+                      // bottom of the sidebar — a border, the same language as the right
+                      // edge beside it. Pulled in, it reads as a break WITHIN one list,
+                      // which is what it is.
+                      Divider(
+                        height: 17,
+                        thickness: 1,
+                        indent: width * 0.15,
+                        endIndent: width * 0.15,
+                        color: scheme.outlineVariant,
+                      ),
+
+                      // IntrinsicHeight because a rail's root column is mainAxisSize.max
+                      // — it expects to own the full height. This asks it for exactly the
+                      // height its destinations need.
+                      IntrinsicHeight(
+                        child: _rail(
+                          context,
+                          expanded: expanded,
+                          width: width,
+                          destinations: widget.pinned,
+                          selectedIndex: widget.pinnedIndex,
+                          onSelected: widget.onPinnedSelected,
+                        ),
+                      ),
+
+                      // And a third group, for staff only.
+                      //
+                      // Development sat in the group above, which said it was the same
+                      // kind of thing as Settings. Settings configures the business and
+                      // every administrator has it; this is the platform underneath the
+                      // product (§4.2), it appears only when the server says this person
+                      // is also EzBizi staff, and most people signed into this app will
+                      // never see it.
+                      //
+                      // The whole group disappears with its rule when they are not, so
+                      // nobody is left looking at a divider with nothing under it.
+                      if (widget.staffOnly.isNotEmpty) ...[
+                        Divider(
+                          height: 17,
+                          thickness: 1,
+                          indent: width * 0.15,
+                          endIndent: width * 0.15,
+                          color: scheme.outlineVariant,
+                        ),
+                        IntrinsicHeight(
+                          child: _rail(
+                            context,
+                            expanded: expanded,
+                            width: width,
+                            destinations: widget.staffOnly,
+                            selectedIndex: widget.staffIndex,
+                            onSelected: widget.onStaffSelected,
+                          ),
+                        ),
+                      ],
+
+                      // The foot: what build you are on, and the way into rearranging.
+                      //
+                      // Rearranging used to sit under the search field. Jose, 2026-09-14:
+                      // "i dont like the rearrange being on the top, perhaps move it next
+                      // to the version number instead." It belongs here for the same
+                      // reason Settings does — a place you go to change how the sidebar
+                      // behaves rather than a place you go to work — and the top of a
+                      // list of modules is the one place it competes with the modules.
+                      //
+                      // Collapsed shows the version alone. It used to show nothing, on
+                      // the reasoning that half a build id is worse than none; the
+                      // version is a whole field rather than half of one, and it fits.
+                      // See [BuildStamp.compact].
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          expanded ? 20 : 8,
+                          10,
+                          12,
+                          0,
+                        ),
+                        // Stacked, not side by side, and that was measured rather than
+                        // chosen: `BuildStamp` is 160px wide on a desktop platform --
+                        // the version plus the update control beside it -- and this
+                        // sidebar is draggable down to 180. A Row gives its non-flex
+                        // children unbounded width, so the two of them overflowed by
+                        // 86px at the default 220 rather than shrinking. Stacked they
+                        // fit at every width, and the control keeps its WORD, which an
+                        // icon squeezed in beside the version could not have.
+                        child: expanded
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (!arranging && widget.onArranged != null)
+                                    TextButton.icon(
+                                      onPressed: () =>
+                                          setState(() => _arranging = true),
+                                      icon: const Icon(
+                                        Icons.swap_vert,
+                                        size: 16,
+                                      ),
+                                      label: Text(
+                                        UiStrings.t('shell.rearrange'),
+                                      ),
+                                      style: TextButton.styleFrom(
+                                        visualDensity: VisualDensity.compact,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                        ),
+                                        foregroundColor:
+                                            scheme.onSurfaceVariant,
+                                        textStyle: Theme.of(
+                                          context,
+                                        ).textTheme.labelMedium,
+                                      ),
+                                    ),
+                                  BuildStamp(api: widget.api),
+                                ],
+                              )
+                            : Center(
+                                child: BuildStamp(
+                                  compact: true,
+                                  api: widget.api,
+                                ),
+                              ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                  ),
                 ),
               ),
             ],
-
-            // The foot: what build you are on, and the way into rearranging.
-            //
-            // Rearranging used to sit under the search field. Jose, 2026-09-14:
-            // "i dont like the rearrange being on the top, perhaps move it next
-            // to the version number instead." It belongs here for the same
-            // reason Settings does — a place you go to change how the sidebar
-            // behaves rather than a place you go to work — and the top of a
-            // list of modules is the one place it competes with the modules.
-            //
-            // Collapsed shows the version alone. It used to show nothing, on
-            // the reasoning that half a build id is worse than none; the
-            // version is a whole field rather than half of one, and it fits.
-            // See [BuildStamp.compact].
-            Padding(
-              padding: EdgeInsets.fromLTRB(expanded ? 20 : 8, 10, 12, 0),
-              // Stacked, not side by side, and that was measured rather than
-              // chosen: `BuildStamp` is 160px wide on a desktop platform --
-              // the version plus the update control beside it -- and this
-              // sidebar is draggable down to 180. A Row gives its non-flex
-              // children unbounded width, so the two of them overflowed by
-              // 86px at the default 220 rather than shrinking. Stacked they
-              // fit at every width, and the control keeps its WORD, which an
-              // icon squeezed in beside the version could not have.
-              child: expanded
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (!arranging && widget.onArranged != null)
-                          TextButton.icon(
-                            onPressed: () => setState(() => _arranging = true),
-                            icon: const Icon(Icons.swap_vert, size: 16),
-                            label: Text(UiStrings.t('shell.rearrange')),
-                            style: TextButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                              ),
-                              foregroundColor: scheme.onSurfaceVariant,
-                              textStyle: Theme.of(
-                                context,
-                              ).textTheme.labelMedium,
-                            ),
-                          ),
-                        const BuildStamp(),
-                      ],
-                    )
-                  : const Center(child: BuildStamp(compact: true)),
-            ),
-            const SizedBox(height: 12),
-          ],
+          ),
         ),
       ),
     );
 
     // Collapsed has one right width and dragging it would be a fight with the
     // toggle. The handle only exists when there is a width to change.
-    if (!expanded || widget.onResized == null) return sidebar;
-
+    //
+    // The Stack itself is ALWAYS there. Returning the bare sidebar when
+    // collapsed changed the root widget type, so every toggle threw the whole
+    // subtree away and mounted a new one: the old and new list both held the
+    // rail's scroll controller for a frame, `_MoreBelow` read
+    // `controller.position` (`positions.single`) and threw "Too many
+    // elements", and the column painted grey until the next click rebuilt it
+    // (Jose 11-16, 0.0.0575; client_issues 01a1e4ea).
+    final resizable = expanded && widget.onResized != null;
     return Stack(
       children: [
         sidebar,
-        Positioned(
-          top: 0,
-          bottom: 0,
-          // Straddles the border rather than sitting beside it, so the cursor
-          // changes where the eye says the edge is.
-          right: -3,
-          width: 7,
-          child: MouseRegion(
-            cursor: SystemMouseCursors.resizeLeftRight,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onHorizontalDragStart: (_) => setState(() => _dragWidth = width),
-              onHorizontalDragUpdate: (d) => setState(() {
-                _dragWidth = ((_dragWidth ?? width) + d.delta.dx).clamp(
-                  NavigationSidebar.minWidth,
-                  NavigationSidebar.maxWidth,
-                );
-              }),
-              onHorizontalDragEnd: (_) {
-                final settled = _dragWidth;
-                setState(() => _dragWidth = null);
-                if (settled != null) widget.onResized!(settled);
-              },
-              // Double-click puts it back, because a resize handle without one
-              // means somebody who has dragged it somewhere odd has to find
-              // their way back by feel.
+        if (resizable)
+          Positioned(
+            top: 0,
+            bottom: 0,
+            // Straddles the border rather than sitting beside it, so the cursor
+            // changes where the eye says the edge is.
+            right: -3,
+            width: 7,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeLeftRight,
               child: GestureDetector(
-                onDoubleTap: () => widget.onResized!(220),
                 behavior: HitTestBehavior.translucent,
+                onHorizontalDragStart: (_) =>
+                    setState(() => _dragWidth = width),
+                onHorizontalDragUpdate: (d) => setState(() {
+                  _dragWidth = ((_dragWidth ?? width) + d.delta.dx).clamp(
+                    NavigationSidebar.minWidth,
+                    NavigationSidebar.maxWidth,
+                  );
+                }),
+                onHorizontalDragEnd: (_) {
+                  final settled = _dragWidth;
+                  setState(() => _dragWidth = null);
+                  if (settled != null) widget.onResized!(settled);
+                },
+                // Double-click puts it back, because a resize handle without one
+                // means somebody who has dragged it somewhere odd has to find
+                // their way back by feel.
+                child: GestureDetector(
+                  onDoubleTap: () => widget.onResized!(220),
+                  behavior: HitTestBehavior.translucent,
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -3036,11 +3598,16 @@ class _SidebarArranger extends StatefulWidget {
   const _SidebarArranger({
     required this.destinations,
     required this.divideAfter,
+    required this.headingAt,
     required this.onDone,
   });
 
   final List<Destination> destinations;
   final Set<int> divideAfter;
+
+  /// The section headings, where they sit (Jose 11-24: "on the re-arrange
+  /// mode you don't see the group divisions").
+  final Map<int, String> headingAt;
 
   /// The order to save, or null when nothing moved — leaving without changing
   /// anything must not write a preference.
@@ -3050,7 +3617,7 @@ class _SidebarArranger extends StatefulWidget {
   State<_SidebarArranger> createState() => _SidebarArrangerState();
 }
 
-/// One row being dragged: a module, or a divider with an identity of its own.
+/// One row being dragged: a module, a divider, or a section heading.
 ///
 /// Dividers are identical to look at and must NOT be identical to the reorder
 /// animation — every child of a ReorderableListView needs a key that is unique
@@ -3061,8 +3628,15 @@ class _ArrangeRow {
 
   _ArrangeRow.divider() : id = sidebarDivider, key = UniqueKey();
 
-  final String id;
+  _ArrangeRow.heading(String label)
+    : id = '$sidebarHeading$label',
+      key = UniqueKey();
+
+  /// A heading's id changes as it is renamed.
+  String id;
   final Key key;
+
+  bool get isHeading => isSidebarHeading(id);
 }
 
 class _SidebarArrangerState extends State<_SidebarArranger> {
@@ -3072,27 +3646,73 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
   @override
   void initState() {
     super.initState();
-    _was = sidebarOrderOf(widget.destinations, widget.divideAfter, (d) => d.id);
+    _was = sidebarSectionsOf(
+      widget.destinations,
+      widget.divideAfter,
+      widget.headingAt,
+      (d) => d.id,
+    );
     _rows = [
       for (final entry in _was)
         if (entry == sidebarDivider)
           _ArrangeRow.divider()
+        else if (isSidebarHeading(entry))
+          _ArrangeRow.heading(entry.substring(1))
         else
           _ArrangeRow(entry, ValueKey(entry)),
     ];
   }
 
-  List<String> get _order => [for (final row in _rows) row.id];
+  // A heading cleared to nothing still saves as a heading, so the sections
+  // drawn after Done are the ones on screen now.
+  List<String> get _order => [
+    for (final row in _rows)
+      row.id == sidebarHeading
+          ? '$sidebarHeading${UiStrings.t('shell.new_section')}'
+          : row.id,
+  ];
 
   void _done() {
     final order = _order;
     widget.onDone(listEquals(order, _was) ? null : order);
   }
 
+  void _reorder(int from, int to) => setState(() {
+    if (!_rows[from].isHeading) {
+      // The index a drop reports is a GAP, so moving a row downwards counts
+      // the gap it vacated. A module dropped under another heading is now in
+      // that section; nothing else records which section it is in.
+      if (to > from) to -= 1;
+      _rows.insert(to, _rows.removeAt(from));
+      return;
+    }
+    // A heading carries its section with it, and lands between sections
+    // rather than splitting one.
+    var end = from + 1;
+    while (end < _rows.length && !_rows[end].isHeading) {
+      end++;
+    }
+    if (to >= from && to <= end) return;
+    final block = _rows.sublist(from, end);
+    _rows.removeRange(from, end);
+    if (to > end) to -= block.length;
+    bool edge(int i) => i == 0 || i == _rows.length || _rows[i].isHeading;
+    while (!edge(to)) {
+      to += to < from ? -1 : 1;
+    }
+    _rows.insertAll(to, block);
+  });
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final labels = {for (final d in widget.destinations) d.id: d};
+    final small = TextButton.styleFrom(
+      visualDensity: VisualDensity.compact,
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      textStyle: theme.textTheme.labelMedium,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3100,28 +3720,37 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: TextButton.icon(
-                  // After the first row, not at the end.
-                  //
-                  // A rule needs something on both sides to draw at all, so a
-                  // new one appended to the bottom is one you add, see in the
-                  // list, press Done on, and never see again. Here it is legal
-                  // the moment it exists, and on screen without scrolling.
-                  onPressed: () => setState(
-                    () => _rows.insert(
-                      math.min(1, _rows.length),
-                      _ArrangeRow.divider(),
+                child: Wrap(
+                  children: [
+                    TextButton.icon(
+                      // A new section goes on top, empty; drag modules in.
+                      onPressed: () => setState(
+                        () => _rows.insert(
+                          0,
+                          _ArrangeRow.heading(UiStrings.t('shell.new_section')),
+                        ),
+                      ),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: Text(UiStrings.t('shell.add_section')),
+                      style: small,
                     ),
-                  ),
-                  icon: const Icon(Icons.horizontal_rule, size: 16),
-                  label: Text(UiStrings.t('shell.add_divider')),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    alignment: Alignment.centerLeft,
-                    textStyle: theme.textTheme.labelMedium,
-                  ),
+                    TextButton.icon(
+                      // After the first module, where a rule is legal the
+                      // moment it exists and on screen without scrolling.
+                      onPressed: () => setState(() {
+                        final first = _rows.indexWhere(
+                          (r) => !r.isHeading && r.id != sidebarDivider,
+                        );
+                        _rows.insert(first + 1, _ArrangeRow.divider());
+                      }),
+                      icon: const Icon(Icons.horizontal_rule, size: 16),
+                      label: Text(UiStrings.t('shell.add_divider')),
+                      style: small,
+                    ),
+                  ],
                 ),
               ),
               TextButton(
@@ -3135,18 +3764,13 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
           child: ReorderableListView.builder(
             padding: const EdgeInsets.only(bottom: 12),
             itemCount: _rows.length,
-            onReorder: (from, to) => setState(() {
-              // The index a drop reports is a GAP, so moving a row downwards
-              // counts the gap it vacated. Without this every downward drag
-              // lands one row short of where it was dropped.
-              if (to > from) to -= 1;
-              _rows.insert(to, _rows.removeAt(from));
-            }),
+            onReorder: _reorder,
             itemBuilder: (context, i) {
               final row = _rows[i];
               if (row.id == sidebarDivider) {
                 return _dividerRow(context, i, key: row.key);
               }
+              if (row.isHeading) return _headingRow(context, i, row);
               final destination = labels[row.id];
 
               return ListTile(
@@ -3166,6 +3790,48 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
           ),
         ),
       ],
+    );
+  }
+
+  /// A section heading: its name, editable in place, a way to remove it (its
+  /// modules join the section above), and a handle that moves the section.
+  Widget _headingRow(BuildContext context, int i, _ArrangeRow row) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      key: row.key,
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextFormField(
+              initialValue: row.id.substring(1),
+              onChanged: (v) => row.id = '$sidebarHeading${v.trim()}',
+              inputFormatters: [LengthLimitingTextInputFormatter(40)],
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: UiStrings.t('shell.section_name'),
+                contentPadding: const EdgeInsets.symmetric(vertical: 6),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            visualDensity: VisualDensity.compact,
+            tooltip: UiStrings.t('shell.remove_section'),
+            onPressed: () => setState(() => _rows.removeAt(i)),
+          ),
+          ReorderableDragStartListener(
+            index: i,
+            child: const Icon(Icons.drag_handle),
+          ),
+        ],
+      ),
     );
   }
 
@@ -3221,6 +3887,10 @@ Widget _rail(
   String query = '',
 }) {
   return NavigationRail(
+    // A fresh rail per state, so it does not run its own extend animation.
+    // The column around it already snapped to its new width, and the rail
+    // animating its labels inside 80px overflowed every frame of a collapse.
+    key: ValueKey(expanded),
     backgroundColor: Colors.transparent,
     // null when an off-rail screen is showing, or when the OTHER rail holds the
     // selection. The assert allows it; a stale index would throw.
@@ -3237,8 +3907,15 @@ Widget _rail(
     destinations: destinations
         .map(
           (d) => NavigationRailDestination(
-            icon: Icon(d.icon),
-            label: _railLabel(context, d.label, query),
+            // Right-click: "Open in new window" (AppWindow).
+            icon: OpenInWindow(
+              path: AppWindow.pathFor(d.id),
+              child: Icon(d.icon),
+            ),
+            label: OpenInWindow(
+              path: AppWindow.pathFor(d.id),
+              child: _railLabel(context, d.label, query),
+            ),
           ),
         )
         .toList(),
@@ -3286,4 +3963,231 @@ class Destination {
   final String label;
   final IconData icon;
   final Widget screen;
+}
+
+/// A fade and a "More" chevron over the bottom of a scrolling list, shown only
+/// while there is still something below the fold. Tapping it scrolls down.
+class _MoreBelow extends StatefulWidget {
+  const _MoreBelow({required this.controller, this.compact = false});
+
+  final ScrollController controller;
+
+  /// The collapsed rail: the chevron alone, centred under the icons (Jose
+  /// 11-24: "it should just show the arrow"); "More" is its tooltip.
+  final bool compact;
+
+  @override
+  State<_MoreBelow> createState() => _MoreBelowState();
+}
+
+class _MoreBelowState extends State<_MoreBelow> {
+  ScrollController get controller => widget.controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // The list lays out after this row's first build, and a controller only
+    // notifies on a scroll: look again once the list has its size.
+    if (controller.positions.length != 1 ||
+        !controller.positions.first.hasContentDimensions) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && controller.hasClients) setState(() {});
+      });
+    }
+
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        // `positions`, never `position`: during a rebuild the controller can
+        // briefly hold two, and `position` throws on more than one.
+        final positions = controller.positions;
+        final more =
+            positions.length == 1 &&
+            positions.first.hasContentDimensions &&
+            positions.first.extentAfter > 8;
+        if (!more) return const SizedBox.shrink();
+
+        // The sidebar panel's own fill (see `color: scheme.surfaceContainerLow` above).
+        final bg = scheme.surfaceContainerLow;
+
+        void toEnd() => controller.animateTo(
+          controller.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+        final arrow = Icon(Icons.expand_more, size: 18, color: scheme.primary);
+
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [bg.withValues(alpha: 0), bg],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Center(
+              child: widget.compact
+                  ? IconButton(
+                      key: const Key('sidebar-more-below'),
+                      tooltip: 'More',
+                      onPressed: toEnd,
+                      icon: arrow,
+                    )
+                  : TextButton.icon(
+                      key: const Key('sidebar-more-below'),
+                      onPressed: toEnd,
+                      icon: arrow,
+                      label: const Text('More'),
+                    ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// A sidebar group heading ("Work", "Customers"...): small, muted capitals.
+class _GroupHeading extends StatelessWidget {
+  const _GroupHeading(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+    child: Text(
+      label.toUpperCase(),
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        letterSpacing: 0.6,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
+}
+
+/// A module's name under its icon in the phone bar: one short word. The
+/// full name stays in the tooltip and the drawer.
+String barLabel(String id, String label) =>
+    const {
+      'phone': 'Comms',
+      'project_board': 'Projects',
+      'customer_experience': 'Experience',
+    }[id] ??
+    (label.length <= 10 ? label : label.split(' ').first);
+
+/// A second window while the clock is locked (AppWindow): one lock screen,
+/// in the first window. This one says where to go and opens again on its own
+/// once the clock is in.
+class _ClockInElsewhere extends StatefulWidget {
+  const _ClockInElsewhere({required this.session});
+
+  final Session session;
+
+  @override
+  State<_ClockInElsewhere> createState() => _ClockInElsewhereState();
+}
+
+class _ClockInElsewhereState extends State<_ClockInElsewhere> {
+  late final Timer _poll = Timer.periodic(
+    const Duration(seconds: 15),
+    (_) => widget.session.refresh(),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _poll;
+  }
+
+  @override
+  void dispose() {
+    _poll.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    key: const ValueKey('clock-in-elsewhere'),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock_clock_outlined, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              'Clock in from your main EzBizi window.',
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'This window opens again by itself once you are clocked in.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// Folds [child] away while the phone keyboard is up, unless the focus is in
+/// it (a header search being typed into stays). Its state is kept, so a typed
+/// search survives the fold.
+/// The desktop shape (sidebar, no bottom bar) from 900 wide, except on a
+/// phone turned sideways: 923x411 got the desktop sidebar, whose bottom rows
+/// left the module list -54 px, so nothing could be opened but by search
+/// (Android emulator, mobile review 11-24). A touch device under 560 tall keeps
+/// the phone shape; a tablet in landscape is taller and stays desktop.
+bool _wideShell(BuildContext context) {
+  final size = MediaQuery.sizeOf(context);
+  return size.width >= 900 && !(hasSoftKeyboard() && size.height < 560);
+}
+
+class _HiddenWhileTyping extends StatefulWidget {
+  const _HiddenWhileTyping({required this.typing, required this.child});
+
+  final bool typing;
+  final Widget child;
+
+  @override
+  State<_HiddenWhileTyping> createState() => _HiddenWhileTypingState();
+}
+
+class _HiddenWhileTypingState extends State<_HiddenWhileTyping> {
+  final _focus = FocusNode(
+    debugLabel: 'Hidden while typing',
+    canRequestFocus: false,
+    skipTraversal: true,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_changed);
+  }
+
+  void _changed() => setState(() {});
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    focusNode: _focus,
+    child: Visibility(
+      visible: !widget.typing || _focus.hasFocus,
+      maintainState: true,
+      child: widget.child,
+    ),
+  );
 }

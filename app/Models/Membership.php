@@ -20,6 +20,11 @@ use Illuminate\Support\Facades\URL;
 class Membership extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES): filed on its branch. */
+    protected static string $changeType = 'memberships';
+
     use HasUuids;
 
     public const ENROLLMENTS = ['new', 'renewal'];
@@ -102,7 +107,7 @@ class Membership extends Model implements StatesRetention
     {
         return URL::temporarySignedRoute(
             'memberships.visit',
-            $this->ends_on->addMonth()->endOfDay(),
+            $this->ends_on->addMonths(max(1, (int) app(\App\Support\Settings\SettingsResolver::class)->get('customers.membership_visit_months', Organization::query()->withoutGlobalScopes()->findOrFail($this->organization_id))))->endOfDay(),
             ['membership' => $this->getKey()],
         );
     }

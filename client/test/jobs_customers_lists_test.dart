@@ -133,7 +133,8 @@ void main() {
       final asked = <Map<String, String>>[];
       await _pumpJobs(tester, jobs: _week(), onJobs: asked.add);
 
-      expect(asked.first['when'], 'upcoming');
+      // Jose, 2026-11-23: All by default, so a past client's job is found.
+      expect(asked.first['when'], 'all');
       expect(asked.first['today'], formatCalendarDay(DateTime.now()));
     });
 

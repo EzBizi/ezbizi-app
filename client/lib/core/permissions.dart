@@ -96,6 +96,8 @@ class PermissionAction {
     this.requires = const [],
     this.tab = false,
     this.description,
+    this.within,
+    this.passive = false,
   });
 
   /// The permission key itself, which is what gets stored and sent.
@@ -154,6 +156,15 @@ class PermissionAction {
   /// (Task Board's "Add people to any board", UI queue 95, Roles 10).
   final String? description;
 
+  /// The tab this one is drawn inside, by its label (Marketing › Social Media
+  /// Management › Dashboard). Null for a tab at the module's own level.
+  final String? within;
+
+  /// Done TO the holder rather than by them ("Their own PC is
+  /// screen-monitored", Jose 2026-11-17). Ticking it does not open the
+  /// module, and closing the module does not clear it.
+  final bool passive;
+
   factory PermissionAction.fromJson(Map<String, dynamic> json) =>
       PermissionAction(
         key: json['key'] as String,
@@ -163,6 +174,8 @@ class PermissionAction {
         requires: (json['requires'] as List?)?.cast<String>() ?? const [],
         tab: json['tab'] == true,
         description: json['description'] as String?,
+        within: json['within'] as String?,
+        passive: json['passive'] == true,
       );
 }
 
@@ -332,8 +345,14 @@ class RoleSummary {
     this.lockedReason,
     this.invitableRoles,
     this.hiddenOnLeads = false,
+    this.mobileBar,
     this.people,
+    this.peopleWithOwnInboxes = 0,
   });
+
+  /// How many of its people were given an inbox by name in Email settings,
+  /// which opens that inbox whatever the role holds.
+  final int peopleWithOwnInboxes;
 
   /// Some of the people who hold it, for "Who has it" (UI queue 111).
   ///
@@ -346,6 +365,10 @@ class RoleSummary {
   /// Whether its holders are left off "X is viewing this lead" - marketing,
   /// people inspecting rather than answering (Mia, 2026-10-02).
   final bool hiddenOnLeads;
+
+  /// The phone bottom bar chosen for this role (design 208), left to right:
+  /// (module, tab or null). Null when never chosen.
+  final List<({String module, String? tab})>? mobileBar;
 
   final String id;
   final String name;
@@ -388,6 +411,18 @@ class RoleSummary {
   factory RoleSummary.fromJson(Map<String, dynamic> json) => RoleSummary(
     id: json['id'].toString(),
     hiddenOnLeads: json['hidden_on_leads'] as bool? ?? false,
+    mobileBar: json['mobile_bar'] is List
+        ? [
+            for (final m in json['mobile_bar'] as List)
+              if (m is Map && m['module'] is String)
+                (
+                  module: '${m['module']}',
+                  tab: m['tab'] is String ? m['tab'] as String : null,
+                ),
+          ]
+        : null,
+    peopleWithOwnInboxes:
+        (json['people_with_own_inboxes'] as num?)?.toInt() ?? 0,
     invitableRoles: (json['invitable_roles'] as List<dynamic>?)
         ?.whereType<String>()
         .toList(),

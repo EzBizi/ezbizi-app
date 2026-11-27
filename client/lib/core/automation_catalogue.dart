@@ -410,6 +410,7 @@ class AutomationCatalogue {
     this.places = const [],
     this.templates = const [],
     this.trainings = const [],
+    this.taskBoards = const [],
     this.contracts = const [],
     this.audiences = const [],
     this.reportTextKinds = const [],
@@ -438,6 +439,7 @@ class AutomationCatalogue {
       whatsappGroups: _list(json['whatsapp_groups'], CatalogueChoice.tryFromIdLabel),
       places: _list(json['places'], CatalogueChoice.tryFromIdLabel),
       trainings: _list(json['trainings'], CatalogueChoice.tryFromIdLabel),
+      taskBoards: _list(json['task_boards'], CatalogueChoice.tryFromIdLabel),
       contracts: _list(json['contracts'], CatalogueChoice.tryFromIdLabel),
       audiences: _list(json['audiences'], CatalogueChoice.tryFromIdLabel),
       reportTextKinds: _list(
@@ -504,6 +506,9 @@ class AutomationCatalogue {
   /// Published guides and tests a rule can assign, as `guide:<id>` or
   /// `test:<id>` — the stored shape, so the builder hands back what it got.
   final List<CatalogueChoice> trainings;
+
+  /// Task boards the author may write, for "Add a task" on a named board.
+  final List<CatalogueChoice> taskBoards;
 
   /// Contract templates an onboarding can be started against — from Human
   /// Resources, so it offers exactly what the act accepts. Name only.

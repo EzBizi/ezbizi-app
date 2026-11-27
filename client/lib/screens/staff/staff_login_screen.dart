@@ -4,7 +4,7 @@ import '../../core/staff_session.dart';
 import '../../core/api_client.dart';
 import '../../widgets/auth_preview.dart';
 import '../../widgets/auth_shell.dart';
-import '../../widgets/totp_setup_dialog.dart';
+import '../../widgets/enrolment_dialog.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
 
@@ -124,8 +124,12 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
 
     final done = await showSidePanel<bool>(
       context,
-      builder: (_) => TotpSetupDialog(
-        accountLabel:
+      builder: (_) => EnrolmentDialog(
+        title: 'Set up your authenticator',
+        note: EnrolmentDialog.lockYouOutNote,
+        autofocus: true,
+        codesOptional: true,
+        email:
             (begin.body['account'] as Map<String, dynamic>)['email'] as String,
         secret: enrolment['secret'] as String,
         uri: enrolment['uri'] as String,

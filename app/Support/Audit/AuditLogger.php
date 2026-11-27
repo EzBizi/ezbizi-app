@@ -4,7 +4,11 @@ namespace App\Support\Audit;
 
 use App\Models\AuditEvent;
 use App\Models\User;
+use App\Support\Privacy\HoldsSensitiveValues;
+use App\Support\Privacy\SensitiveValues;
 use App\Support\Tenancy\TenantContext;
+use App\Support\ViewAs\ViewAs;
+use App\Support\ViewAs\ViewAsUser;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -117,6 +121,26 @@ class AuditLogger
      * revoking that flag is itself written, through logStaff, which this method
      * cannot suppress.
      */
+    /**
+     * Desk 11-24: a machine writing on a person's behalf (the Monday sync, run
+     * as the connection's user) is logged as itself, not as that person's
+     * click. Inside $callback every row names $actor, or the system with
+     * $label when there is none, whatever the caller passes.
+     */
+    public function actingAs(?User $actor, string $label, callable $callback): mixed
+    {
+        $previous = $this->override;
+        $this->override = [$actor, $label];
+        try {
+            return $callback();
+        } finally {
+            $this->override = $previous;
+        }
+    }
+
+    /** @var array{0: ?User, 1: string}|null */
+    private ?array $override = null;
+
     public function suppressForLeadDeveloper(callable $callback): mixed
     {
         $previous = $this->suppressed;
@@ -145,7 +169,19 @@ class AuditLogger
             return null;
         }
 
-        $actor ??= auth()->user();
+        $systemLabel = 'system';
+        if ($this->override !== null) {
+            [$actor, $systemLabel] = $this->override;
+        }
+        $actor ??= $this->override === null ? auth()->user() : null;
+
+        // View as (2026-11-23): a write made while a developer views the app as
+        // somebody is recorded against the developer, saying who they were
+        // viewing as. Never against the person or role being viewed.
+        if ($actor instanceof ViewAsUser) {
+            $metadata['viewing_as'] ??= ViewAs::describe($actor->viewAsSession);
+            $actor = $actor->viewAsActor;
+        }
 
         // Where it happened, from what it happened to: hardly any caller says,
         // so 18,000 of 18,100 rows had no scope and a company's Activity was
@@ -160,21 +196,21 @@ class AuditLogger
 
         return AuditEvent::create([
             'organization_id' => $this->tenant->has() ? $this->tenant->id() : null,
-            'actor_type'      => $actor ? AuditEvent::ACTOR_USER : AuditEvent::ACTOR_SYSTEM,
-            'actor_id'        => $actor?->getKey(),
+            'actor_type' => $actor ? AuditEvent::ACTOR_USER : AuditEvent::ACTOR_SYSTEM,
+            'actor_id' => $actor?->getKey(),
             // Captured now, because "who did this" must survive the actor's deletion.
-            'actor_label'     => $actor ? "{$actor->name} <{$actor->email}>" : 'system',
-            'action'          => $action,
-            'target_type'     => $target ? $target::class : null,
-            'target_id'       => $target?->getKey(),
-            'target_label'    => $this->labelFor($target),
-            'scope_type'      => $scopeType,
-            'scope_id'        => $scopeId,
-            'changes'         => $this->redact($changes) ?: null,
-            'metadata'        => $this->redact($metadata) ?: null,
-            'correlation_id'  => $this->correlationId(),
-            'causation_id'    => $causationId,
-            'occurred_at'     => now(),
+            'actor_label' => $actor ? "{$actor->name} <{$actor->email}>" : $systemLabel,
+            'action' => $action,
+            'target_type' => $target ? $target::class : null,
+            'target_id' => $target?->getKey(),
+            'target_label' => $this->labelFor($target),
+            'scope_type' => $scopeType,
+            'scope_id' => $scopeId,
+            'changes' => $this->redact($changes) ?: null,
+            'metadata' => $this->redact($metadata) ?: null,
+            'correlation_id' => $this->correlationId(),
+            'causation_id' => $causationId,
+            'occurred_at' => now(),
         ]);
     }
 
@@ -186,7 +222,7 @@ class AuditLogger
      */
     public function logChange(string $action, Model $model, ?User $actor = null): ?AuditEvent
     {
-        $after  = $model->getDirty();
+        $after = $model->getDirty();
         $before = array_intersect_key($model->getOriginal(), $after);
 
         /*
@@ -213,14 +249,14 @@ class AuditLogger
          * The fact of the change is still recorded. What changed, when, and by
          * whom is the point of the entry; the value was never the point.
          */
-        if ($model instanceof \App\Support\Privacy\HoldsSensitiveValues) {
+        if ($model instanceof HoldsSensitiveValues) {
             foreach ($model->sensitiveAttributes() as $attribute) {
                 if (array_key_exists($attribute, $after)) {
-                    $after[$attribute] = \App\Support\Privacy\SensitiveValues::MASK;
+                    $after[$attribute] = SensitiveValues::MASK;
                 }
 
                 if (array_key_exists($attribute, $before)) {
-                    $before[$attribute] = \App\Support\Privacy\SensitiveValues::MASK;
+                    $before[$attribute] = SensitiveValues::MASK;
                 }
             }
         }
@@ -306,16 +342,16 @@ class AuditLogger
         return AuditEvent::create([
             'organization_id' => $organizationId
                 ?? ($this->tenant->has() ? $this->tenant->id() : null),
-            'actor_type'      => AuditEvent::ACTOR_STAFF,
-            'actor_id'        => $staffId,
-            'actor_label'     => $staffLabel,
-            'action'          => $action,
-            'target_type'     => $target ? $target::class : null,
-            'target_id'       => $target?->getKey(),
-            'target_label'    => $this->labelFor($target),
-            'metadata'        => $this->redact($metadata) ?: null,
-            'correlation_id'  => $this->correlationId(),
-            'occurred_at'     => now(),
+            'actor_type' => AuditEvent::ACTOR_STAFF,
+            'actor_id' => $staffId,
+            'actor_label' => $staffLabel,
+            'action' => $action,
+            'target_type' => $target ? $target::class : null,
+            'target_id' => $target?->getKey(),
+            'target_label' => $this->labelFor($target),
+            'metadata' => $this->redact($metadata) ?: null,
+            'correlation_id' => $this->correlationId(),
+            'occurred_at' => now(),
         ]);
     }
 
@@ -327,6 +363,7 @@ class AuditLogger
         foreach ($data as $key => $value) {
             if (is_string($key) && $this->isSensitive($key)) {
                 $data[$key] = '[redacted]';
+
                 continue;
             }
 

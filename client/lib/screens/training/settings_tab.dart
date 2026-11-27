@@ -1,8 +1,10 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
@@ -70,10 +72,18 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
   void initState() {
     super.initState();
     _load();
+    // A guide or test written or published by another manager: the lists
+    // re-read quietly; not while one is open in the builder.
+    _live = LiveChanges.of(widget.api).subscribe({'training'}, (_) {
+      if (!_loading && _open == null) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _debounce?.cancel();
     super.dispose();
   }
@@ -100,18 +110,21 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
     ];
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _guides.isEmpty && _tests.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the lists on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _guides.isEmpty && _tests.isEmpty;
+        _error = null;
+      });
+    }
 
     final q = _query.trim();
     final guides = await widget.api.get('/training/guides', {
       'per_page': '200',
       if (q.isNotEmpty) 'q': q,
     });
-    if (!mounted) return;
+    if (!mounted || (quiet && !guides.ok)) return;
     if (!guides.ok) {
       setState(() {
         _loading = false;
@@ -250,16 +263,9 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
           // Standard field height, as tall as Leads search (Jose, 2026-10-27).
           action: SizedBox(
             width: 240,
-            child: TextField(
+            child: ListSearch(
               key: const Key('training-settings-search'),
-              textAlignVertical: TextAlignVertical.center,
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIconConstraints: BoxConstraints(minWidth: 36),
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a guide or test',
-                border: OutlineInputBorder(),
-              ),
+              hint: 'Find a guide or test',
               onChanged: _search,
             ),
           ),
@@ -293,7 +299,10 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
                       key: ValueKey('training.settings-guide-${guide['id']}'),
                       title: guide['title'] as String? ?? '',
                       published: guide['status'] == 'published',
-                      trailing: '${guide['screen_count'] ?? 0} screens',
+                      trailing: switch (guide['screen_count'] ?? 0) {
+                        1 => '1 screen',
+                        final n => '$n screens',
+                      },
                       onTap: () => _openGuide(guide['id'] as String),
                       id: guide['id'] as String,
                       noun: 'guide',

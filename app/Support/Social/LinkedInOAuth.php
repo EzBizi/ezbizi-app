@@ -25,6 +25,8 @@ final class LinkedInOAuth implements SocialOAuth
         'rw_organization_admin',
     ];
 
+    private const TOKEN_ENDPOINT = 'https://www.linkedin.com/oauth/v2/accessToken';
+
     private const TIMEOUT = 10;
 
     public function provider(): SocialProvider
@@ -79,47 +81,22 @@ final class LinkedInOAuth implements SocialOAuth
     {
         return 'https://www.linkedin.com/oauth/v2/authorization?'.http_build_query([
             'response_type' => 'code',
-            'client_id'     => (string) config('services.linkedin.client_id'),
-            'redirect_uri'  => $this->redirectUri(),
-            'state'         => $state,
-            'scope'         => implode(' ', self::SCOPES),
+            'client_id' => (string) config('services.linkedin.client_id'),
+            'redirect_uri' => $this->redirectUri(),
+            'state' => $state,
+            'scope' => implode(' ', self::SCOPES),
         ]);
     }
 
     public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
     {
-        try {
-            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
-                'https://www.linkedin.com/oauth/v2/accessToken',
-                [
-                    'grant_type'    => 'authorization_code',
-                    'code'          => $code,
-                    'client_id'     => (string) config('services.linkedin.client_id'),
-                    'client_secret' => (string) config('services.linkedin.client_secret'),
-                    'redirect_uri'  => $this->redirectUri(),
-                ],
-            );
-        } catch (ConnectionException) {
-            throw SocialOAuthRefused::exchangeFailed('LinkedIn');
-        }
-
-        if ($response->failed()) {
-            throw SocialOAuthRefused::exchangeFailed('LinkedIn');
-        }
-
-        $access = $response->json('access_token');
-
-        if (! is_string($access) || $access === '') {
-            throw SocialOAuthRefused::exchangeFailed('LinkedIn');
-        }
-
-        $refresh = $response->json('refresh_token');
-
-        return new SocialOAuthGrant(
-            accessToken: $access,
-            refreshToken: is_string($refresh) && $refresh !== '' ? $refresh : null,
-            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
-        );
+        return OAuthTokens::exchanged(OAuthTokens::post(Http::asForm()->timeout(self::TIMEOUT), self::TOKEN_ENDPOINT, [
+            'grant_type' => 'authorization_code',
+            'code' => $code,
+            'client_id' => (string) config('services.linkedin.client_id'),
+            'client_secret' => (string) config('services.linkedin.client_secret'),
+            'redirect_uri' => $this->redirectUri(),
+        ], 'LinkedIn'), 'LinkedIn', lasting: false);
     }
 
     /**
@@ -136,40 +113,17 @@ final class LinkedInOAuth implements SocialOAuth
      */
     public function refresh(string $refreshToken): SocialOAuthGrant
     {
-        try {
-            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
-                'https://www.linkedin.com/oauth/v2/accessToken',
-                [
-                    'grant_type'    => 'refresh_token',
-                    'refresh_token' => $refreshToken,
-                    'client_id'     => (string) config('services.linkedin.client_id'),
-                    'client_secret' => (string) config('services.linkedin.client_secret'),
-                ],
-            );
-        } catch (ConnectionException) {
-            throw SocialOAuthRefused::exchangeFailed('LinkedIn');
-        }
+        $response = OAuthTokens::post(Http::asForm()->timeout(self::TIMEOUT), self::TOKEN_ENDPOINT, [
+            'grant_type' => 'refresh_token',
+            'refresh_token' => $refreshToken,
+            'client_id' => (string) config('services.linkedin.client_id'),
+            'client_secret' => (string) config('services.linkedin.client_secret'),
+        ], 'LinkedIn');
 
         // An expired or revoked refresh token is `invalid_grant`. That one is
         // about the grant, not the moment, so it is the only answer that
         // means "connect it again".
-        if ($response->json('error') === 'invalid_grant') {
-            throw SocialOAuthRefused::noLongerPermitted('LinkedIn no longer accepts this connection. It needs connecting again.');
-        }
-
-        $access = $response->json('access_token');
-
-        if ($response->failed() || ! is_string($access) || $access === '') {
-            throw SocialOAuthRefused::exchangeFailed('LinkedIn');
-        }
-
-        $rotated = $response->json('refresh_token');
-
-        return new SocialOAuthGrant(
-            accessToken: $access,
-            refreshToken: is_string($rotated) && $rotated !== '' ? $rotated : $refreshToken,
-            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
-        );
+        return OAuthTokens::refreshed($response, 'LinkedIn', $refreshToken, $response->json('error') === 'invalid_grant');
     }
 
     public function identify(SocialOAuthGrant $grant): array
@@ -193,6 +147,49 @@ final class LinkedInOAuth implements SocialOAuth
             throw SocialOAuthRefused::unidentified('LinkedIn');
         }
 
-        return [new SocialAccount($id, $name !== '' ? $name : $id)];
+        return [new SocialAccount($id, $name !== '' ? $name : $id), ...$this->pages($grant)];
+    }
+
+    /**
+     * The company Pages this person administers, each its own connection
+     * beside the person (LinkedInPublisher posts as a `urn:li:organization`
+     * remote_id as it stands). Only when Page posting was granted; none, or
+     * LinkedIn refusing the list, costs the person's connect nothing.
+     *
+     * @return SocialAccount[]
+     */
+    private function pages(SocialOAuthGrant $grant): array
+    {
+        if ($grant->scopes !== [] && ! in_array('w_organization_social', $grant->scopes, true)) {
+            return [];
+        }
+
+        try {
+            $response = Http::withToken($grant->accessToken)->timeout(self::TIMEOUT)
+                ->get('https://api.linkedin.com/v2/organizationAcls', [
+                    'q' => 'roleAssignee',
+                    'role' => 'ADMINISTRATOR',
+                    'state' => 'APPROVED',
+                    'projection' => '(elements*(organization~(id,localizedName)))',
+                ]);
+        } catch (ConnectionException) {
+            return [];
+        }
+
+        if ($response->failed()) {
+            return [];
+        }
+
+        $pages = [];
+        foreach ((array) $response->json('elements', []) as $e) {
+            $urn = is_array($e) ? (string) ($e['organization'] ?? '') : '';
+            if (! str_starts_with($urn, 'urn:li:organization:')) {
+                continue;
+            }
+            $name = trim((string) ($e['organization~']['localizedName'] ?? ''));
+            $pages[] = new SocialAccount($urn, $name !== '' ? $name : $urn);
+        }
+
+        return $pages;
     }
 }

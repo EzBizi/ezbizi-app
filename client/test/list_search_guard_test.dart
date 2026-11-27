@@ -324,22 +324,10 @@ const Map<String, _Exemption> _exempt = {
   ),
 
   // Search drawn by the parent file.
-  'lib/screens/jobs/project_management_tab.dart': (
-    why:
-        "one job's timeline, a dot per event; opened from a row in Jobs and "
-        'Logs, which search',
-    owner: 'Project Management',
-    host: 'lib/screens/jobs/project_management_jobs.dart',
-  ),
   'lib/screens/financials/financial_grid.dart': (
     why: 'the grid is searched from the Financials bar',
     owner: 'Financials',
     host: 'lib/screens/financials_screen.dart',
-  ),
-  'lib/screens/marketing/newsletter_dashboard.dart': (
-    why: 'the table search is passed in by the Newsletter tab',
-    owner: 'Marketing',
-    host: 'lib/screens/marketing/newsletter_tab.dart',
   ),
 
   // Conversations: one thread, read top to bottom.
@@ -375,11 +363,6 @@ const Map<String, _Exemption> _exempt = {
     owner: 'EZ Leads',
     host: null,
   ),
-  'lib/screens/phone/call_tab.dart': (
-    why: 'the Team face of the call desk: filter tiles over the roster',
-    owner: 'Phone',
-    host: null,
-  ),
   // Seeded 2026-10-27 when ListTable joined the scan.
   'lib/screens/customers/memberships_settings.dart': (
     why: "the organization's membership plans, a handful of settings rows",
@@ -394,11 +377,6 @@ const Map<String, _Exemption> _exempt = {
   'lib/screens/phone/usage_pane.dart': (
     why: 'a cost breakdown, one row per kind of usage',
     owner: 'Phone',
-    host: null,
-  ),
-  'lib/widgets/notification_bell.dart': (
-    why: 'the bell drop-down of recent notifications',
-    owner: 'UI/UX',
     host: null,
   ),
 };
@@ -432,7 +410,4 @@ const _serverSearch = {
       'test/search_training_settings_test.dart',
   'lib/screens/customers_screen.dart':
       'test/search_customers_duplicates_test.dart',
-  // Jose 2026-10-27: "a search bar for project management 2".
-  'lib/screens/project_management_2_screen.dart':
-      'test/search_project_management_2_test.dart',
 };

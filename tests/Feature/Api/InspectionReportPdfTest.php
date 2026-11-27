@@ -427,6 +427,8 @@ class InspectionReportPdfTest extends TestCase
 
         $report = $this->inTenant($tenant['org'], fn () => \App\Models\InspectionReport::query()->findOrFail($reportId));
         $url = $report->shareUrl();
+        // {{report_link}} in an automation text reads the same link.
+        $this->assertSame($url, $report->getAttribute('report_link'));
         $this->app['auth']->forgetGuards();
 
         $response = $this->get($url)->assertOk()->assertHeader('content-type', 'application/pdf');

@@ -1,3 +1,4 @@
+import '../../widgets/search_picker.dart';
 import '../../core/branch_options.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -6,14 +7,18 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import 'availability_calendar.dart';
 import '../../widgets/suggest_search.dart';
 import 'availability_suggestion.dart';
+import 'zip_reports.dart';
 
 /// Availability — "When can we come out?"
 ///
@@ -81,14 +86,6 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     with WidgetsBindingObserver {
   static const _unknown =
       'Information not available, please check availability on Workiz.';
-  static const _weekdays = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-    'Sunday', //
-  ];
-  static const _months = [
-    'January', 'February', 'March', 'April', 'May', 'June', 'July', //
-    'August', 'September', 'October', 'November', 'December',
-  ];
 
   final _search = TextEditingController();
 
@@ -138,14 +135,12 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
   DateTime _lastInput = DateTime.now();
   DateTime _lastRefresh = DateTime.now();
 
-
   void _onPointer(PointerEvent _) => _lastInput = DateTime.now();
 
   bool _onKey(KeyEvent _) {
     _lastInput = DateTime.now();
     return false;
   }
-
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -164,6 +159,13 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     GestureBinding.instance.pointerRouter.addGlobalRoute(_onPointer);
     HardwareKeyboard.instance.addHandler(_onKey);
     _loadFranchises();
+    // A job booked or moved anywhere spends or frees a slot: the answer on
+    // screen is asked again now, not at the next timed refresh.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      (_) => _refreshNow(),
+      active: () => widget.visible && LiveChanges.visible(this)(),
+    );
     final zip = widget.initialZip?.trim() ?? '';
     if (zip.isNotEmpty) {
       _search.text = zip;
@@ -197,8 +199,11 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     _run(query, quiet: true);
   }
 
+  LiveSubscription? _live;
+
   @override
   void dispose() {
+    _live?.cancel();
     _refresh?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_onPointer);
@@ -260,9 +265,14 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     _search.text = label;
     setState(() => _suggestions = []);
 
+    // A zip is asked as a zip even though it names its area: asking the area
+    // lost the zip, and with it the map and the nearby-day suggestion
+    // (Jose, 2026-11-06: picking from the list did nothing Check did).
     final areaId = s['area_id'] as String?;
     await _run(
-      areaId != null
+      s['type'] == 'zip'
+          ? {'zip': label}
+          : areaId != null
           ? {'area_id': areaId}
           : s['type'] == 'city'
           ? {'city': label}
@@ -275,7 +285,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     if (q.isEmpty) return;
     setState(() => _suggestions = []);
 
-    // A house number then words is a street address ("86 Jerusalem hill
+    // A house number then words is a street address ("86 Sample hill
     // Trumbull"): the server finds its zip (Mia, 2026-10-02).
     if (_looksLikeAddress(q)) {
       await _run({'address': q});
@@ -334,11 +344,9 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
       });
     }
 
-    final response = await widget.api.get(
-      '/scheduling/availability',
-      query,
-      {if (quiet && _etag != null) 'If-None-Match': _etag!},
-    );
+    final response = await widget.api.get('/scheduling/availability', query, {
+      if (quiet && _etag != null) 'If-None-Match': _etag!,
+    });
     if (!mounted || ticket != _request) return;
     // Unchanged since the answer on screen: nothing to redraw, nothing to
     // ask about the suggestion either.
@@ -366,10 +374,10 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
 
   /// Asked beside the availability, not instead of it: a failure here only
   /// means no cards and no map, never a broken answer.
-  Future<void> _askSuggestion(String zip, int ticket) async {
+  Future<void> _askSuggestion(String zip, int ticket, {String? date}) async {
     final response = await widget.api.get(
       '/scheduling/availability/suggestion',
-      {'zip': zip},
+      {'zip': zip, 'date': ?date},
     );
     if (!mounted || ticket != _request) return;
     final data = response.ok ? response.body['data'] : null;
@@ -397,11 +405,10 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
       children: [
         Center(
           child: ConstrainedBox(
-            // The calendar needs seven readable columns; the searches read
-            // best narrow.
-            constraints: BoxConstraints(
-              maxWidth: _mode == _Mode.calendar ? 1000 : 680,
-            ),
+            // One width for every mode: at 680 the searches' slot chips
+            // truncated to "13 Spots L…" with half the screen empty (deep
+            // dive 2026-11-02).
+            constraints: const BoxConstraints(maxWidth: 1000),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -441,7 +448,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
                             child: _modeButton(
                               _Mode.zip,
                               Icons.location_on_outlined,
-                              short ? 'Zip' : 'Search by Zip Code',
+                              short ? 'Zip' : 'Search by zip code',
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -457,7 +464,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
                             child: _modeButton(
                               _Mode.calendar,
                               Icons.calendar_month_outlined,
-                              short ? 'Calendar' : 'Calendar View',
+                              short ? 'Calendar' : 'Calendar view',
                             ),
                           ),
                         ],
@@ -584,23 +591,28 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
       return _note(Theme.of(context), 'No service areas in this view yet.');
     }
 
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        ChoiceChip(
-          label: const Text('All areas'),
-          selected: _franchiseId == _all,
-          onSelected: (_) => _pickFranchise(_all),
+    // One searchable "Company · Branch" picker, not a wall of a chip per
+    // branch (30 of them wrapped four rows; deep dive 2026-11-02).
+    return Center(
+      child: SizedBox(
+        width: 360,
+        child: SearchPickerField<String>(
+          key: const ValueKey('availability-area-picker'),
+          value: _franchiseId,
+          hint: 'Choose a branch',
+          options: [
+            const SearchOption(value: _all, label: 'All areas'),
+            for (final f in _franchises)
+              SearchOption(
+                value: f['id'] as String,
+                label: f['label'] as String? ?? f['name'] as String? ?? '',
+              ),
+          ],
+          onChanged: (id) {
+            if (id != null) _pickFranchise(id);
+          },
         ),
-        for (final f in _franchises)
-          ChoiceChip(
-            label: Text(f['label'] as String? ?? f['name'] as String? ?? ''),
-            selected: _franchiseId == f['id'],
-            onSelected: (_) => _pickFranchise(f['id'] as String),
-          ),
-      ],
+      ),
     );
   }
 
@@ -628,6 +640,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
           if ((day['date'] as String).compareTo(from) > 0) day,
       ]..sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
     }
+
     final heading = [
       area['franchise_name'],
       area['area_name'],
@@ -645,14 +658,30 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              heading,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: muted,
-                letterSpacing: 0.8,
-                fontWeight: FontWeight.w700,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    heading,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: muted,
+                      letterSpacing: 0.8,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (zipIn(_suggestionZip ?? _search.text) case final zip?)
+                  ReportWrongZipButton(
+                    api: widget.api,
+                    zip: zip,
+                    areaId: area['area_id']?.toString(),
+                    areaName: area['area_name']?.toString(),
+                    compact: true,
+                  ),
+              ],
             ),
+            const SizedBox(height: 8),
+            _office(theme, area),
             const SizedBox(height: 10),
             if (area['configured'] != true ||
                 (first == null && area['none_because'] != 'closed'))
@@ -725,31 +754,114 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
                       child: _closedRow(theme, day),
                     )
                   else
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 92,
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              _shortDate(day['date'] as String),
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 92,
+                            // Another day the customer can take: its own
+                            // suggestion, the way the first one was worked out
+                            // (Jose, 2026-11-06).
+                            child: _suggestionZip == null
+                                ? Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      _shortDate(day['date'] as String),
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  )
+                                : TextButton(
+                                    key: ValueKey(
+                                      'availability-day-${day['date']}',
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      alignment: Alignment.centerLeft,
+                                    ),
+                                    onPressed: () => _askSuggestion(
+                                      _suggestionZip!,
+                                      _request,
+                                      date: day['date'] as String,
+                                    ),
+                                    child: Text(
+                                      _shortDate(day['date'] as String),
+                                    ),
+                                  ),
                           ),
-                        ),
-                        Expanded(child: _windowRow(day)),
-                      ],
+                          Expanded(child: _windowRow(day)),
+                        ],
+                      ),
                     ),
-                  ),
               ],
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// The branch's physical office, in the accent so it is hard to miss (Jose,
+  /// 2026-11-09: "a lot of dispatchers do not know where our physical
+  /// locations are"), with Copy and Maps. No address says so, same colour.
+  Widget _office(ThemeData theme, Map<String, dynamic> area) {
+    final office = (area['office'] as Map?)?.cast<String, dynamic>();
+    final line = '${office?['line'] ?? ''}'.trim();
+    final accent = theme.colorScheme.primary;
+    final style = theme.textTheme.bodyMedium?.copyWith(
+      color: accent,
+      fontWeight: FontWeight.w700,
+    );
+
+    return Container(
+      key: ValueKey('availability-office-${area['area_id']}'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.storefront_outlined, size: 18, color: accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              line.isEmpty
+                  ? 'No address on file for this branch'
+                  : 'Our office: $line',
+              style: style,
+            ),
+          ),
+          if (line.isNotEmpty) ...[
+            IconButton(
+              key: const Key('availability-office-copy'),
+              tooltip: 'Copy the address',
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.copy, size: 18, color: accent),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: line));
+                if (!mounted) return;
+                ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                  const SnackBar(content: Text('Address copied.')),
+                );
+              },
+            ),
+            IconButton(
+              key: const Key('availability-office-maps'),
+              tooltip: 'Open in Maps',
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.map_outlined, size: 18, color: accent),
+              onPressed: () => launchUrl(
+                Uri.parse('${office?['maps_url']}'),
+                mode: LaunchMode.externalApplication,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -884,14 +996,14 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
   /// "2026-10-05" → "Monday, October 5".
   static String _longDate(String ymd) {
     final d = DateTime.parse(ymd);
-    return '${_weekdays[d.weekday - 1]}, ${_months[d.month - 1]} ${d.day}';
+    return '${longWeekdays[d.weekday - 1]}, ${longMonths[d.month - 1]} ${d.day}';
   }
 
   /// "2026-10-05" → "Mon, Oct 5".
   static String _shortDate(String ymd) {
     final d = DateTime.parse(ymd);
-    return '${_weekdays[d.weekday - 1].substring(0, 3)}, '
-        '${_months[d.month - 1].substring(0, 3)} ${d.day}';
+    return '${longWeekdays[d.weekday - 1].substring(0, 3)}, '
+        '${longMonths[d.month - 1].substring(0, 3)} ${d.day}';
   }
 
   /// "13:00" → "1 PM", "10:30" → "10:30 AM".

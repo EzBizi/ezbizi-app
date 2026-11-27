@@ -132,12 +132,12 @@ void main() {
   // shrink.
   test('no new screen opens a modal dialog', () {
     const stillOpenOne = {
-      'lib/widgets/search_picker.dart': 'the picker is the settled chooser',
       // Stays. Jose's spec (2026-09-08) is a modal at shift end; unanswered,
       // the sweep clocks the person out and the lock screen follows.
       'lib/widgets/shift_reminder.dart': 'Clock In, must interrupt',
       'lib/screens/phone/call_flow_chart_pane.dart': 'Phone',
       'lib/screens/web/widgets_tab.dart': 'Web Management',
+      'lib/screens/task_board_files.dart': 'Task Board image lightbox, Monday parity (Adeline 11-24)',
     };
     final opening = {
       for (final file in Directory('lib').listSync(recursive: true))

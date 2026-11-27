@@ -11,6 +11,7 @@ use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Support\Automations\ActionRunner;
 use App\Support\Leads\LeadReplies;
+use App\Support\Leads\SmsLeadReplies;
 use App\Support\Web\WebsiteChatReplies;
 use App\Support\Web\WebsiteEnquiries;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -76,24 +77,24 @@ class WebsiteEnquiriesTest extends TestCase
     {
         ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
         $send = fn (string $phone, string $what) => $this->postJson('/api/v1/web/form', [
-            'key' => $site->public_key, 'name' => 'Elizabeth Bell', 'phone' => $phone,
+            'key' => $site->public_key, 'name' => 'Elizabeth Bain', 'phone' => $phone,
             'fields' => ['Rating' => 'Not happy', 'What happened?' => $what],
         ])->assertCreated();
 
-        $send('(216) 392-9942', 'Late');
-        $send('216.392.9942', 'Still late');
+        $send('(216) 555-0104', 'Late');
+        $send('216.555.0104', 'Still late');
         $send('(216) 392-0000', 'Someone else');
 
         $this->inTenant($tenant['org'], function () {
             $this->assertSame(2, Lead::query()->count());
-            $first = Lead::query()->where('phone_digits', 'like', '%2163929942')->sole();
+            $first = Lead::query()->where('phone_digits', 'like', '%2165550104')->sole();
             $this->assertSame(2, $first->conversations()->count());
             $this->assertSame('BAD_RATING', $first->lead_type);
         });
 
         // A day later, a new lead.
         $this->travel(25)->hours();
-        $send('(216) 392-9942', 'Again');
+        $send('(216) 555-0104', 'Again');
         $this->assertSame(3, $this->inTenant($tenant['org'], fn () => Lead::query()->count()));
     }
 
@@ -268,6 +269,23 @@ class WebsiteEnquiriesTest extends TestCase
             ->assertUnauthorized();
     }
 
+    /** Audit 2026-11-27 HIGH: a second chat with the same phone joins the lead but must not read the first one's messages. */
+    public function test_a_chat_joining_a_recent_lead_by_phone_cannot_read_the_earlier_chat(): void
+    {
+        ['site' => $site] = $this->siteWithKey();
+
+        $first = $this->startChat($site->public_key, 'My gate code is 4411.', ['phone' => '3055550123'])->assertCreated();
+        $second = $this->startChat($site->public_key, 'Hi.', ['phone' => '3055550123'])->assertCreated();
+
+        $texts = collect($this->withToken($second->json('token'))
+            ->getJson('/api/v1/web/chat/'.$second->json('chat').'/messages')
+            ->assertOk()->json('messages'))->pluck('text')->implode('|');
+
+        $this->assertStringContainsString('Hi.', $texts);
+        $this->assertStringNotContainsString('4411', $texts);
+        $this->assertStringNotContainsString('4411', implode('|', array_column($second->json('messages'), 'text')));
+    }
+
     public function test_an_unknown_key_creates_nothing(): void
     {
         $this->siteWithKey();
@@ -384,6 +402,42 @@ class WebsiteEnquiriesTest extends TestCase
     }
 
     /** A site that names no branch places its enquiries at company level. */
+    /**
+     * Desk, 2026-11-18: website reviews reached lead.received with no branch,
+     * so a Houston and a Maryland review both fell to the no-branch rule.
+     */
+    public function test_a_review_lands_on_the_branch_of_its_zip_else_its_area_code(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+        $texas = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $texas = \App\Models\Franchise::create(['organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id, 'name' => 'Texas']);
+            $area = \App\Models\ServiceArea::create(['organization_id' => $tenant['org']->id, 'franchise_id' => $texas->id, 'name' => 'Houston']);
+            \App\Models\ServiceAreaZip::create(['organization_id' => $tenant['org']->id, 'franchise_id' => $texas->id, 'service_area_id' => $area->id, 'zip' => '77002']);
+
+            return $texas;
+        });
+        $review = fn (string $phone, array $more = []) => $this->postJson('/api/v1/web/form', [
+            'key' => $site->public_key, 'name' => 'A Customer', 'phone' => $phone,
+            'fields' => ['Rating' => 'Not happy', 'What happened?' => 'Late'] + $more,
+        ])->assertCreated();
+        $branchOf = fn (string $digits) => $this->inTenant($tenant['org'], fn () => Lead::query()->where('phone_digits', 'like', '%'.$digits)->value('franchise_id'));
+
+        $review('(832) 555-0101', ['Zip' => '77002']);
+        $this->assertSame($texas->id, $branchOf('8325550101'), 'the ZIP decides');
+
+        // No ZIP: an 832 number, where this company's 832 leads all went to Texas.
+        $review('(832) 555-0102');
+        $this->assertNull($branchOf('8325550102'), 'the control: no ZIP and no history is no branch, not a guess');
+        $this->inTenant($tenant['org'], function () use ($tenant, $texas) {
+            foreach (range(1, 5) as $i) {
+                Lead::create(['organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id, 'franchise_id' => $texas->id,
+                    'source' => 'local_services', 'remote_id' => "h$i", 'phone_digits' => "1832555090$i", 'received_at' => now()->subDays(3)]);
+            }
+        });
+        $review('(832) 555-0103');
+        $this->assertSame($texas->id, $branchOf('8325550103'), 'the area code decides');
+    }
+
     public function test_a_site_with_no_branch_places_its_enquiries_on_the_company(): void
     {
         ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
@@ -488,12 +542,12 @@ class WebsiteEnquiriesTest extends TestCase
     }
 
     /**
-     * A submitted form has no page left to answer into.
-     *
-     * Refused rather than quietly sent by email: that would be a second send
-     * path with its own consent and audit questions, wearing this one's name.
+     * A submitted form has no page left to answer into, so it is answered by
+     * a text (Jose, 2026-11-03) - and only when the form left a phone. Never
+     * by email: that would be a second send path with its own consent and
+     * audit questions, wearing this one's name.
      */
-    public function test_a_form_submission_offers_no_reply_channel(): void
+    public function test_a_form_submission_is_answered_by_text_and_only_with_a_phone(): void
     {
         ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
 
@@ -506,8 +560,8 @@ class WebsiteEnquiriesTest extends TestCase
             $lead = Lead::query()->firstOrFail();
             $replies = app(LeadReplies::class);
 
-            $this->assertFalse($replies->canReply($lead));
-            $this->assertNull($replies->for($lead));
+            $this->assertFalse($replies->canReply($lead), 'No phone on the form, nothing to text.');
+            $this->assertInstanceOf(SmsLeadReplies::class, $replies->for($lead));
         });
     }
 
@@ -560,7 +614,7 @@ class WebsiteEnquiriesTest extends TestCase
             'Email Address' => 'john@test.com',
             'Last Name' => 'Vale',
             'First Name' => 'Nora',
-            'Phone Number' => '7542366981',
+            'Phone Number' => '7545550100',
             'Appointment Date' => '2026-10-20',
             'Appointment Time' => '13:00',
             'Address Line 1' => '123 Elm St',
@@ -575,7 +629,7 @@ class WebsiteEnquiriesTest extends TestCase
 
         $this->assertSame([
             '👤 Nora Vale',
-            '📞 (754) 236-6981',
+            '📞 (754) 555-0100',
             '✉️ john@test.com',
             '📅 2026-10-20 13:00',
             '📍 123 Elm St, Tempe, Arizona 85281',
@@ -592,7 +646,7 @@ class WebsiteEnquiriesTest extends TestCase
 
         $this->withToken($token)->postJson('/api/v1/web/plugin/form', [
             'host' => 'a-1chimney.com',
-            'fields' => ['First Name' => 'Laura', 'Phone Number' => '2162245383', 'cf-turnstile-response' => '1.XE0gJwM-long-token'],
+            'fields' => ['First Name' => 'Laura', 'Phone Number' => '2165550101', 'cf-turnstile-response' => '1.XE0gJwM-long-token'],
         ])->assertCreated();
         $this->withToken($token)->postJson('/api/v1/web/plugin/form', [
             'host' => 'a-1chimney.com',
@@ -601,7 +655,7 @@ class WebsiteEnquiriesTest extends TestCase
 
         $this->inTenant($tenant['org'], function () {
             $text = LeadConversation::query()->orderBy('created_at')->orderBy('id')->pluck('text')->all();
-            $this->assertContains("👤 Laura\n📞 (216) 224-5383", $text);
+            $this->assertContains("👤 Laura\n📞 (216) 555-0101", $text);
             $this->assertStringNotContainsString('turnstile', implode(' ', $text));
             $this->assertSame(['BAD_RATING'], Lead::query()->whereNotNull('lead_type')->pluck('lead_type')->all());
 

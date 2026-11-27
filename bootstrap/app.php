@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // Order matters where these are applied (routes/api.php):
             // auth -> tenant -> subscription. See the note there.
             'tenant'       => App\Http\Middleware\SetTenantContext::class,
+            'retry-deadlock' => App\Http\Middleware\RetryOnDeadlock::class,
             'subscription' => App\Http\Middleware\EnforceSubscriptionState::class,
 
             // Same shape as `subscription` and for a related reason: both let
@@ -39,6 +40,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'two-factor'   => App\Http\Middleware\RequireTwoFactorEnrolment::class,
             'idle'         => App\Http\Middleware\SlideIdleWindow::class,
             'api-key'      => App\Http\Middleware\EnforceApiKeyAccess::class,
+            'bulk-read'    => App\Http\Middleware\DetectBulkReads::class,
 
             // The control plane (§4.2) — deliberately not 'tenant'.
             'staff'        => App\Http\Middleware\StaffOnly::class,
@@ -131,6 +133,20 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(
             Illuminate\Routing\Middleware\SubstituteBindings::class,
             App\Http\Middleware\StaffOnly::class,
+        );
+
+        // The deadlock retry must WRAP the limiter (its database-cache timer is
+        // what deadlocks), or the sort would put the throttle outside it.
+        $middleware->prependToPriorityList(
+            Illuminate\Routing\Middleware\ThrottleRequests::class,
+            App\Http\Middleware\RetryOnDeadlock::class,
+        );
+
+        // View as swaps the request's user, so it must run before tenancy is
+        // read off that user, and after authentication (Jose, 2026-11-23).
+        $middleware->prependToPriorityList(
+            App\Http\Middleware\SetTenantContext::class,
+            App\Http\Middleware\ApplyViewAs::class,
         );
 
         /*

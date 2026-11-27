@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -8,14 +9,17 @@ import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
 import 'financials/financial_adjustments.dart';
+import 'financials/financial_bank.dart';
 import 'financials/financial_bills.dart';
 import 'financials/financial_grid.dart';
 import 'financials/financial_home.dart';
+import 'financials/financial_markets.dart';
 import 'financials/financial_panels.dart';
 import 'financials/financial_results.dart';
 import 'financials/financial_sources.dart';
 import 'financials/financial_views.dart';
 import 'financials/invoices_tab.dart';
+import '../core/soft_keyboard.dart';
 
 /// Financials — the Airtable replacement (Jose, 2026-10-14).
 ///
@@ -65,6 +69,20 @@ class _FinancialsHostState extends State<FinancialsScreen> {
           'Bills',
           Icons.receipt_long_outlined,
           FinancialBillsTab(api: widget.api, me: widget.session.me!),
+        ),
+      // QuickBooks expenses per market, closing rate, cost per closed job (Shoval, 11-20).
+      if (_may('markets'))
+        (
+          'Markets',
+          Icons.store_mall_directory_outlined,
+          FinancialMarketsTab(api: widget.api, me: widget.session.me!),
+        ),
+      // Banks connected through Plaid: balances and transactions (Jose, 11-24).
+      if (_may('bank'))
+        (
+          'Bank',
+          Icons.account_balance_outlined,
+          FinancialBankTab(api: widget.api, me: widget.session.me!),
         ),
       // A child module, drawn as a tab here (design 128).
       if (widget.session.me?.reachableModules.any((m) => m.key == 'invoices') ??
@@ -844,13 +862,9 @@ class _FinancialsScreenState extends State<FinancialBases> {
               const SizedBox(width: 12),
               SizedBox(
                 width: 200,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('financials-grid-search'),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search),
-                    hintText: 'Search',
-                  ),
+                  hint: 'Search',
                   onChanged: (t) => setState(() => _search = t.trim()),
                 ),
               ),
@@ -1296,7 +1310,7 @@ class _NewBasePanelState extends State<_NewBasePanel> {
             ),
           TextField(
             controller: _name,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(labelText: 'Base name'),
           ),
           const SizedBox(height: 12),

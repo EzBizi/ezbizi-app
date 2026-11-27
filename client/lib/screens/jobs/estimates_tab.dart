@@ -1,6 +1,8 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/job_money.dart';
 import '../../core/numbers.dart';
 import '../../core/session.dart';
@@ -11,10 +13,13 @@ import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
 import '../../widgets/grouped_rows.dart';
+import '../../widgets/load_more.dart';
+import '../../widgets/module_page_header.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
+import 'estimate_board.dart';
 
 /// The word and tone of an estimate's status, as the chips, rows and panel
 /// say it.
@@ -54,6 +59,10 @@ class _EstimatesTabState extends State<EstimatesTab> {
   List<Map<String, dynamic>> _rows = const [];
   Map<String, int> _counts = const {};
   Map<String, Map<String, int>> _totals = const {};
+  Transitions _transitions = const {};
+
+  /// Bumped on every first-page load, so the board reloads with the list.
+  int _generation = 0;
 
   bool _loading = true;
   bool _fetching = false;
@@ -74,14 +83,38 @@ class _EstimatesTabState extends State<EstimatesTab> {
 
   Me get _me => widget.session.me!;
 
+  /// List or Board, remembered for each person (design 172).
+  bool get _board => _me.preferences['jobs.estimates.view'] == 'board';
+
+  void _setBoard(bool board, {required bool wide}) {
+    widget.session.setPreference(
+      'jobs.estimates.view',
+      board ? 'board' : 'list',
+    );
+    // A phone's board shows one status at a time, never all of them.
+    if (board && !wide && _status == null) {
+      _setStatus('draft');
+    } else {
+      setState(() {});
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _load();
+    // An estimate written, sent or answered elsewhere: page one (and so the
+    // board, the counts and the totals) re-reads quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'estimates'}, (_) {
+      if (_page == 1 && !_fetching) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     _openDirty.dispose();
     super.dispose();
@@ -89,15 +122,18 @@ class _EstimatesTabState extends State<EstimatesTab> {
 
   String? get _term => _search.text.trim().isEmpty ? null : _search.text.trim();
 
-  Future<void> _load({int page = 1}) async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     if (page > 1 && _fetching) return;
     final request = ++_request;
 
     setState(() {
       _loading = page == 1 && _rows.isEmpty;
       _fetching = true;
-      _error = null;
-      _pageError = null;
+      if (!quiet) {
+        _error = null;
+        _pageError = null;
+      }
     });
 
     final response = await widget.api.get('/estimates', {
@@ -107,6 +143,10 @@ class _EstimatesTabState extends State<EstimatesTab> {
     });
 
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) {
+      setState(() => _fetching = false);
+      return;
+    }
 
     setState(() {
       _loading = false;
@@ -129,8 +169,11 @@ class _EstimatesTabState extends State<EstimatesTab> {
       _lastPage = meta?['last_page'] as int? ?? 1;
       _page = page;
 
+      _transitions = readTransitions(meta?['transitions']);
+
       // The header's figures come with the first page only.
       if (page == 1) {
+        _generation++;
         final counts = meta?['status_counts'];
         _counts = counts is Map
             ? {
@@ -221,17 +264,21 @@ class _EstimatesTabState extends State<EstimatesTab> {
             children: [
               PanelHeader(
                 note: _note(),
-                action: Refused(
-                  reason: refused,
-                  child: FilledButton.icon(
-                    key: const ValueKey('estimate-new'),
-                    onPressed: refused == null ? () => _open('new') : null,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('New estimate'),
+                // In the module header, on the right, as every tab's primary
+                // action (desktop review D3; UI pass 2026-11-17).
+                action: ModuleAction(
+                  child: Refused(
+                    reason: refused,
+                    child: FilledButton.icon(
+                      key: const ValueKey('estimate-new'),
+                      onPressed: refused == null ? () => _open('new') : null,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('New estimate'),
+                    ),
                   ),
                 ),
               ),
-              _chips(context, wide: wide),
+              if (!(_board && wide)) _chips(context, wide: wide),
               _searchAndTotals(context, wide: wide),
             ],
           ),
@@ -286,11 +333,12 @@ class _EstimatesTabState extends State<EstimatesTab> {
 
     final counted = _counts.isNotEmpty;
     final chips = [
-      chip(
-        null,
-        'All',
-        count: counted ? _counts.values.fold<int>(0, (a, b) => a + b) : null,
-      ),
+      if (!_board)
+        chip(
+          null,
+          'All',
+          count: counted ? _counts.values.fold<int>(0, (a, b) => a + b) : null,
+        ),
       for (final s in _statuses)
         chip(
           s,
@@ -356,31 +404,40 @@ class _EstimatesTabState extends State<EstimatesTab> {
         children: [
           SizedBox(
             width: 320,
-            child: TextField(
+            child: ListSearch(
               key: const ValueKey('estimate-search'),
               controller: _search,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search),
-                hintText: 'Number or customer',
-                suffixIcon: _search.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear),
-                        tooltip: 'Clear the search',
-                        onPressed: () {
-                          _search.clear();
-                          _load();
-                        },
-                      ),
-              ),
-              onSubmitted: (_) => _load(),
+              hint: 'Number or customer',
               onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _load(),
+              onClear: () {
+                _search.clear();
+                _load();
+              },
             ),
           ),
           for (final MapEntry(key: currency, value: t) in _totals.entries) ...[
             figure('Quoted', t['quoted'] ?? 0, currency),
             figure('Accepted', t['accepted'] ?? 0, currency, tone: Tone.ok),
           ],
+          SegmentedButton<bool>(
+            key: const ValueKey('estimate-view'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(
+                value: false,
+                icon: Icon(Icons.view_list, size: 18),
+                label: Text('List'),
+              ),
+              ButtonSegment(
+                value: true,
+                icon: Icon(Icons.view_kanban_outlined, size: 18),
+                label: Text('Board'),
+              ),
+            ],
+            selected: {_board},
+            onSelectionChanged: (v) => _setBoard(v.first, wide: wide),
+          ),
         ],
       ),
     );
@@ -388,6 +445,28 @@ class _EstimatesTabState extends State<EstimatesTab> {
 
   Widget _body(BuildContext context, {required bool wide}) {
     final open = _openId;
+
+    if (_board && wide) {
+      final board = EstimateBoard(
+        api: widget.api,
+        me: _me,
+        search: _term,
+        counts: _counts,
+        transitions: _transitions,
+        generation: _generation,
+        selectedId: open,
+        onOpen: _open,
+        onMoved: _load,
+      );
+      if (open == null) return board;
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: board),
+          SizedBox(width: 440, child: _panel(open, inPlace: false)),
+        ],
+      );
+    }
 
     if (_rows.isEmpty && open == null) {
       // The first one starts here too, not only from the header (UI review,
@@ -431,6 +510,30 @@ class _EstimatesTabState extends State<EstimatesTab> {
     final groups = [RowGroup(heading: '', rows: _rows)];
     final footer = _page < _lastPage ? _loadMore() : null;
 
+    if (!wide && _board) {
+      return ListView(
+        key: const ValueKey('estimate-board-phone'),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          for (final row in _rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: EstimateCard(
+                row: row,
+                me: _me,
+                onTap: () => _open(_id(row)),
+                trailing: TextButton(
+                  key: ValueKey('estimate-move-to-${_id(row)}'),
+                  onPressed: () => _moveTo(row),
+                  child: const Text('Move to ▾'),
+                ),
+              ),
+            ),
+          ?footer,
+        ],
+      );
+    }
+
     if (!wide) {
       return GroupedList<Map<String, dynamic>>(
         groups: groups,
@@ -451,59 +554,46 @@ class _EstimatesTabState extends State<EstimatesTab> {
       );
     }
 
-    final scheme = Theme.of(context).colorScheme;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 4, 24, 24),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
+    return DockedListDetail(
+      list: GroupedList<Map<String, dynamic>>(
+        groups: groups,
+        idOf: _id,
+        tile: _tile,
+        onOpen: (row) => _open(_id(row)),
+        selectedId: open,
+        footer: footer,
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 380,
-            child: GroupedList<Map<String, dynamic>>(
-              groups: groups,
-              idOf: _id,
-              tile: _tile,
-              onOpen: (row) => _open(_id(row)),
-              selectedId: open,
-              footer: footer,
-            ),
-          ),
-          VerticalDivider(width: 1, color: scheme.outlineVariant),
-          Expanded(child: _panel(open, inPlace: false)),
-        ],
-      ),
+      detail: _panel(open, inPlace: false),
     );
+  }
+
+  Future<void> _moveTo(Map<String, dynamic> row) async {
+    final to = await moveSheet(
+      context,
+      _customer(row),
+      _transitions['${row['status']}'] ?? const [],
+    );
+    if (to == null || !mounted) return;
+    final reason = await moveEstimate(widget.api, _id(row), to);
+    if (!mounted) return;
+    if (reason != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(reason)));
+      return;
+    }
+    _load();
   }
 
   Widget _loadMore() => Padding(
     padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_pageError != null) ...[
-            ErrorNote(_pageError!),
-            const SizedBox(height: 8),
-          ],
-          TextButton(
-            onPressed: _fetching ? null : () => _load(page: _page + 1),
-            child: Text(
-              _fetching
-                  ? 'Loading…'
-                  : _pageError != null
-                  ? 'Try again'
-                  : 'Load more (${formatCount(_total - _rows.length)} left)',
-            ),
-          ),
-        ],
-      ),
+    child: LoadMore(
+      shown: _rows.length,
+      total: _total,
+      busy: _fetching,
+      error: _pageError,
+      onMore: () => _load(page: _page + 1),
+      groupDigits: true,
     ),
   );
 
@@ -721,10 +811,29 @@ class _EstimatePanelState extends State<EstimatePanel> {
   void initState() {
     super.initState();
     _load();
+    // This estimate changed elsewhere (sent, accepted, its lines edited):
+    // read again in place, never over unsaved changes or mid-write.
+    if (!_isNew) {
+      _live = LiveChanges.of(widget.api).subscribe({'estimates'}, (batch) {
+        if (batch.reload || batch.changedOf('estimates').contains(widget.id)) {
+          return _refresh();
+        }
+      }, active: LiveChanges.visible(this));
+    }
+  }
+
+  LiveSubscription? _live;
+
+  Future<void> _refresh() async {
+    if (_loading || _busy || _dirty) return;
+    final response = await widget.api.get('/estimates/${widget.id}');
+    if (!mounted || !response.ok || _busy || _dirty) return;
+    setState(() => _take(Map<String, dynamic>.from(response.data as Map)));
   }
 
   @override
   void dispose() {
+    _live?.cancel();
     for (final line in _lines) {
       line.dispose();
     }
@@ -1282,11 +1391,17 @@ class _EstimatePanelState extends State<EstimatePanel> {
     ),
   );
 
-  Widget _linesEditor(BuildContext context) {
+  // Qty, Price, Amount and the bin take ~360 px, so under 560 the Line field
+  // was squeezed to one character; a narrow panel gets the card layout too.
+  Widget _linesEditor(BuildContext context) => LayoutBuilder(
+    builder: (context, box) =>
+        _linesBody(context, cards: widget.inPlace || box.maxWidth < 560),
+  );
+
+  Widget _linesBody(BuildContext context, {required bool cards}) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
     final editable = _canWrite && _linesOpen && !_busy;
-    final cards = widget.inPlace;
 
     Widget field(
       String key,

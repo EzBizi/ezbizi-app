@@ -113,7 +113,7 @@ class QueueWaitWebhookController extends Controller
             : 'en-US';
 
         if ($ring->queue_announce_position) {
-            $response->say($this->position($position), ['language' => $language]);
+            $response->say($this->position($position, (string) app(\App\Support\Settings\SettingsResolver::class)->get('phone.queue_wait_greeting', \App\Models\Organization::query()->findOrFail($line->organization_id))), ['language' => $language]);
         }
 
         if ($ring->queue_announce_wait && $average > 0) {
@@ -169,7 +169,7 @@ class QueueWaitWebhookController extends Controller
      * Read out as an ordinal rather than "position 3", because the sentence is
      * heard once, by somebody who is already slightly annoyed, through a phone.
      */
-    private function position(int $position): string
+    private function position(int $position, string $greeting): string
     {
         $words = [
             1 => 'first', 2 => 'second', 3 => 'third', 4 => 'fourth', 5 => 'fifth',
@@ -177,8 +177,8 @@ class QueueWaitWebhookController extends Controller
         ];
 
         return isset($words[$position])
-            ? "Thank you for waiting. You are {$words[$position]} in line."
-            : "Thank you for waiting. There are {$position} callers ahead of you.";
+            ? "{$greeting} You are {$words[$position]} in line."
+            : "{$greeting} There are {$position} callers ahead of you.";
     }
 
     /**

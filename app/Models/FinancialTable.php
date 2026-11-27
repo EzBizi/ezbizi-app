@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToTenant;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -36,7 +37,35 @@ class FinancialTable extends Model implements StatesRetention
     /** Kept in step with an Airtable table (and not yet cut over to EzBizi). */
     public function isMirror(): bool
     {
-        return $this->source_table_id !== null && $this->cut_over_at === null;
+        return $this->source_table_id !== null && ! $this->isCutOver();
+    }
+
+    /**
+     * EzBizi holds this table: its own cut_over_at, or its whole Airtable base
+     * switched by config('airtable.cutover_bases').
+     */
+    public function isCutOver(): bool
+    {
+        return $this->cut_over_at !== null
+            || ($this->source_base_id !== null && in_array($this->source_base_id, self::cutOverBases(), true));
+    }
+
+    /** @return list<string> */
+    public static function cutOverBases(): array
+    {
+        return (array) config('airtable.cutover_bases', []);
+    }
+
+    public function scopeCutOver(Builder $query): void
+    {
+        $query->where(fn (Builder $q) => $q->whereNotNull('cut_over_at')->orWhereIn('source_base_id', self::cutOverBases()));
+    }
+
+    /** Linked to Airtable and still following it. */
+    public function scopeStillMirrored(Builder $query): void
+    {
+        $query->whereNotNull('source_table_id')->whereNull('cut_over_at')
+            ->when(self::cutOverBases() !== [], fn (Builder $q) => $q->whereNotIn('source_base_id', self::cutOverBases()));
     }
 
     public function base(): BelongsTo

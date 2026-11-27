@@ -23,15 +23,32 @@ final class TelegramBotStatus
             return 'Reconnect the bot: its token is missing.';
         }
 
-        return Cache::remember('telegram:webhook-info:'.$connection->getKey(), 300, function () use ($token) {
+        return Cache::remember('telegram:webhook-info:'.$connection->getKey(), 300, function () use ($token, $credentials) {
             try {
                 $info = TelegramApi::withToken($token)->call('getWebhookInfo');
             } catch (Throwable) {
                 return null;
             }
 
-            if (($info['url'] ?? '') === '') {
-                return 'Telegram is not sending this bot\'s messages to EzBizi. Reconnect it.';
+            // Missing or pointed elsewhere: set it again with the stored
+            // secret; only a refused setWebhook asks for a reconnect.
+            $url = route('telegram.webhook');
+            if (($info['url'] ?? '') !== $url) {
+                $secret = (string) ($credentials['webhook_secret'] ?? '');
+                try {
+                    if ($secret === '') {
+                        throw new \RuntimeException('No stored secret.'); // The webhook finds the tenant by it.
+                    }
+                    TelegramApi::withToken($token)->call('setWebhook', [
+                        'url' => $url,
+                        'secret_token' => $secret,
+                        'allowed_updates' => ['message'],
+                    ]);
+                } catch (Throwable) {
+                    return 'Telegram is not sending this bot\'s messages to EzBizi. Reconnect it.';
+                }
+
+                return null;
             }
             $error = trim((string) ($info['last_error_message'] ?? ''));
 

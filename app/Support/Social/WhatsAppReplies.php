@@ -6,8 +6,12 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\WhatsAppContact;
 use App\Models\WhatsAppNumber;
+use App\Support\Leads\ExplainsRefusal;
+use App\Support\Leads\HasReplyWindow;
 use App\Support\Leads\LeadReplyChannel;
 use App\Support\Leads\LeadThread;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
 /**
@@ -17,7 +21,7 @@ use RuntimeException;
  * last message (the customer-service window), the same rule as Messenger -
  * see MetaMessageReplies.
  */
-final class WhatsAppReplies implements LeadReplyChannel
+final class WhatsAppReplies implements ExplainsRefusal, HasReplyWindow, LeadReplyChannel
 {
     private const WINDOW_HOURS = 24;
 
@@ -80,6 +84,53 @@ final class WhatsAppReplies implements LeadReplyChannel
             ->firstOrFail();
     }
 
+    /** Why not, and what can still be sent: an approved template opens a closed window. */
+    public function whyNot(Lead $lead): string
+    {
+        if ($this->number($lead) === null) {
+            return 'The WhatsApp number this enquiry came to is no longer set up, so there is nowhere to send a reply from.';
+        }
+
+        $ends = $this->replyWindowEndsAt($lead);
+
+        if ($ends === null) {
+            return 'There is no message from this person to reply to yet. You can send them an approved template.';
+        }
+
+        return 'WhatsApp only allows free replies within '.self::WINDOW_HOURS." hours of the person's last message. "
+            .'Their last message was '.$ends->copy()->subHours(self::WINDOW_HOURS)->diffForHumans().'; you can send an approved template now, or reply freely if they write back.';
+    }
+
+    public function replyWindowEndsAt(Lead $lead): ?Carbon
+    {
+        $last = LeadConversation::query()
+            ->where('lead_id', $lead->getKey())
+            ->where('participant', LeadConversation::FROM_CONSUMER)
+            ->max('occurred_at');
+
+        return $last === null ? null : Carbon::parse($last)->addHours(self::WINDOW_HOURS);
+    }
+
+    /**
+     * The approved templates of the number this lead wrote to - the one thing
+     * WhatsApp accepts once the window has closed - through the same
+     * five-minute cache as the automation builder's list.
+     *
+     * @return array<int, array{name: string, language: string, category: string, parameters: int, preview: string}>
+     */
+    public function templates(Lead $lead): array
+    {
+        $waba = (string) ($this->number($lead)?->waba_id ?? '');
+
+        return $waba === '' ? [] : Cache::remember('whatsapp.templates.'.$waba, 300, fn () => $this->cloud->templates($waba));
+    }
+
+    /** The number to send from, as WhatsAppCloud::send() names it. */
+    public function fromNumber(Lead $lead): ?string
+    {
+        return $this->number($lead)?->display_number;
+    }
+
     /** The number the person wrote to, through the contact that made this lead. */
     private function number(Lead $lead): ?WhatsAppNumber
     {
@@ -92,11 +143,8 @@ final class WhatsAppReplies implements LeadReplyChannel
 
     private function lastInboundWithinWindow(Lead $lead): bool
     {
-        $last = LeadConversation::query()
-            ->where('lead_id', $lead->getKey())
-            ->where('participant', LeadConversation::FROM_CONSUMER)
-            ->max('occurred_at');
+        $ends = $this->replyWindowEndsAt($lead);
 
-        return $last !== null && now()->diffInHours($last, absolute: true) < self::WINDOW_HOURS;
+        return $ends !== null && now()->lt($ends);
     }
 }

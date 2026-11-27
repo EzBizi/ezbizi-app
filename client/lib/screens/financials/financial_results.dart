@@ -1,3 +1,5 @@
+import '../../core/timestamps.dart';
+import '../../widgets/list_search.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -11,10 +13,7 @@ import '../../core/theme.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
-import 'financial_cells.dart';
-
-String _money(int? cents) =>
-    formatCell(const {'type': 'currency', 'options': {}}, (cents ?? 0) / 100);
+import 'invoice_common.dart';
 
 int? _cents(String t) {
   final v = double.tryParse(t.replaceAll(r'$', '').replaceAll(',', '').trim());
@@ -23,11 +22,6 @@ int? _cents(String t) {
 
 String _dollars(Object? cents) =>
     cents is int ? (cents / 100).toStringAsFixed(2) : '';
-
-String _day(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-'
-    '${d.month.toString().padLeft(2, '0')}-'
-    '${d.day.toString().padLeft(2, '0')}';
 
 /// The date ranges offered, and the `from`/`to` each sends. `all` sends none.
 const _ranges = [
@@ -49,7 +43,9 @@ Map<String, String> _rangeQuery(String key, DateTime now) {
     'this_year' => (DateTime(now.year), now),
     _ => null,
   };
-  return span == null ? {} : {'from': _day(span.$1), 'to': _day(span.$2)};
+  return span == null
+      ? {}
+      : {'from': formatCalendarDay(span.$1), 'to': formatCalendarDay(span.$2)};
 }
 
 /// Financials → Lead source results (Jose, 2026-10-27, ACE option A): an
@@ -212,24 +208,15 @@ class _FinancialResultsTabState extends State<FinancialResultsTab> {
   }
 
   Widget _filters(bool narrow) {
-    final theme = Theme.of(context);
     Widget box(Widget child, double width) =>
         narrow ? child : SizedBox(width: width, child: child);
     final fields = <Widget>[
       box(
-        TextField(
+        ListSearch(
           key: const Key('financials-results-search'),
           controller: _search,
+          hint: 'Place, source, area or date',
           onChanged: _searched,
-          style: theme.textTheme.bodyMedium,
-          decoration: InputDecoration(
-            isDense: true,
-            prefixIcon: const Icon(Icons.search, size: 18),
-            hintText: 'Place, source, area or date',
-            hintStyle: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.inputDecorationTheme.hintStyle?.color,
-            ),
-          ),
         ),
         240,
       ),
@@ -439,9 +426,21 @@ class _FinancialResultsTabState extends State<FinancialResultsTab> {
                     cell(3, t(r['area'])),
                     cell(4, t(r['calls'], end: true)),
                     cell(5, t(r['jobs'], end: true)),
-                    cell(6, t(_money(r['cost_cents'] as int?), end: true)),
-                    cell(7, t(_money(r['sales_cents'] as int?), end: true)),
-                    cell(8, t(_money(r['profit_cents'] as int?), end: true)),
+                    cell(
+                      6,
+                      t(invoiceMoney(r['cost_cents'] as int? ?? 0), end: true),
+                    ),
+                    cell(
+                      7,
+                      t(invoiceMoney(r['sales_cents'] as int? ?? 0), end: true),
+                    ),
+                    cell(
+                      8,
+                      t(
+                        invoiceMoney(r['profit_cents'] as int? ?? 0),
+                        end: true,
+                      ),
+                    ),
                     cell(
                       9,
                       Wrap(spacing: 4, runSpacing: 4, children: _chips(r)),
@@ -506,7 +505,7 @@ class _FinancialResultsTabState extends State<FinancialResultsTab> {
                 style: theme.textTheme.bodySmall,
               ),
               Text(
-                'Cost ${_money(r['cost_cents'] as int?)} · Sales ${_money(r['sales_cents'] as int?)} · Profit ${_money(r['profit_cents'] as int?)}',
+                'Cost ${invoiceMoney(r['cost_cents'] as int? ?? 0)} · Sales ${invoiceMoney(r['sales_cents'] as int? ?? 0)} · Profit ${invoiceMoney(r['profit_cents'] as int? ?? 0)}',
                 style: theme.textTheme.bodySmall,
               ),
               Wrap(
@@ -632,7 +631,9 @@ Widget _placePicker(Me me, String? value, ValueChanged<String?> onChanged) =>
     );
 
 Map<String, Object?> _placeBody(Me me, String? place) {
-  final franchise = me.franchisesInView.where((f) => f.id == place).firstOrNull;
+  // Reach, not the view: a result already filed on a switched-off branch
+  // keeps its branch.
+  final franchise = me.franchises.where((f) => f.id == place).firstOrNull;
   return {
     'franchise_id': franchise?.id,
     'company_id': franchise?.companyId ?? (franchise == null ? place : null),
@@ -659,7 +660,9 @@ class _ResultPanel extends StatefulWidget {
 }
 
 class _ResultPanelState extends State<_ResultPanel> {
-  late final _f = _Figures(widget.row ?? {'date': _day(DateTime.now())});
+  late final _f = _Figures(
+    widget.row ?? {'date': formatCalendarDay(DateTime.now())},
+  );
   late final _source = TextEditingController(
     text: widget.row?['source'] as String? ?? '',
   );

@@ -15,7 +15,7 @@ use Tests\TestCase;
 
 /**
  * `job.estimate_aging`, once a day for each job in a status the organization
- * names (Jose's Project Management rule 2: "30 days without money → Canceled /
+ * names (Jose's rule 2: "30 days without money → Canceled /
  * Estimate Declined"). The rule holds the threshold; this says how old the
  * LATEST estimate is and what has been paid.
  */

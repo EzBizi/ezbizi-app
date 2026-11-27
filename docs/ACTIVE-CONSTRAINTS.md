@@ -5,10 +5,12 @@
 
 **This file is NOT being deleted, and the original instruction to delete it was
 wrong.** §1 was temporary and is now history. §2, §3 and §5 are not — a minimum
-client version is still dangerous, SES is still sandboxed, and §4's rule now
+client version is still dangerous, SES was still sandboxed then (production access
+granted 2026-09-14, §3), and §4's rule now
 lives in a test rather than in prose. A file whose header schedules its own
 deletion takes the durable content with it, which was caught once already when
-the CRLF section had to be moved to `StartUp.md` §8 to survive.
+the CRLF section had to be moved to `StartUp.md` §8 to survive (since moved again
+to `docs/DEVELOPMENT-RULES.md`; see §5).
 
 It exists because these constraints were being broadcast to a session roster that
 turns over every few minutes, so half the fleet never heard them and the other half
@@ -100,7 +102,7 @@ minutes. It has already overturned three confident guesses — including one of 
 
   *Precision correction, twice. An earlier version said the dashboard dispatches on
   presentation rather than glance key — wrong. The replacement said it looks up by
-  key with a default fallback — two-thirds right. `dashboard_panels.dart:65-67` has
+  key with a default fallback — two-thirds right. `dashboard_panels.dart:71-73` (was 65-67) has
   **three arms**, and the middle one is a distinct second fallback:*
 
       byModule[key]                      // exact glance key
@@ -112,9 +114,10 @@ minutes. It has already overturned three confident guesses — including one of 
   two-thirds right decays into a wrong one the moment somebody reasons from it — which
   is exactly how the first error got made.*
 
-  **And declaring a thing is often only half of it.** `AutomationsController:50`
-  holds a private `IMPLEMENTED_ACTIONS`; an action absent from it is published as
-  `implemented: false` at `:217` and refused at `:918`, so it is drawn as "not built
+  **And declaring a thing is often only half of it.** `AutomationsController`
+  holds a private `IMPLEMENTED_ACTIONS` (line 84 on 2026-11-13; was 50); an action
+  absent from it is published as `implemented: false` (now ~:382) and refused (now
+  ~:2124), so it is drawn as "not built
   yet" and can never run. Nothing fails if you forget — no test, no error, green
   everywhere. Before trusting that a registration is real, find the second const in
   the other file.
@@ -134,7 +137,8 @@ the app is dead in their hands, with nothing red anywhere on our side. The obvio
 reason to raise it — forcing clients onto a new build after a wire change — is
 exactly the reflex to suppress this week.
 
-Production currently has **no minimum set**. Nobody owns that controller; it is
+Production currently has **no minimum set** (re-measured 2026-11-13: 0 rows in
+`platform_minimum_client_versions`). Nobody owns that controller; it is
 control plane and appears on no module map.
 
 ## 3 · SES production access is GRANTED — this constraint is over
@@ -182,7 +186,7 @@ the account dashboard before telling anyone the state changed.
 
 `RefreshDatabase` drops it, so two sessions testing at once destroy each other with
 no useful error — the tell is an impossible pair, "migrations doesn't exist" beside
-"users already exists". `phpunit.xml:27` has no `force="true"`, so a real env var
+"users already exists". `phpunit.xml:30` (was :27) has no `force="true"`, so a real env var
 wins:
 
 ```bash
@@ -201,7 +205,7 @@ a run suddenly says you have broken tenancy everywhere, re-run it on your own
 schema **before** you believe it.
 
 **That prefix works for the test runner and nowhere else.** It names a *schema*
-only because `phpunit.xml:26` pins `DB_CONNECTION=mysql`. Everywhere else `.env`
+only because `phpunit.xml:29` (was :26) pins `DB_CONNECTION=mysql`. Everywhere else `.env`
 says sqlite, and Laravel reads `DB_DATABASE` as a **file path**:
 
 | Command | Driver | `DB_DATABASE` means |
@@ -238,6 +242,17 @@ Raised by ezbizi-ea, who noticed the header contradicted the content.
 ---
 
 ## 6 · Configuring a sending identity ARMED a shipped action — CLOSED
+
+**Superseded 2026-09-17 (`be3cfb7ad`): the refusal below is GONE, by Jose's
+reversal.** On 2026-09-16 he asked for automation email on *"Email ( the Ezbizi
+SES one, not the company one )"*. `ActionRunner::emailInspectionReport` now SENDS
+`inspection_report.email` through `MailDispatcher::platformForTenant` (EzBizi's
+address, the company named in the body); `asTenant` remains an unconditional
+throw. So this section's "refuses unconditionally" and the two quoted rulings
+below describe the state before that reversal. Do not "restore" the refusal from
+this text. (Measured 2026-11-13: production has 10 organizations and still 0
+`sending_identities` rows; `SendingServersController` can write one since
+`97de664cc`.)
 
 **Closed 2026-09-14 by `6e0d7e98`, hours after this section was written.**
 Inspection now refuses `inspection_report.email` unconditionally, and the refusal
@@ -450,6 +465,11 @@ that is the evidence nobody has yet.
 
 ## 11 · Jose is away (2026-09-15 evening, again 2026-09-16) — decide and finish
 
+*Note 2026-11-13: the standing version of this is now in `CLAUDE.md` ("Do it
+yourself — never park work on Jose", his words of 2026-11-06), which is the source
+of truth. The "deployment lead session" named below is EzBizi - Deployment Lead,
+`local_072bee23…` (live 2026-11-13); see `docs/SESSIONS.md`.*
+
 His words, standing: *"coordinate everything with each other and the
 deployment lead session, make sure to finish END TO END since i wont be here
 and if u have a question do as you believe or recommend, dont wait for me.
@@ -490,6 +510,11 @@ because there is nobody to catch a bad one:
 
 ## 12 · An auth bug on our side now blanks the chat on 110 customer sites
 
+*Re-measured 2026-11-13: still holds, and wider — `web_sites` reads 137 sites, all
+on plugin 1.26.30, and the plugin still records a refusal at the first 401/403
+(`wordpress-plugin/ezbizi/ezbizi.php`). The 110 and baseline figures below are
+from 2026-09-16.*
+
 Plugin 1.9.0, out on all 110 installs since 2026-09-16, removes the widgets at
 the FIRST 401 or 403 from EzBizi. Jose's ruling, with the chat live and real
 messages arriving: it *"should only show up, if a connection has been connected
@@ -529,6 +554,12 @@ bug nobody has written is the wrong way round.
 
 ## 13 · The Mac relay moves. Find it, do not wait for it
 
+**Lapsed 2026-10-01: `~/.ssh/config` `Host mac` now points at the Tailscale
+address `100.94.42.48` (`mac-mini` in `tailscale status`), which does not move with
+DHCP** (checked 2026-11-13). The LAN addresses and ARP hunt below are history; if
+`ssh mac` fails now, check Tailscale first. The `--only` split and the orphaned
+release-worktree trap still apply.
+
 2026-09-16, second time: `ssh mac` failed with *"cannot reach the Mac relay —
 is the Mac mini awake?"* and the Mac was awake the whole time. It had taken a
 new DHCP address. `~/.ssh/config` now points at **10.1.10.187**; it was
@@ -563,6 +594,12 @@ will not show it. Check the artefacts are already in `Distribution/`, then
 remove the directory.
 
 ## 14 · EzBizi cannot update the plugin on customer sites, and should not gain the power quietly
+
+Re-measured **2026-11-13**: `plugin_version` 1.26.30 on all 137 `web_sites`
+rows; the repo plugin is 1.26.30; wordpress.org still publishes **1.10.0**
+(api.wordpress.org, last updated 2026-09-17); the plugin still sets no
+`auto_update_plugin` filter, so the OPEN question at the end of this section is
+still open.
 
 Measured on the box, **2026-09-22**:
 

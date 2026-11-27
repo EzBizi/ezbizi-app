@@ -301,6 +301,28 @@ void main() {
     );
   });
 
+  // Jose, 2026-11-09: a picked day is one card, "Your pick", never "Earliest".
+  testWidgets('a picked day: one card, best fit or a plain sentence', (
+    tester,
+  ) async {
+    await pump(tester, data: {...suggestion(), 'for_date': '2026-10-12'});
+    expect(find.byKey(const Key('availability-picked')), findsOneWidget);
+    expect(find.text('YOUR PICK · BEST FIT'), findsOneWidget);
+    expect(find.byKey(const Key('availability-earliest')), findsNothing);
+    expect(find.byKey(const Key('availability-suggested')), findsNothing);
+
+    await pump(
+      tester,
+      data: {...suggestion(none: true), 'for_date': '2026-10-12'},
+    );
+    expect(find.text('YOUR PICK'), findsOneWidget);
+    expect(
+      find.byKey(const Key('availability-picked-nothing-near')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('availability-no-suggestion')), findsNothing);
+  });
+
   testWidgets('with nothing in the radius there is no suggestion, and why', (
     tester,
   ) async {

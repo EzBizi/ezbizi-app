@@ -29,7 +29,10 @@ class AnswerWhatsAppWithAi implements ShouldQueue
         public string $to,
         public ?string $viewerId,
         public string $query,
-    ) {}
+    )
+    {
+        $this->onQueue(config('services.ai.staff_queue', 'default'));   // a person is waiting: never behind call processing
+    }
 
     public function handle(WhatsAppStaffBot $bot, TenantContext $tenant): void
     {

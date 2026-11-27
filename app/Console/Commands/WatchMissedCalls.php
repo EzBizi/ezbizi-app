@@ -27,16 +27,8 @@ class WatchMissedCalls extends Command
 
     protected $description = 'Raise reports.call.missed for each new missed call in RingCentral';
 
-    /** A call older than this is history, not news: no burst of the whole day after a deploy or an outage. */
-    private const FRESH_MINUTES = 30;
-
-    /** Brands by the start of the line the call reached. Anything else, a person's own line included, is no company. */
-    private const COMPANIES = [
-        'A1' => 'A-1 Chimney',
-        'Speedy Chimney Sweep' => 'Speedy Chimney Sweep',
-        'Ace Fireplace' => 'Ace Fireplace',
-        'TX Chimney & Chimney Services Pro' => 'TX Chimney & Chimney Services Pro',
-    ];
+    /** Brands by the start of the line the call reached (setting phone.ringcentral_companies). Anything else is no company. */
+    private array $companies = [];
 
     public function handle(RingCentralCallLog $log, EventEmitter $events, TenantContext $tenant): int
     {
@@ -52,6 +44,9 @@ class WatchMissedCalls extends Command
             return self::FAILURE;
         }
 
+        // A call older than this is history, not news: no burst of the whole day after a deploy or an outage.
+        $fresh = (int) $tenant->run($organization, fn () => app(\App\Support\Settings\SettingsResolver::class)->get('phone.missed_call_fresh_minutes', $organization));
+        $this->companies = (array) $tenant->run($organization, fn () => app(\App\Support\Settings\SettingsResolver::class)->get('phone.ringcentral_companies', $organization));
         $now = CarbonImmutable::now((string) config('app.timezone'));
         // Every call on this account is its company's.
         $companyId = $tenant->run($organization, fn () => $log->companyId());
@@ -59,13 +54,13 @@ class WatchMissedCalls extends Command
         $names = null;
         $raised = 0;
 
-        // From FRESH_MINUTES ago, not from midnight: a call at 23:59 is still
+        // From phone.missed_call_fresh_minutes ago, not from midnight: a call at 23:59 is still
         // read by the run at 00:01. Yesterday then comes from its day cache.
-        foreach ($log->forPeriod($now->subMinutes(self::FRESH_MINUTES), $now) as $call) {
+        foreach ($log->forPeriod($now->subMinutes($fresh), $now) as $call) {
             if ($call['answered_by'] !== null
                 || ! in_array($call['result'], ['Missed', 'Voicemail'], true)
                 || $call['id'] === null
-                || CarbonImmutable::parse((string) $call['started_at'])->lt($now->subMinutes(self::FRESH_MINUTES))
+                || CarbonImmutable::parse((string) $call['started_at'])->lt($now->subMinutes($fresh))
                 // Atomic: the first run to see the call claims it.
                 || ! Cache::add('missed-call-raised:'.$call['id'], 1, now()->addDays(2))) {
                 continue;
@@ -84,10 +79,14 @@ class WatchMissedCalls extends Command
                 'from' => $call['from'],
                 'to_number' => $call['to_number'],
                 'to_name' => $line,
+                // The task's title: who to call back, or, with no number, enough to find the call (desk, 11-18).
+                'task_title' => self::taskTitle($call['from'] ?? null, (string) $line, (string) $call['started_at']),
                 'queue' => $call['queue'],
                 'company' => $company,
                 // Which company's line it was, for a per-person company filter (2026-10-23).
                 'company_id' => $companyId,
+                // The branch the line belongs to: its number's place (Leads › Manage › Phone lines), else its market code.
+                'branch' => $tenant->run($organization, fn () => self::branchOf((string) $call['to_number'], (string) $line) ?? self::callersBranch((string) $call['from'])),
                 'result' => $call['result'],
             ]));
 
@@ -101,12 +100,57 @@ class WatchMissedCalls extends Command
 
     private function company(?string $line): ?string
     {
-        foreach (self::COMPANIES as $prefix => $company) {
-            if ($line !== null && str_starts_with($line, $prefix)) {
-                return $company;
+        foreach ($this->companies as $prefix => $company) {
+            if ($line !== null && $prefix !== '' && str_starts_with($line, (string) $prefix)) {
+                return (string) $company;
             }
         }
 
         return null;
+    }
+
+    /** The branch name a dialed line belongs to, or null. */
+    public static function branchOf(string $number, string $line): ?string
+    {
+        $settings = \App\Support\Settings\SettingsResolver::class;
+        $branches = \App\Models\Franchise::query()->get(['id', 'name', 'company_id']);
+        [, $franchiseId] = \App\Support\Leads\RingCentralLeadCalls::placeOf((string) (((array) $settings::forOrganization('leads.line_numbers'))[$number] ?? ''), $branches);
+        if ($franchiseId !== null) {
+            return $branches->firstWhere('id', $franchiseId)?->name;
+        }
+        $markets = array_change_key_case((array) $settings::forOrganization('leads.line_markets'), CASE_UPPER);
+        $brands = array_change_key_case((array) $settings::forOrganization('leads.line_brands'), CASE_UPPER);
+
+        return $markets[\App\Support\Leads\RingCentralLeadCalls::market($line, $brands)] ?? null;
+    }
+
+    /**
+     * When the line names no branch (a person's extension, a brand line): the
+     * caller's own record, by phone. Their newest open lead's branch, else
+     * their customer's branch; null when neither says (desk for Jose, 2026-11-17).
+     */
+    public static function callersBranch(string $from): ?string
+    {
+        $ten = substr((string) preg_replace('/\D+/', '', $from), -10);
+        if (strlen($ten) !== 10) {
+            return null;
+        }
+        $lead = \App\Models\Lead::query()->where('phone', 'like', '%'.$ten)->whereNotNull('franchise_id')
+            ->whereNotIn('status', [\App\Models\Lead::STATUS_NOT_A_LEAD, \App\Models\Lead::STATUS_LOST, \App\Models\Lead::STATUS_ARCHIVED])
+            ->latest('received_at')->value('franchise_id');
+        $place = $lead ?? \App\Models\Customer::query()->tap(fn ($q) => \App\Models\Customer::phoneLike($q, $ten))
+            ->whereNotNull('owning_franchise_id')->latest()->value('owning_franchise_id');
+
+        return $place === null ? null : \App\Models\Franchise::query()->whereKey($place)->value('name');
+    }
+
+    public static function taskTitle(?string $from, string $line, string $startedAt): string
+    {
+        if (filled($from)) {
+            return trim($line.' '.$from);
+        }
+        $zone = (string) (\App\Support\Settings\SettingsResolver::forOrganization('timezone') ?: 'America/New_York');
+
+        return 'Unknown caller (no number) · '.$line.' · '.\Carbon\CarbonImmutable::parse($startedAt)->setTimezone($zone)->format('M j g:i A');
     }
 }

@@ -26,6 +26,18 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
     use BelongsToTenant;
     use HasUuids;
 
+    /** A call or message landing on a lead is that lead's change on the live feed. */
+    protected static function booted(): void
+    {
+        static::saved(function (self $c) {
+            if ($c->lead_id !== null && ($c->wasRecentlyCreated || $c->wasChanged())) {
+                \App\Support\Live\ChangeFeed::record(Lead::withoutGlobalScopes()
+                    ->find($c->lead_id, ['id', 'organization_id', 'company_id', 'franchise_id'])
+                    ?? (new Lead)->forceFill(['id' => $c->lead_id, 'organization_id' => $c->organization_id]), 'leads');
+            }
+        });
+    }
+
     public const CHANNEL_PHONE_CALL = 'PHONE_CALL';
 
     public const CHANNEL_MESSAGE = 'MESSAGE';
@@ -126,7 +138,7 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
     protected $fillable = [
         'organization_id', 'lead_id', 'remote_id', 'channel', 'participant',
         'occurred_at', 'duration_ms', 'line_number', 'line_name', 'answered_by', 'rang', 'recording_url', 'text', 'transcript', 'attachments',
-        'is_automatic', 'is_ad_question',
+        'is_automatic', 'is_ad_question', 'automation_name',
     ];
 
     protected function casts(): array

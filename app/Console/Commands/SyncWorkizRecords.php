@@ -8,6 +8,7 @@ use App\Models\WorkizRecord;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizRecords;
+use App\Support\Workiz\WorkizTags;
 use App\Support\Workiz\WorkizV2;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -28,6 +29,7 @@ class SyncWorkizRecords extends Command
         {--type=* : Only these types: invoice, payment, estimate, time_off, event, timesheet, custom_field, item, job_type, ad_group, tag, sub_status}
         {--connection= : Only this Workiz connection}
         {--full : Read everything since 2023, not only what changed}
+        {--days= : Re-read the last N days whole; a payment Workiz no longer returns in them is marked deleted}
         {--pages=50 : Most pages per branch and type in one run}
         {--pause=0 : Seconds between pages}';
 
@@ -44,7 +46,10 @@ class SyncWorkizRecords extends Command
 
     public function handle(TenantContext $tenant): int
     {
-        $types = $this->option('type') ?: WorkizRecords::TYPES;
+        // Account lists rarely change: read them once an hour, not every ten
+        // minutes (they were most of the rate-limit refusals, 11-03).
+        $types = $this->option('type') ?: (now()->minute < 10 ? WorkizRecords::TYPES
+            : array_values(array_diff(WorkizRecords::TYPES, WorkizRecords::LISTS)));
 
         if ($unknown = array_diff($types, WorkizRecords::TYPES)) {
             $this->error('Unknown type: '.implode(', ', $unknown).'.');
@@ -96,10 +101,14 @@ class SyncWorkizRecords extends Command
     private function sync(SocialConnection $connection, string $type): array
     {
         $column = self::CURSOR[$type] ?? null;
+        $days = $this->option('days');
         $newest = $column === null || $this->option('full') ? null
             : WorkizRecord::query()->where('franchise_id', $connection->scope_id)->where('type', $type)->max($column);
-        $since = WorkizRecords::cursor($newest);
+        $since = is_numeric($days) ? now()->subDays((int) $days)->toDateString()
+            : WorkizRecords::cursor($newest, \App\Models\Franchise::query()->find($connection->scope_id));
         $landed = 0;
+        $seen = [];
+        $whole = false;
 
         for ($page = 1; $page <= max(1, (int) $this->option('pages')); $page++) {
             $read = WorkizV2::send($connection, 'GET', WorkizRecords::path($type), WorkizRecords::query($type, $since, $page), 60);
@@ -115,14 +124,26 @@ class SyncWorkizRecords extends Command
                 ? array_filter($rows, fn ($r) => (string) ($r['startDate'] ?? '') < $since)
                 : [];
             $fresh = $type === 'payment' ? self::unheld($connection, array_column($rows, 'id')) : [];
+            // A tag renamed, recoloured, added or deleted: logged, told, followed (WorkizTags).
+            $tagChanges = $type === 'tag' ? WorkizTags::diff($connection, $rows, $page === 1 && ! ($read['data']['hasMore'] ?? false)) : [];
             $landed += WorkizRecords::land($connection, $type, array_diff_key($rows, $older));
+            array_push($seen, ...array_map(fn ($r) => (string) ($r['id'] ?? ''), $rows));
+            WorkizTags::record($connection, $tagChanges);
             self::announce($connection, $fresh);
 
             if ($older !== [] || ! ($read['data']['hasMore'] ?? false)) {
+                $whole = true;
                 break;
             }
 
             sleep(max(0, (int) $this->option('pause')));
+        }
+
+        // Workiz deletes a payment without a trace; only a whole re-read of the window shows it gone (audit 11-11).
+        if ($type === 'payment' && is_numeric($days) && $whole) {
+            WorkizRecord::query()->where('franchise_id', $connection->scope_id)->where('type', 'payment')
+                ->where('starts_at', '>=', $since)->whereNotIn('remote_id', $seen ?: ['-'])
+                ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'deleted'))->update(['status' => 'deleted']);
         }
 
         return ['landed' => $landed, 'failed' => null, 'status' => 200];
@@ -139,7 +160,7 @@ class SyncWorkizRecords extends Command
 
     /**
      * `job.payment_received`, once per payment new to the mirror, on its
-     * EzBizi job (Automations, 2026-10-21: Jose's Project Management rules).
+     * EzBizi job (Automations, 2026-10-21).
      * A payment dated more than two days back is history arriving (a first
      * read, a full sweep) and is not announced.
      */

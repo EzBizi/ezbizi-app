@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 /** A short review link's code: a customer and a job until it expires (CustomerLinks). */
-#[Fillable(['code', 'customer_id', 'job_id', 'expires_at'])]
+#[Fillable(['code', 'customer_id', 'job_id', 'user_id', 'franchise_id', 'expires_at'])]
 class ReviewCode extends Model implements StatesRetention
 {
     use BelongsToTenant;

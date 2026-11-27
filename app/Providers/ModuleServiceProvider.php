@@ -151,14 +151,14 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 tabs: [
                     new TabDefinition('organization', 'Organization'),
-                    new TabDefinition('settings', 'Settings'),
+                    new TabDefinition('settings', 'Preferences'),
                     new TabDefinition('integrations', 'Integrations'),
-                    // Everything anybody did with an API key (UI queue 66; Jose,
-                    // 2026-10-07: "an MCP-API log to records the actions").
-                    // Administrators hold it; the activity endpoint widens to
-                    // the organization for whoever does.
-                    new TabDefinition('api_activity', 'API activity'),
+                    // API activity moved to Monitoring (Jose, 2026-11-25):
+                    // monitoring.api_activity.view.
                 ],
+                // The Organization tab is the companies tree (roles audit 2026-11-24).
+                actionRequires: ['integrations.view' => ['marketing.view'], 'organization.view' => ['companies.view']],
+                actionDescriptions: ['view' => 'Opens nothing by itself; tick the tabs below.', 'settings.view' => 'Preferences and Lists.'],
                 // SettingsController files every settings event against the
                 // tenant root, whatever level the value was written at, because
                 // that is the one of the three that can say where it sits.
@@ -236,6 +236,25 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A franchise was renamed, moved to a different time zone, '
                             .'or switched back on. Switching one OFF raises "Deactivated" '
                             .'instead of this.',
+                    ),
+                    // Jose, 2026-11-10: a tag renamed, recoloured, added or deleted in a branch's Workiz.
+                    new TriggerDefinition(
+                        key: 'franchise.workiz_tag_changed',
+                        label: 'Workiz tag changed',
+                        description: 'Somebody renamed, recoloured, added or deleted a tag in this branch\'s '
+                            .'Workiz account. It carries the change, and the tag before and after.',
+                    ),
+                    // Jose, 2026-11-12: the Workiz sync watchdog (ezbizi:workiz-watchdog), once per episode.
+                    new TriggerDefinition(
+                        key: 'franchise.workiz_sync_drift',
+                        label: 'Workiz sync behind',
+                        description: 'Something has been out of step between this branch\'s Workiz and EzBizi for '
+                            .'over 15 minutes. Raised once until it clears; the summary names the jobs and how long.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'franchise.workiz_sync_recovered',
+                        label: 'Workiz sync recovered',
+                        description: 'The Workiz sync that was behind for this branch is back in step.',
                     ),
                     new TriggerDefinition(
                         key: 'franchise.deactivated',
@@ -388,9 +407,12 @@ class ModuleServiceProvider extends ServiceProvider
                 // or delete action exists to grant, so tampering isn't a permission
                 // question — there is simply no code path.
                 automationExemptBecause: 'The audit log is append-only; nothing may act on it programmatically.',
-                // Read by Settings › Activity (2026-10-16), so it is a tick that
-                // opens something again.
-                rolesGroup: ModuleDefinition::ROLES_SETTINGS,
+                // Activity moved to Monitoring (Jose, 2026-11-25) and reads
+                // `monitoring.activity.view`; nothing on the server reads
+                // `audit.view` any more, so the editor no longer offers it.
+                // Kept in the registry so roles still holding it stay valid
+                // while older clients are in the field.
+                rolesGroup: ModuleDefinition::ROLES_OMIT,
                 sidebar: false,
             ),
 
@@ -409,6 +431,27 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationExemptBecause: 'API keys are credentials; nothing may create or change them programmatically.',
                 rolesGroup: ModuleDefinition::ROLES_SETTINGS,
+                sidebar: false,
+            ),
+
+            /*
+             * Developer tools (Jose, 2026-11-23). `view_as` lets an
+             * Administrator who is also platform staff see and use the app as
+             * one role at one place, or as one person, to debug permissions
+             * (ViewAs). Nobody holds it by grant: Administrators hold every
+             * key, and the staff link is the real gate. Declared so the
+             * platform's availability switch can withdraw it.
+             */
+            new ModuleDefinition(
+                key: 'development',
+                label: 'Development',
+                actions: ['view', 'view_as'],
+                actionLabels: [
+                    'view_as' => 'View the app as a role or person (developers)',
+                ],
+                automationExemptBecause: 'A developer tool; nothing may start or stop it programmatically.',
+                auditActionPrefixes: ['view_as'],
+                rolesGroup: ModuleDefinition::ROLES_OMIT,
                 sidebar: false,
             ),
         ];
@@ -545,6 +588,7 @@ class ModuleServiceProvider extends ServiceProvider
                     'pay.view' => 'See pay rates',
                     'pay.edit' => 'Change pay rates',
                     'delete' => 'Delete people permanently',
+                    'security.reset' => 'Reset sign-in security (Records › Access)',
                 ],
                 /*
                  * ── The seven tabs, grantable one at a time ──
@@ -590,6 +634,11 @@ class ModuleServiceProvider extends ServiceProvider
                     // and contract in one table. New, so held by no role until
                     // ticked; administrators by identity.
                     new TabDefinition('payroll', 'Payroll'),
+                    // Recruiting (design 201; Shoval, 2026-11-20): applicants,
+                    // interviews and spend. Its own tab grant, as every HR tab
+                    // (hr.view alone opens no tab); writes are hr.edit. New,
+                    // so held by no role until ticked; administrators hold it.
+                    new TabDefinition('recruiting', 'Recruiting'),
                 ],
                 triggers: [
                     /*
@@ -833,11 +882,17 @@ class ModuleServiceProvider extends ServiceProvider
                 // people one reaches. Implies seeing them.
                 // `pto.request` (Jose, 2026-10-26): ask for your own paid time
                 // off. Every role was given it by the migration of that day.
-                actions: ['view', 'all', 'manage', 'pto.edit', 'approve', 'pto.request'],
+                // `payroll` (Merav via Jose, 2026-11-19): see pay, set bonus and
+                // deductions, approve a week. Money, so its own grant.
+                // `own_schedule` (Jose, 2026-11-25: "Disable people changing their own
+                // Work Schedule for all roles except Administrator"): Administrator
+                // holds it by holding every permission; nobody else is given it.
+                actions: ['view', 'all', 'manage', 'pto.edit', 'approve', 'pto.request', 'payroll', 'own_schedule'],
                 actionRequires: [
                     'all' => ['work_hours.general.view'],
                     'manage' => ['work_hours.all'],
                     'approve' => ['work_hours.all'],
+                    'payroll' => ['work_hours.all'],
                     'pto.edit' => ['work_hours.pto.view'],
                 ],
                 actionLabels: [
@@ -845,6 +900,8 @@ class ModuleServiceProvider extends ServiceProvider
                     'manage' => 'Edit hours and schedules',
                     'pto.edit' => 'Edit used paid time off',
                     'approve' => 'Approve daily hours',
+                    'payroll' => 'Weekly payroll: pay, bonus, deductions, approve',
+                    'own_schedule' => 'Change your own work schedule',
                     'pto.request' => 'Ask for paid time off',
                 ],
                 tabs: [
@@ -858,6 +915,10 @@ class ModuleServiceProvider extends ServiceProvider
                     // adjusting are `work_hours.approve`; without it the tab
                     // reads only.
                     new TabDefinition('approval', 'Daily approval'),
+                    // Payroll (design 198, 2026-11-19): the week's pay, approved
+                    // per person. Its grant is the `payroll` action itself, the
+                    // same gate as every payroll endpoint.
+                    new TabDefinition('payroll', 'Payroll', action: 'payroll'),
                     // Registry order is the roles editor's order: keep it the
                     // screen's (work_hours_screen.dart).
                     new TabDefinition('settings', 'Settings'),
@@ -894,10 +955,17 @@ class ModuleServiceProvider extends ServiceProvider
                 // `command`: run app actions from the staff WhatsApp line
                 // (AppAct). Each action still needs its own screen's tick.
                 actions: ['view', 'manage', 'command'],
-                // No actionRequires: `manage` is spent on two tabs, Library
+                // `manage` requires no tab: it is spent on two, Library
                 // (answers) and Settings (name, welcome), so requiring either
-                // tab would grant a pane somebody may not have been meant to
-                // see. Each tab's own grant decides where manage can be used.
+                // would grant a pane somebody may not have been meant to see.
+                // The other way round is declared (roles audit 2026-11-24):
+                // WhatsApp groups and Staff bot are editors with no read-only
+                // face, every endpoint behind them asks for manage, and the
+                // screen drew neither without it while the editor said nothing.
+                actionRequires: [
+                    'whatsapp_groups.view' => ['ai_assistance.manage'],
+                    'staff_bot.view' => ['ai_assistance.manage'],
+                ],
                 actionLabels: ['manage' => 'Edit answers and settings', 'command' => 'Do things from WhatsApp'],
                 tabs: [
                     new TabDefinition('ai', 'AI'),
@@ -933,6 +1001,7 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Guidelines',
                 actions: ['view', 'manage'],
                 actionLabels: ['manage' => 'Create and edit guidelines'],
+                actionRequires: ['settings.view' => ['guidelines.manage']],
                 tabs: [
                     new TabDefinition('guidelines', 'Guidelines'),
                     new TabDefinition('settings', 'Settings'),
@@ -974,7 +1043,7 @@ class ModuleServiceProvider extends ServiceProvider
                 // Administrator holding every permission is what grants it.
                 // Skipping writes only an audit row (time_clock.lock_skipped).
                 actions: ['view', 'lock_screen', 'anywhere', 'lock_screen_skip'],
-                actionLabels: ['anywhere' => 'Clock in from anywhere', 'lock_screen_skip' => 'Skip the lock screen'],
+                actionLabels: ['view' => 'Clock in and out', 'lock_screen' => 'Use the shared clock-in lock screen', 'anywhere' => 'Clock in from anywhere', 'lock_screen_skip' => 'Skip the lock screen'],
                 sidebar: false,
                 triggers: [
                     new TriggerDefinition(
@@ -994,6 +1063,16 @@ class ModuleServiceProvider extends ServiceProvider
                             .'and ended_by: person, schedule (the server closed it at the scheduled end) or automation.',
                         isRaised: true,
                     ),
+                    // Jose, 2026-11-13: a manual-clock-out role's finished
+                    // shift, for the branch managers (A-1's rule WhatsApps them).
+                    new TriggerDefinition(
+                        key: 'time_clock.technician_clocked_out',
+                        subjects: [\App\Models\User::class],
+                        label: 'Technician clocked out',
+                        description: 'Somebody whose role clocks out by hand (Settings › Shift timing) ended a shift. It carries who · branch, '
+                            .'clocked_in, clocked_out (against the schedule), total, and summary_lines: all of it, one a line, for a message.',
+                        isRaised: true,
+                    ),
                     // No separate "overdue" trigger: the server closes an overdue
                     // shift within a minute, so overdue is never a state a rule
                     // could observe. ended_by on clocked_out is the fact.
@@ -1004,6 +1083,14 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Shift extended',
                         description: 'Somebody pushed their scheduled end out. It carries who, the new scheduled end, '
                             .'and how many times this shift has been extended.',
+                        isRaised: true,
+                    ),
+                    // Payroll (2026-11-19): Sunday evening, a branch's week is ready for its managers.
+                    new TriggerDefinition(
+                        key: 'time_clock.payroll_ready',
+                        subjects: [\App\Models\User::class],
+                        label: 'Weekly payroll ready to approve',
+                        description: 'Sunday evening a manager\'s week of payroll is ready. Subject: the manager. It carries week_start, people, waiting and with_warnings.',
                         isRaised: true,
                     ),
                     // Daily approval (2026-10-22).
@@ -1119,6 +1206,12 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A new customer was added to the books.',
                     ),
                     new TriggerDefinition(
+                        key: 'customer.tagged',
+                        label: 'Tags changed',
+                        description: 'A customer\'s tags changed. It carries the tags before and after, '
+                            .'so "Tags got the tag X" fires only when X was added.',
+                    ),
+                    new TriggerDefinition(
                         key: 'customer.updated',
                         label: 'Updated',
                         // The distinction somebody will get wrong. Reassignment
@@ -1200,7 +1293,11 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('dashboard', 'Dashboard'),
                     new TabDefinition('members', 'Members'),
                     new TabDefinition('settings', 'Settings'),
+                    // Texts to the customers of Done jobs (Jose, 2026-11-06).
+                    new TabDefinition('promotions', 'Promotions'),
                 ],
+                // The Dashboard counts the members list (roles audit 2026-11-24).
+                actionRequires: ['dashboard.view' => ['memberships.members.view']],
                 triggers: [
                     new TriggerDefinition(
                         key: 'membership.created',
@@ -1275,9 +1372,9 @@ class ModuleServiceProvider extends ServiceProvider
                  * what the pane needed, not about when it would arrive.
                  */
                 tabs: [
-                    new TabDefinition('work', 'Work', action: 'view'),
-                    new TabDefinition('materials', 'Materials'),
+                    new TabDefinition('work', 'Jobs', action: 'view'),
                 ],
+                actionDescriptions: ['create' => 'Opens Book. Picking an existing customer there needs Customers › View.'],
                 // The same fifth action, for the same reason — see Customers
                 // above. Jobs cannot be imported by anybody (ResourceMap says
                 // why) and can be exported by everybody who reaches the tab, so
@@ -1287,7 +1384,9 @@ class ModuleServiceProvider extends ServiceProvider
                 //                job (Jose, 2026-09-29: "a financials toggle").
                 //                Money never travels with edit, as in Fleet and
                 //                Inventory.
-                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export', 'financials'],
+                // Materials is a section of the job panel, not a tab (roles audit 2026-11-09).
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export', 'financials', 'materials.view'],
+                actionLabels: ['financials' => 'See and change job money (prices, totals, payments)', 'materials.view' => 'See materials used on a job'],
                 subject: new AutomationSubject(Job::class, 'Job'),
                 triggers: [
                     new TriggerDefinition(
@@ -1295,6 +1394,13 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Created',
                         description: 'A job was booked. If it was given a date at the same time, '
                             .'"Date set or changed" fires as well.',
+                    ),
+                    // Jose, 2026-11-03: texts and emails "by tag". Pair with "Tags got the tag".
+                    new TriggerDefinition(
+                        key: 'job.tags_changed',
+                        label: 'Tags changed',
+                        description: 'A job\'s tags changed, in EzBizi or in Workiz. It carries the tags '
+                            .'before and after, so "Tags got the tag X" fires only when X was added.',
                     ),
                     new TriggerDefinition(
                         key: 'job.updated',
@@ -1365,7 +1471,17 @@ class ModuleServiceProvider extends ServiceProvider
                             .'brought in line there.',
                         executionType: 'job.set',
                     ),
-                    // Jose's Project Management rules (2026-10-21), through Workiz's writer.
+                    // Jose, 2026-11-16: "when number dialed is PPC it should change the source to PPC".
+                    new ActionDefinition(
+                        key: 'job.source_from_dialed',
+                        label: 'Set job sources from the line dialed',
+                        description: 'Every job booked since the rule was made (last 48 hours) whose client dialed a line '
+                            .'listed in Settings › Lists › Job source by line dialed gets that source, in Workiz first and then '
+                            .'in EzBizi, with the line in the job\'s history. Run it on a schedule.',
+                        executionType: 'job.source_from_dialed',
+                        subjectBound: false,
+                    ),
+                    // Jose, 2026-10-21: through Workiz's writer.
                     new ActionDefinition(
                         key: 'job.workiz_update',
                         label: 'Update the job in Workiz',
@@ -1445,56 +1561,35 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
-             * Project Management (Jose, 2026-10-21): every job waiting on an
-             * estimate, as a timeline with its cancel clock. Its own sidebar
-             * module ("This Project Management should be its own tab, not a
-             * sub tab of Jobs"). It reads Jobs' records and events, and writes
-             * nothing of its own.
-             */
-            new ModuleDefinition(
-                key: 'project_management',
-                // "- 1" beside its rebuild, Project Management - 2 (Jose, 2026-10-26).
-                label: 'Project Management - 1',
-                actions: ['view'],
-                /*
-                 * Overview | Jobs | Assignments | Repair team | Rules | Logs |
-                 * Settings (UI queue 127, 139, 141, 143, 144). All are the one grant the
-                 * module always was: naming `view` mints no permission, so no role
-                 * gains or loses a tab, and Settings' writes stay the settings
-                 * API's to refuse. Overview was "Dashboard" and keeps its key; Jobs
-                 * was "Pending Jobs" and keeps `pending`. Repair team (design 144)
-                 * is Reports and Table merged, under Reports' key; `table` is
-                 * retired, and as it minted nothing no grant moves and no
-                 * migration is needed. It reads Financials' repair report, so the
-                 * client also hides it without financials.bases.view. Rules
-                 * (design 144) reads GET jobs/project-management/rules, the same grant.
-                 */
-                tabs: [
-                    new TabDefinition('dashboard', 'Overview', action: 'view'),
-                    new TabDefinition('pending', 'Jobs', action: 'view'),
-                    // Assignments (design 143): Action 1's Task Board cards by technician, the same grant.
-                    new TabDefinition('assignments', 'Assignments', action: 'view'),
-                    new TabDefinition('reports', 'Repair team', action: 'view'),
-                    new TabDefinition('rules', 'Rules', action: 'view'),
-                    // Logs (UI queue 139): what rules and people changed, the same grant.
-                    new TabDefinition('logs', 'Logs', action: 'view'),
-                    new TabDefinition('settings', 'Settings', action: 'view'),
-                ],
-                automationExemptBecause: 'It reads jobs and their events; Jobs raises every event a rule could use.',
-                auditExemptBecause: 'It changes nothing; every change it shows was audited by Jobs.',
-            ),
-
             /*
-             * Project Management - 2 (Jose, 2026-10-26): Project Management
-             * rebuilt from scratch beside the first, to compare the two. For
-             * now one list, the jobs done pending approval.
+             * Project Management (Jose, 2026-11-06): built from scratch after
+             * both earlier ones were deleted. Six sub-tabs of jobs, a job's
+             * place from unscheduled to complete; which statuses make each is
+             * the organization's (project_board.tabs). It only reads.
              */
             new ModuleDefinition(
-                key: 'project_management_2',
-                label: 'Project Management - 2',
+                key: 'project_board',
+                label: 'Project Management',
                 actions: ['view'],
-                automationExemptBecause: 'Its one write, Submit, raises the job\'s own job.updated and job.status_changed.',
-                auditExemptBecause: 'Its one write, Submit, is a job status change, audited as job.updated like any job edit.',
+                tabs: [
+                    // Jose, 2026-11-17: parts waiting, late, and reminders.
+                    new TabDefinition('dashboard', 'Dashboard', action: 'view'),
+                    // The clients' texts, one thread per job (Jose, 2026-11-17).
+                    new TabDefinition('inbox', 'Inbox', action: 'view'),
+                    new TabDefinition('unscheduled', 'Unscheduled', action: 'view'),
+                    new TabDefinition('ready_to_schedule', 'Ready to Schedule', action: 'view'),
+                    new TabDefinition('scheduled', 'Scheduled', action: 'view'),
+                    new TabDefinition('in_progress', 'In Progress', action: 'view'),
+                    new TabDefinition('done_waiting_payment', 'Done Waiting Payment', action: 'view'),
+                    new TabDefinition('complete', 'Complete', action: 'view'),
+                    // Its own grant since the roles audit (2026-11-24): it was
+                    // drawn on Organization settings › Edit, which the editor
+                    // never said. Roles holding both were granted it.
+                    new TabDefinition('settings', 'Settings'),
+                ],
+                actionRequires: ['view' => ['jobs.view'], 'settings.view' => ['organizations.edit']],
+                automationExemptBecause: 'It changes nothing; Jobs raises every event about the jobs it lists.',
+                auditExemptBecause: 'It changes nothing.',
             ),
 
             /*
@@ -1540,11 +1635,11 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('availability', 'Availability'),
                     new TabDefinition('schedule', 'Schedule'),
-                    // Jose, 2026-09-29: "a new tab on scheduling that warns me
-                    // about all the overbookings call it Overbooking".
-                    new TabDefinition('overbooking', 'Overbooking'),
-                    // Jose, 2026-10-13: booked jobs that would sit better on
-                    // another day, beside other work (App\Support\Scheduling\Reschedules).
+                    // One tab since 2026-11-09 (Jose): Re-Scheduling, with
+                    // Overbooking (was its own tab, 2026-09-29), Underbooking
+                    // (booked vs available, earlier-opening offers) and the AI
+                    // suggestions (App\Support\Scheduling\Reschedules) under it.
+                    // Roles that held Overbooking were granted this tab.
                     new TabDefinition('rescheduling', 'Re-Scheduling'),
                     // Jose, 2026-10-14: a route per technician (capacity / 6),
                     // opened in Google Maps (App\Support\Scheduling\Routes).
@@ -1559,10 +1654,11 @@ class ModuleServiceProvider extends ServiceProvider
                     // this order.
                     new TabDefinition('settings', 'Settings'),
                 ],
+                actionDescriptions: ['settings.view' => 'Its Locations page also needs the Locations tab.'],
                 /*
                  * The first booking event (Jose, 2026-09-29: a warning email).
                  * Since 2026-10-05 it carries only the areas with no spot left
-                 * for Overbooking::FULL_DAYS days or more (Shoval: so their ads
+                 * for scheduling.full_days days or more (Shoval: so their ads
                  * can be paused). The key keeps its first name, because rules
                  * already listen on it. Raised once each morning by
                  * scheduling:warn-overbooking with a Markdown `summary`, days
@@ -1589,7 +1685,8 @@ class ModuleServiceProvider extends ServiceProvider
                         subjects: [Organization::class],
                     ),
                 ],
-                actions: ModuleDefinition::DEFAULT_ACTIONS,
+                // overbook: book past a full window or the Friday cutoff, with a reason (desk, 2026-11-17; App\Support\Jobs\BookingGate).
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'overbook'],
             ),
 
             /*
@@ -1643,7 +1740,11 @@ class ModuleServiceProvider extends ServiceProvider
                      * builder.view). Jose chose the word "Testing", 2026-10-26.
                      */
                     new TabDefinition('testing', 'Testing', action: 'builder.view'),
+                    // Jose 11-23: Review QR here too, for technicians: New Inspection's grant, no new box.
+                    new TabDefinition('review_qr', 'Review QR', action: 'new.view'),
                 ],
+                actionRequires: ['new.view' => ['inspection.create'], 'builder.view' => ['inspection.edit']],
+                actionDescriptions: ['new.view' => 'Also opens Review QR. Finding a customer or job there needs Customers or Jobs.'],
                 /*
                  * Both record types this module broadcasts, not just the one
                  * that matters most.
@@ -1820,6 +1921,8 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Marketing',
                 auditActionPrefixes: ['social', 'qr_code'],
                 actions: ['view', 'edit'],
+                actionLabels: ['edit' => 'Post, schedule and connect social accounts'],
+                actionDescriptions: ['view' => 'Also needed for Settings › Integrations.'],
                 /*
                  * Social Media Management's own two panes, grantable one at a
                  * time (Jose, 2026-09-29: tabs should be grantable "like all the
@@ -1835,12 +1938,16 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 tabs: [
                     // Posts split into its three tabs (Jose, 2026-10-12, UI queue 76).
-                    new TabDefinition('dashboard', 'Dashboard'),
-                    new TabDefinition('compose', 'Compose'),
-                    new TabDefinition('calendar', 'Calendar'),
-                    new TabDefinition('accounts', 'Accounts'),
+                    // The chip the five panes sit in (Jose, 2026-11-09).
+                    new TabDefinition('social', 'Social Media Management', action: 'view'),
+                    new TabDefinition('dashboard', 'Dashboard', within: 'social'),
+                    new TabDefinition('compose', 'Compose', within: 'social'),
+                    new TabDefinition('calendar', 'Calendar', within: 'social'),
+                    new TabDefinition('accounts', 'Accounts', within: 'social'),
                     // Dynamic QR codes (Jose, 2026-10-05). Enforced on its routes.
-                    new TabDefinition('qr_codes', 'QR Codes'),
+                    // One comments inbox across the accounts (Jose, 2026-11-16).
+                    new TabDefinition('comments', 'Comments', within: 'social'),
+                    new TabDefinition('qr_codes', 'QR Codes', within: 'social'),
                 ],
                 triggers: [
                     /*
@@ -2109,6 +2216,10 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('seo', 'SEO'),
                     new TabDefinition('widgets', 'Widgets'),
                 ],
+                actionLabels: ['edit' => 'Change SEO fields, pages and website widgets'],
+                actionDescriptions: [
+                    'seo.view' => 'General, Social links, Pages, Cities, Posts, Templates and SEO Helper.',
+                ],
                 /*
                  * This module was automation-exempt on the grounds that
                  * "nothing here happens on its own". That stopped being true
@@ -2227,6 +2338,10 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 tabs: [
                     new TabDefinition('phone', 'Phone'),
+                    // Jose, 2026-11-25: EzBizi's own WhatsApp between EzBizi
+                    // accounts. Messages never touch Twilio; calls ring the
+                    // colleague's Twilio identity like the Team roster.
+                    new TabDefinition('chat', 'Chat'),
                     new TabDefinition('users', 'Users'),
                     new TabDefinition('records', 'Records'),
                     new TabDefinition('reports', 'Reports'),
@@ -2234,6 +2349,11 @@ class ModuleServiceProvider extends ServiceProvider
                     // dismiss. phone.alerts.view is also who may SEND one.
                     new TabDefinition('alerts', 'Alerts'),
                     new TabDefinition('settings', 'Settings'),
+                ],
+                actionLabels: ['edit' => 'Change lines, flows and settings'],
+                actionDescriptions: [
+                    'phone.view' => 'Dial, Messages, Team and Voicemail.',
+                    'chat.view' => 'Chat with colleagues: messages, groups, photos, files, voice notes and calls.',
                 ],
                 triggers: [
                     new TriggerDefinition(
@@ -2384,6 +2504,10 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('general', 'General'),
                     new TabDefinition('vehicles', 'Vehicles'),
                 ],
+                actionLabels: [
+                    'assign' => 'Hand over vehicles and keys',
+                    'financials' => 'See vehicle costs (payments, insurance)',
+                ],
                 subject: new AutomationSubject(Vehicle::class, 'Vehicle'),
                 triggers: [
                     new TriggerDefinition(
@@ -2500,11 +2624,16 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Financials',
                 // approve: sign off a week of the Repair Team report.
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'approve'],
+                actionLabels: ['approve' => 'Approve financial records'],
                 // Bases is the work; Settings is which Airtable table is which
                 // part of the books (organization configuration).
                 tabs: [
                     new TabDefinition('bases', 'Home'),
                     new TabDefinition('bills', 'Bills'),
+                    // Expenses per market from QuickBooks, closing rate, cost per closed job (Shoval, 11-20).
+                    new TabDefinition('markets', 'Markets'),
+                    // Banks connected through Plaid: accounts, balances, transactions (Jose, 11-24).
+                    new TabDefinition('bank', 'Bank'),
                     new TabDefinition('settings', 'Settings'),
                 ],
                 auditActionPrefixes: ['financials'],
@@ -2577,10 +2706,11 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('charge_sheets', 'Charge sheets'),
                     new TabDefinition('invoices', 'Invoices'),
-                    new TabDefinition('settings', 'Settings', 'edit'),
+                    new TabDefinition('settings', 'Settings'),
                 ],
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'approve', 'send'],
                 actionLabels: [
+                    'edit' => 'Edit invoices and record payments',
                     'approve' => 'Approve invoices for sending',
                     'send' => 'Send invoices by email',
                 ],
@@ -2609,6 +2739,46 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A sent invoice passed its due date with money still owed. Raised once per invoice.',
                     ),
                 ],
+            ),
+
+            // Design 175 (Jose 2026-11-03, "as you recommend with everything"):
+            // who owns what, the main flow's step owners, and each branch's KPIs
+            // on one screen. It reads HR's ownership and Reports' figures and
+            // keeps nothing of its own; editing rides on hr.edit server-side.
+            new ModuleDefinition(
+                key: 'company',
+                label: 'Company',
+                actions: ['view', 'edit'],
+                actionLabels: ['edit' => 'Change ownership, processes and KPIs'],
+                // The processes and KPIs are saved on HR records.
+                // KPIs are the Performance report's numbers and goals, read from
+                // Reports (roles audit 2026-11-24).
+                actionRequires: ['edit' => ['hr.edit'], 'kpis.view' => ['reports.experimental.view']],
+                tabs: [
+                    new TabDefinition('ownership', 'Ownership'),
+                    new TabDefinition('processes', 'Processes'),
+                    new TabDefinition('kpis', 'KPIs'),
+                ],
+                automationExemptBecause: 'Company only reads what HR and Reports already record; '
+                    .'there is no event here that another module does not raise first.',
+            ),
+
+            // Trey, approved by Jose 2026-11-25: "a new Leaderboard Tab where it
+            // will only the top 3 performers, and the person who is entering the
+            // tab should also see their own rank ... a separate new main tab",
+            // and "another sub tab for their own Performance". Scoring's numbers,
+            // narrowed to three names and the reader's own rows, so it asks for
+            // no Reports grant: dispatchers hold it, Scoring stays managers'.
+            new ModuleDefinition(
+                key: 'leaderboard',
+                label: 'Leaderboard',
+                actions: ['view'],
+                tabs: [
+                    new TabDefinition('board', 'Leaderboard', action: 'view'),
+                    new TabDefinition('mine', 'My performance'),
+                ],
+                automationExemptBecause: 'The Leaderboard only reads the scores and calls Reports keeps; '
+                    .'it records nothing a rule could act on.',
             ),
 
             new ModuleDefinition(
@@ -2651,6 +2821,21 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A task that is not done passed its due date. Raised once '
                             .'per task; changing the due date lets it be raised again.',
                     ),
+                    // Monday parity (2026-11-13): "when Area changes to Connecticut".
+                    new TriggerDefinition(
+                        key: 'task.column_changed',
+                        label: 'Task column changed',
+                        description: 'A value in one of the board\'s own columns changed, for example Area '
+                            .'to Connecticut. It carries the column and its old and new value as words.',
+                    ),
+                    // Monday parity (2026-11-13): "when Date arrives", Recurring Tasks.
+                    new TriggerDefinition(
+                        key: 'task.date_arrived',
+                        label: 'Task date arrived',
+                        description: 'A task\'s due date, or a date in one of its date columns, is today '
+                            .'(days_until 0) or tomorrow (days_until 1). Raised once per date; delay the '
+                            .'rule to run it at an hour of the day.',
+                    ),
                 ],
                 automationActions: [
                     new ActionDefinition(
@@ -2660,6 +2845,13 @@ class ModuleServiceProvider extends ServiceProvider
                             .'about the record the rule fired on.',
                         // EXPLICIT: derived, this would be the bare `create`.
                         executionType: 'task.create',
+                    ),
+                    new ActionDefinition(
+                        key: 'task.complete_matching',
+                        label: 'Close the call-back task for this number',
+                        description: 'Marks Done the untouched open tasks a rule made for this phone number, with a note.',
+                        executionType: 'task.complete_matching',
+                        subjectBound: false,
                     ),
                     new ActionDefinition(
                         key: 'task.assign',
@@ -2672,6 +2864,21 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Move the task to a group',
                         description: 'Moves the task the rule fired on into another group on its own board.',
                         executionType: 'task.move_group',
+                    ),
+                    // Monday parity (2026-11-13): "push Date by 1 month" on Recurring Tasks.
+                    new ActionDefinition(
+                        key: 'task.shift_date',
+                        label: 'Push a date',
+                        description: 'Moves the task\'s due date, or a date column, later by days, weeks or months.',
+                        executionType: 'task.shift_date',
+                    ),
+                    // Monday parity (2026-11-13): "set Reminder to Done", "set Date to today".
+                    new ActionDefinition(
+                        key: 'task.set_value',
+                        label: 'Set a column',
+                        description: 'Sets one of the task\'s columns: a label by name, a date to today, '
+                            .'a checkbox, or words.',
+                        executionType: 'task.set_value',
                     ),
                 ],
             ),
@@ -2705,6 +2912,7 @@ class ModuleServiceProvider extends ServiceProvider
                     .'This states a defect, not a decision, and it is not permission to stay '
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'financials'],
+                actionLabels: ['financials' => 'See costs and prices'],
                 /*
                  * Four tabs, in the order the chip row draws them.
                  *
@@ -2928,8 +3136,11 @@ class ModuleServiceProvider extends ServiceProvider
                 // `reclassify` and `dispatcher` (A1 Leads takeover, 2026-10-16):
                 // asking Grok again, and saying who handled a call, are grants of
                 // their own (Jose: "leads.* permission ticks for each").
-                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export', 'manage', 'reclassify', 'dispatcher'],
-                actionLabels: ['manage' => 'Manage sources (connect accounts)', 'reclassify' => 'Re-classify (AI, and new or existing caller)', 'dispatcher' => 'Change who handled a call'],
+                // create, delete and export gated nothing (roles audit 2026-11-09).
+                actions: ['view', 'edit', 'manage', 'reclassify', 'dispatcher'],
+                actionRequires: ['hidden.view' => ['leads.manage']],
+                actionDescriptions: ['local_services.view' => 'LS Call in Calls, LS Text in SMS Texts, and LS Booking.'],
+                actionLabels: ['manage' => 'Manage: Connections, Templates, Dashboard, Stats, Office hours', 'reclassify' => 'Re-classify (AI, and new or existing caller)', 'dispatcher' => 'Change who handled a call'],
                 /*
                  * THE SOURCES, GRANTED SEPARATELY - Jose, 2026-09-17: "i should
                  * be able to grant access by sub tab as well ... so this applies
@@ -2962,24 +3173,30 @@ class ModuleServiceProvider extends ServiceProvider
                  * lead of a source the reader cannot see. See visibleSources().
                  */
                 tabs: [
-                    new TabDefinition('local_services', 'LS Call, LS Text and LS Booking'),
+                    // In the rail's order and groups (leads_screen.dart _sourceChips, _groups).
+                    // Google's one box opens LS Call, LS Text and LS Booking.
+                    new TabDefinition('local_services', 'Google Local Services'),
+                    new TabDefinition('ringcentral', 'RC Calls', within: 'Calls'),
+                    // Calls and texts to EzBizi's own lines (Jose, 2026-10-16).
+                    new TabDefinition('ez_calls', 'EZ Calls', within: 'Calls'),
+                    new TabDefinition('ez_texts', 'EZ Texts', within: 'SMS Texts'),
                     new TabDefinition('thumbtack', 'Thumbtack'),
                     new TabDefinition('website_chat', 'Chat'),
-                    new TabDefinition('website_form', 'Forms'),
+                    new TabDefinition('website_form', 'Forms', within: 'Forms'),
                     // The review link's sad faces (Jose, 2026-10-19).
                     new TabDefinition('bad_rating', 'Bad Ratings'),
                     // Appointments asked for on a website's booking widget (Jose, 2026-10-08).
                     new TabDefinition('website_booking', 'Online Booking'),
-                    new TabDefinition('facebook', 'Messenger'),
-                    new TabDefinition('instagram', 'Instagram'),
+                    new TabDefinition('facebook', 'Facebook', within: 'Meta'),
+                    new TabDefinition('instagram', 'Instagram', within: 'Meta'),
+                    new TabDefinition('whatsapp', 'WhatsApp', within: 'Meta'),
                     new TabDefinition('workiz', 'Workiz'),
-                    new TabDefinition('whatsapp', 'WhatsApp'),
-                    new TabDefinition('ringcentral', 'RC Calls'),
-                    // Calls and texts to EzBizi's own lines (Jose, 2026-10-16).
-                    new TabDefinition('ez_calls', 'EZ Calls'),
-                    new TabDefinition('ez_texts', 'EZ Texts'),
+                    // Answers to Memberships > Promotions texts (Jose, 2026-11-06).
+                    new TabDefinition('promotions', 'Promotions'),
+                    // Leads a Recovery text went to, so their replies are answered (Jose, 2026-11-16).
+                    new TabDefinition('recovery', 'Recovery'),
                     // Private conversations kept from staff: sees, hides and unhides them (Jose, 2026-10-29).
-                    new TabDefinition('hidden', 'Hidden'),
+                    new TabDefinition('hidden', 'Hidden', within: 'Manage'),
                 ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*
@@ -3075,8 +3292,9 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Daily leads digest',
                         description: 'Every morning, yesterday in numbers: how many leads by source, '
                             .'how many were answered and how fast, how many were booked, and each '
-                            .'company\'s count. It carries a one-line summary ready for a WhatsApp or '
-                            .'email step, and each figure on its own for conditions.',
+                            .'company\'s leads and bookings. It carries a one-line summary for a WhatsApp '
+                            .'template, summary_lines (a line each) for a report or email, and each '
+                            .'figure on its own for conditions.',
                     ),
                     new TriggerDefinition(
                         key: 'lead.follow_up_due',
@@ -3084,8 +3302,10 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Three hours after the automatic first reply, the same day, when the '
                             .'customer has not written since and no person has replied. Raised once '
                             .'per lead, ever, and never on a booked or archived lead or a complaint. '
-                            .'It carries the source, the kind of lead, the name, first_name and a '
-                            .'ready greeting ("Hi Mark", or "Hey" with no name) for the follow-up.',
+                            .'It carries the source, the kind of lead, the name, first_name, a '
+                            .'ready greeting ("Hi Mark", or "Hi there" with no name) for the '
+                            .'follow-up, and not_booked_call: true when the call was not booked '
+                            .'and the after-call rule has already had its turn.',
                     ),
                     new TriggerDefinition(
                         key: 'lead.customer_replied',
@@ -3115,6 +3335,15 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A lead was read and categorised — what kind of work it is '
                             .'about, and whether it looks like a real enquiry at all. It fires '
                             .'after "Lead received", once any recording has been transcribed.',
+                    ),
+                    // Jose's project list, 2026-11-03: "Not booked recovery automatic msg".
+                    new TriggerDefinition(
+                        key: 'lead.call_not_booked',
+                        label: 'A call ended without a booking',
+                        description: 'AI read a call transcript: the caller did not book and did not '
+                            .'complain. Use a wait and a "Status" condition so a lead booked, lost or '
+                            .'closed meanwhile is skipped. It carries the AI summary, caller name and phone.',
+                        composedFields: ['summary'],
                     ),
                     new TriggerDefinition(
                         key: 'lead.call_complaint',
@@ -3182,6 +3411,16 @@ class ModuleServiceProvider extends ServiceProvider
                             .'neither has a website form. The reply is recorded as automatic, so it '
                             .'does not take the lead off the unreplied list.',
                     ),
+                    // The booking bot (Jose, 2026-11-03): BookingBot.
+                    new ActionDefinition(
+                        key: 'lead.book_by_chat',
+                        label: 'Book through the chat',
+                        description: 'Answers the customer with the next thing a booking needs: the '
+                            .'service address, the service, then a real open time near them, or on the '
+                            .'day they asked for. When they agree, the time is held for a dispatcher to '
+                            .'approve in Online Booking; approving books the job. Never answers a lead '
+                            .'that is booked, completed, lost or not a lead.',
+                    ),
                     new ActionDefinition(
                         key: 'lead.update_field',
                         label: 'Update a field',
@@ -3215,9 +3454,10 @@ class ModuleServiceProvider extends ServiceProvider
                 // complaint call, and where handling it has got to. The tab is
                 // customer_experience.complaints.view; working one is .manage.
                 actions: ['view', 'complaints.manage'],
-                actionLabels: ['complaints.manage' => 'Work complaints (status, owner, notes)'],
+                actionLabels: ['view' => 'Customer Experience (tick a part below)', 'complaints.manage' => 'Work complaints (status, owner, notes)'],
                 tabs: [
-                    new TabDefinition('complaints', 'Complaints'),
+                    // Shoval via Jose, 2026-11-20 (design 202): the board Adeline and the GMs work.
+                    new TabDefinition('complaints', 'Reviews & Complaints'),
                 ],
                 auditActionPrefixes: ['complaint'],
                 subject: new AutomationSubject(\App\Models\Complaint::class, 'Complaint', key: 'complaint'),
@@ -3226,9 +3466,17 @@ class ModuleServiceProvider extends ServiceProvider
                     new TriggerDefinition(
                         key: 'complaint.opened',
                         label: 'Complaint opened',
-                        description: 'A review of 3 stars or fewer, a Bad Rating from the website, or a call '
-                            .'heard as a complaint was added to Complaints. It carries the kind and, for a '
-                            .'review, the rating.',
+                        description: 'A review of 3 stars or fewer, a Bad Rating from the website, a call '
+                            .'heard as a complaint, a BBB or Attorney General email, or one entered by hand was '
+                            .'added to Complaints. It carries the kind, the rating for a review, client_status '
+                            .'(client or not_client), priority and due_at.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'complaint.due_alert',
+                        label: 'Priority complaint nearing its deadline',
+                        description: 'An open Priority complaint (BBB, Attorney General, lawsuit) reached a step: '
+                            .'1 halfway (12 hours in), 2 due (24 hours), 3 last call (40 hours, 8 before 48). It '
+                            .'carries step, label, hours_open, kind, title and due_at.',
                     ),
                     new TriggerDefinition(
                         key: 'complaint.status_changed',
@@ -3291,8 +3539,10 @@ class ModuleServiceProvider extends ServiceProvider
                 parent: 'customer_experience',
                 // `manage`: working a review as a case - status, notes, the
                 // customer it is about, reporting it (UI queue 101, 2026-10-16).
-                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish', 'manage'],
+                // create and delete gated nothing (roles audit 2026-11-09).
+                actions: ['view', 'edit', 'publish', 'manage'],
                 actionLabels: ['manage' => 'Work reviews as cases (status, notes, customer, report)'],
+                actionDescriptions: ['view' => 'Reviews and Review links (with the Reviewed step).'],
                 subject: new AutomationSubject(Review::class, 'Review'),
                 triggers: [
                     new TriggerDefinition(
@@ -3399,7 +3649,9 @@ class ModuleServiceProvider extends ServiceProvider
                 // for when we get OUR GBP Credentials."* A1Leads GBP is a bridge
                 // to somebody else's system; this is EzBizi's own module.
                 parent: 'customer_experience',
-                actions: ModuleDefinition::DEFAULT_ACTIONS,
+                // create and delete gated nothing (roles audit 2026-11-09).
+                actions: ['view', 'edit'],
+                actionDescriptions: ['view' => 'GBP Listings, GBP Performance and Posts to approve.', 'edit' => 'Includes approving posts.'],
                 // `key:` declared for the same reason InventoryItem declares
                 // `item`: the default is strtolower(class_basename()), which
                 // would make this `businesslocation` and read as one word
@@ -3504,6 +3756,7 @@ class ModuleServiceProvider extends ServiceProvider
                 auditActionPrefixes: ['mailbox', 'sending_identity', 'email_filter'],
                 // Jose 2026-10-28: anybody with the Inbox files their own mail; this makes filters for everyone at a place they reach.
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'filters.share'],
+                actionLabels: ['filters.share' => 'Share inbox filters with others'],
 
                 /*
                  * ── TWO TABS, AND THE SECOND ONE IS THE POINT ────────
@@ -4195,7 +4448,30 @@ class ModuleServiceProvider extends ServiceProvider
                 // downloading a machine's files is its own authority, neither
                 // watching the screen nor driving it — see FilesController
                 // (2026-10-01-monitoring-files).
-                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'map.manage', 'control', 'files.view', 'lighting.manage'],
+                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'map.manage', 'control', 'files.view', 'lighting.manage', 'unmonitored'],
+                // Jose, 2026-11-17: a role whose own PCs are NOT screen-monitored
+                // ("Lead Managers should not be desktop monitored as they may
+                // handle financial information"). Read by
+                // ScreenMonitoringExemption; implies no monitoring.view. The
+                // exemption is the grant, so every role stays monitored until
+                // ticked, with no backfill.
+                //
+                // `activity.view` and `api_activity.view` (the Activity and API
+                // activity tabs, moved from Settings, Jose 2026-11-25) are listed
+                // here for the same reason: they must NOT imply monitoring.view.
+                // A role holding only one of them reads the audit log or the API
+                // log, never the device list. MonitoringScreen still draws for
+                // them because PermissionCatalogue::modulesFor counts any held
+                // tab as reach.
+                passiveActions: ['unmonitored', 'activity.view', 'api_activity.view'],
+                actionDescriptions: ['unmonitored' => 'Their PCs still show online with their specs. Screen views and remote control are refused at once; the PC itself stops capturing at its next app restart. Administrators are always monitored.'],
+                actionLabels: [
+                    'unmonitored' => 'Their own PC is not screen-monitored',
+                    'specs.view' => "See each PC's hardware details",
+                    'cameras.manage' => 'Set up cameras and camera sites',
+                    'map.manage' => 'Edit the floor plan and who owns each PC',
+                    'control' => 'Control desktops remotely',
+                ],
                 // cameras.manage and control write records / drive a machine, so
                 // §2.2 requires an audit trail (writesRecords() flags them as
                 // writes since 2026-09-09). CamerasController logs
@@ -4276,6 +4552,10 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('files', 'Files', action: 'files.view'),
                     new TabDefinition('cameras', 'Camera Monitoring', action: 'cameras.view'),
                     new TabDefinition('desktop', 'Desktop Monitoring', action: 'screenshots.view'),
+                    // Moved from Settings (Jose, 2026-11-25). Neither needs
+                    // monitoring.view; see passiveActions above.
+                    new TabDefinition('activity', 'Activity'),
+                    new TabDefinition('api_activity', 'API activity'),
                     new TabDefinition('lighting', 'Lighting', action: 'lighting.manage'),
                 ],
                 subject: new AutomationSubject(MonitoredDevice::class, 'Device', key: 'monitoring'),
@@ -4338,7 +4618,7 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'reports',
                 label: 'Reports',
                 auditActionPrefixes: ['report'],
-                actions: ['view', 'build', 'export', 'scoring_weights', 'settings', 'correct'],
+                actions: ['view', 'build', 'export', 'scoring_weights', 'settings', 'correct', 'handles'],
 
                 /*
                  * ── THE TABS, and what a tab grant MEANS here ───────
@@ -4433,11 +4713,30 @@ class ModuleServiceProvider extends ServiceProvider
                     // Ad cost against jobs and profit (Jose, 2026-10-12); the
                     // server also asks for profit_loss.view, its profit being
                     // the P&L's margin.
-                    new TabDefinition('marketing', 'Marketing'),
+                    new TabDefinition('marketing', 'Marketing Reports'),
                     // Facebook ad spend by campaign, state and category.
                     new TabDefinition('meta', 'Meta'),
                     // Thumbtack lead spend by category and branch (2026-10-13).
                     new TabDefinition('thumbtack', 'Thumbtack'),
+                    // Every job created in the dates, with its Workiz and EzBizi ids (Jose, 2026-11-11).
+                    // Drawn inside one "Jobs" tab with its own strip (design 199,
+                    // Shoval 2026-11-18): Overview · Cancelled · Pending. Each
+                    // keeps its grant; "Jobs" is a group with none of its own.
+                    new TabDefinition('jobs', 'Overview', within: 'Jobs'),
+                    // Jobs cancelled and jobs pending, by the business's own statuses (Shoval, 2026-11-18).
+                    new TabDefinition('cancelled', 'Cancelled', within: 'Jobs'),
+                    new TabDefinition('pending', 'Pending', within: 'Jobs'),
+                    // The rest of Shoval's operations reports (2026-11-18, design
+                    // 199), each its own grant, in three groups with no grant of
+                    // their own (server 3c06e5ea7).
+                    new TabDefinition('estimates', 'Estimates', within: 'Jobs'),
+                    new TabDefinition('tasks', 'Tasks', within: 'Office'),
+                    new TabDefinition('complaints', 'Complaints', within: 'Office'),
+                    new TabDefinition('dispatch', 'Dispatch', within: 'Office'),
+                    new TabDefinition('accounting', 'Accounting weekly', within: 'Office'),
+                    new TabDefinition('recruiting', 'Recruiting', within: 'Office'),
+                    new TabDefinition('techs', 'Tech report', within: 'Technicians'),
+                    new TabDefinition('tech_checks', 'AI checks', within: 'Technicians'),
                     // Pick a report, preview it, export, approve or send it
                     // (takeover row 10, UI queue 157, Jose 2026-10-29).
                     new TabDefinition('workspace', 'Workspace'),
@@ -4451,8 +4750,13 @@ class ModuleServiceProvider extends ServiceProvider
                     'settings' => ['reports.view'],
                     // Correcting a report draft before it is approved (2026-10-20).
                     'correct' => ['reports.view'],
+                    // Performance's Handles and Convert to booked (Jose, 2026-11-02: a
+                    // Dispatch Supervisor was refused with no tick to grant).
+                    'handles' => ['reports.experimental.view'],
+                    'builder.view' => ['reports.build'],
+                    'marketing.view' => ['profit_loss.view'],
                 ],
-                actionLabels: ['scoring_weights' => "Set Scoring's weights", 'settings' => "Set the reports' goals", 'correct' => 'Correct a report before it is approved'],
+                actionLabels: ['scoring_weights' => "Set Scoring's weights", 'settings' => "Set the reports' goals", 'correct' => 'Correct a report before it is approved', 'handles' => 'Set who handles New or Existing clients, and mark calls booked, on Performance'],
                 automationActions: [
                     new ActionDefinition(
                         key: 'report.send',
@@ -4500,6 +4804,31 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
+             * ── Ads: running the advertising ───────────────────
+             *
+             * Marketing › Ads, Google and Meta behind one switch (Jose,
+             * 2026-11-09): pause and enable, daily budgets, bid targets and
+             * on/off schedules, each change confirmed and audited. The Google
+             * REPORT stays in Reports as Google Ads (ads_performance): his
+             * 2026-11-05 move put both in Marketing and only the managing half
+             * belonged there. Its own grant, given on creation to every role
+             * holding ads_performance (2026_11_09 migration), so nobody lost
+             * the Meta screen they had.
+             */
+            new ModuleDefinition(
+                key: 'ads_manager',
+                label: 'Ads',
+                parent: 'marketing',
+                actions: ['view', 'manage'],
+                actionLabels: ['manage' => 'Change campaigns at Google and Meta (pause, resume, budgets, on/off schedules)'],
+                // Every change Google or Meta accepts: google_ads.* and meta_ads.*.
+                auditActionPrefixes: ['google_ads', 'meta_ads'],
+                automationExemptBecause: 'Nothing here is stored: campaigns are read from Google '
+                    .'and Meta when the screen opens and changed there. The Google account events '
+                    .'(certifications, ads stopping) are raised by ads_performance.',
+            ),
+
+            /*
              * ── Google Ads: what the advertising costs ──────────
              *
              * A tab inside Reports, not Marketing. Jose's call, 2026-09-15:
@@ -4535,7 +4864,8 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'ads_performance',
                 label: 'Google Ads',
                 parent: 'reports',
-                actions: ['view', 'manage'],
+                // `manage` folded into ads_manager.manage (roles audit 2026-11-09).
+                actions: ['view'],
                 // AUTOMATED since 2026-09-28, as the exemption this replaced
                 // said it would be "the day spend is stored or watched": each
                 // account's Local Services certification is now watched daily

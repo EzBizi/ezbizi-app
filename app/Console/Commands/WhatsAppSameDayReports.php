@@ -5,8 +5,10 @@ namespace App\Console\Commands;
 use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\WhatsAppGroup;
+use App\Support\Reports\ReportSource;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\SameDayReport;
+use App\Support\Settings\OrgTimezone;
 use App\Support\Social\WhatsAppGroups;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
@@ -30,12 +32,16 @@ class WhatsAppSameDayReports extends Command
 
     public function handle(TenantContext $tenant, WhatsAppGroups $groups): int
     {
-        $date = (string) ($this->option('date') ?: Carbon::now('America/New_York')->toDateString());
+        $date = (string) ($this->option('date') ?: Carbon::now(OrgTimezone::of())->toDateString());
         $sent = 0;
 
         $organizations = Organization::query()->withoutGlobalScopes()
             ->whereIn('id', WhatsAppGroup::query()->withoutGlobalScopes()->select('organization_id'))
             ->get();
+        // Said, not a silent "Sent 0" (audit #5, 2026-11-11: no group has ever existed).
+        if ($organizations->isEmpty()) {
+            $this->warn('No organization has a WhatsApp group for these reports, so nothing was sent.');
+        }
 
         foreach ($organizations as $organization) {
             $tenant->run($organization, function () use ($organization, $groups, $date, &$sent) {
@@ -45,22 +51,22 @@ class WhatsAppSameDayReports extends Command
                     $branch = Franchise::query()->find(substr($group->purpose, strlen('daily:')));
 
                     if ($branch !== null) {
-                        $sent += $this->once($group->getKey(), $date, fn () => $groups->deliver(
+                        $sent += $this->once($group->getKey(), $date, fn () => ReportSource::during('same-day', fn () => $groups->deliver(
                             $group->purpose,
                             BranchName::of($branch).' Same-Day Report for '.Carbon::parse($date)->format('M j'),
                             SameDayReport::forFranchise($branch, $date),
-                        ));
+                        )));
                     }
                 }
 
                 $financial = WhatsAppGroup::query()->where('purpose', 'financial')->first();
 
                 if ($financial !== null) {
-                    $sent += $this->once($financial->getKey(), $date, fn () => $groups->deliver(
+                    $sent += $this->once($financial->getKey(), $date, fn () => ReportSource::during('same-day', fn () => $groups->deliver(
                         'financial',
-                        'Same-Day Company Summary for '.Carbon::parse($date)->format('M j'),
+                        $organization->name.' · Same-Day Company Summary · '.Carbon::parse($date)->format('M j'),
                         SameDayReport::summary($organization, $date),
-                    ));
+                    )));
                 }
             });
         }

@@ -12,7 +12,6 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Collection;
 
 /**
  * How one site's chat bubble and contact form look, and what the form asks.
@@ -28,6 +27,11 @@ use Illuminate\Support\Collection;
 class WebWidget extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A widget saved is its site's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['web_sites', WebSite::class, 'site_id'];
+
     use HasUuids;
 
     protected $table = 'web_widgets';
@@ -126,7 +130,7 @@ class WebWidget extends Model implements StatesRetention
      * a-1chimney.com" rather than showing borrowed values as if they were typed
      * here.
      *
-     * @return array{config: array<string, mixed>, own: bool, inherited: array<string, mixed>}
+     * @return array{config: array<string, mixed>, own: bool, inherited: object}
      */
     public static function forEditor(WebSite $site): array
     {
@@ -135,7 +139,9 @@ class WebWidget extends Model implements StatesRetention
         return [
             'config' => self::resolvedFor($site),
             'own' => $own !== null,
-            'inherited' => $own === null ? [] : self::inheritedFor($site),
+            // An object even when empty: [] reaches Dart as a List and the screen
+            // never got past its spinner (11-13).
+            'inherited' => (object) ($own === null ? [] : self::inheritedFor($site)),
             // What each preset option is, so the screen can draw the generated
             // style options without a hand copy of them.
             'schema' => WidgetPresets::schema(),
@@ -178,11 +184,5 @@ class WebWidget extends Model implements StatesRetention
         $site->loadMissing('company');
 
         return Branding::colour($site->company, $site->company?->organization);
-    }
-
-    /** @return Collection<int, WebWidget> */
-    public static function forSites(Collection $siteIds): Collection
-    {
-        return self::query()->whereIn('site_id', $siteIds)->get();
     }
 }

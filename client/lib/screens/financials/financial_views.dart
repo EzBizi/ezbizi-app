@@ -5,6 +5,7 @@ import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../widgets/month_calendar.dart';
 import 'financial_cells.dart';
+import 'invoice_common.dart';
 import 'financial_panels.dart';
 
 typedef OpenRecord = void Function(Map? record, {Map initial});
@@ -449,9 +450,6 @@ class _SplitViewState extends State<SplitView> {
     });
   }
 
-  String _money(int cents) =>
-      formatCell(const {'type': 'currency', 'options': {}}, cents / 100);
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -501,7 +499,7 @@ class _SplitViewState extends State<SplitView> {
                       Text(
                         g['status'] == 'unavailable'
                             ? 'Unavailable'
-                            : '${g['jobs']} jobs · ${_money(g['total_cents'] as int)}',
+                            : '${g['jobs']} jobs · ${invoiceMoney(g['total_cents'] as int)}',
                       ),
                     ],
                   ),
@@ -523,7 +521,7 @@ class _SplitViewState extends State<SplitView> {
                           SizedBox(
                             width: 110,
                             child: Text(
-                              _money(p['cents'] as int),
+                              invoiceMoney(p['cents'] as int),
                               textAlign: TextAlign.right,
                             ),
                           ),

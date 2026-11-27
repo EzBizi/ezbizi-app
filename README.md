@@ -8,7 +8,7 @@ Start with [StartUp.md](StartUp.md), then the [documentation index](docs/README.
 |---|---|
 | `app/`, `routes/`, `database/` | Laravel API, domain logic, jobs and schema |
 | `client/` | Flutter application and tests |
-| `www/` | Marketing website |
+| `www/` | Former static marketing site. **www.ezbizi.com is WordPress since 2026-11-02: editing `www/` publishes nothing** (only `/download/*` and `/videos/*` are still served from `/var/www/www`); change site pages with wp-cli |
 | `resources/` | Mail templates, website snippet and HR source material |
 | `deploy/`, `scripts/` | Infrastructure and release tooling |
 | `tests/` | Backend and release regressions |

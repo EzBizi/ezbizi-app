@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/field_tracker.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../phone/phone_search.dart';
 import 'record_card.dart';
 
 /// Field › Dashboard: who is out, what needs a manager, and, for somebody
@@ -37,6 +39,9 @@ const fieldAlertLabels = {
 
 class _FieldDashboardTabState extends State<FieldDashboardTab> {
   bool _loading = true;
+
+  /// The alert list's search (every list has one; UI/UX review 2026-11-02).
+  String _query = '';
   String? _error;
   String? _actionError;
   Map<String, dynamic> _data = const {};
@@ -44,13 +49,17 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
   /// The first tap arms SOS for a few seconds; the second sends it. Inline,
   /// because the app has no dialogs, and two taps stop the accidental one.
   bool _armed = false;
+  bool _sending = false;
   Timer? _disarm;
 
   @override
   void dispose() {
+    _live?.cancel();
     _disarm?.cancel();
     super.dispose();
   }
+
+  LiveSubscription? _live;
 
   final _focused = GlobalKey();
 
@@ -58,6 +67,11 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
   void initState() {
     super.initState();
     _load();
+    // A technician moving, stopping, losing signal or pressing SOS, or an
+    // alert acknowledged by somebody else: the board re-reads quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'field'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
 
   @override
@@ -71,10 +85,11 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
     if (target != null) Scrollable.ensureVisible(target, alignment: 0.3);
   });
 
-  Future<void> _load() async {
-    setState(() => _error = null);
+  /// [quiet]: a live re-read; a failure keeps the board on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) setState(() => _error = null);
     final response = await widget.api.get('/field/dashboard');
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
     setState(() {
       _loading = false;
       if (response.ok) {
@@ -111,35 +126,34 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
 
   Future<void> _sos() async {
     _disarm?.cancel();
-    setState(() => _armed = false);
+    setState(() {
+      _armed = false;
+      _sending = true;
+    });
 
-    final here = FieldTracker.onPhone
-        ? await FieldTracker.currentPosition()
-        : null;
+    // Sent with or without a fix: an SOS without a place still reaches the
+    // manager (audit 11-27). The server takes one without coordinates.
+    final here = FieldTracker.onPhone ? await FieldTracker.locate() : null;
     if (!mounted) return;
-    if (FieldTracker.onPhone && here == null) {
-      setState(
-        () => _actionError =
-            'Could not read your location. Allow location for EzBizi and try '
-            'again, or phone your manager.',
-      );
-      return;
-    }
-
     final response = await widget.api.post('/field/sos', {
       'lat': ?here?.latitude,
       'lng': ?here?.longitude,
     });
     if (!mounted) return;
-    setState(
-      () => _actionError = response.ok
-          ? null
-          : 'SOS not sent: ${response.message}',
-    );
+    setState(() {
+      _sending = false;
+      _actionError = response.ok ? null : 'SOS not sent: ${response.message}';
+    });
     if (response.ok) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('SOS sent.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            here == null && FieldTracker.onPhone
+                ? 'SOS sent, without your location. Phone your manager too.'
+                : 'SOS sent.',
+          ),
+        ),
+      );
       _load();
     }
   }
@@ -206,9 +220,23 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
                           backgroundColor: theme.colorScheme.error,
                           foregroundColor: theme.colorScheme.onError,
                         ),
-                        onPressed: _armed ? _sos : _arm,
-                        icon: const Icon(Icons.warning_amber_rounded),
-                        label: Text(_armed ? 'Tap again to send SOS' : 'SOS'),
+                        key: const ValueKey('field-sos'),
+                        onPressed: _sending ? null : (_armed ? _sos : _arm),
+                        icon: _sending
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.warning_amber_rounded),
+                        label: Text(
+                          _sending
+                              ? 'Sending SOS…'
+                              : _armed
+                              ? 'Tap again to send SOS'
+                              : 'SOS',
+                        ),
                       ),
                     ],
                   ),
@@ -255,7 +283,9 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
                       Icons.signal_cellular_off,
                     ),
                     tile(
-                      'Open alerts',
+                      (counts['sos'] as num? ?? 0) > 0
+                          ? 'Open alerts (${counts['sos']} SOS)'
+                          : 'Open alerts',
                       counts['open_alerts'],
                       Icons.warning_amber,
                     ),
@@ -264,8 +294,23 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
               },
             ),
             const SizedBox(height: 16),
-            Text(key: const ValueKey('tour-field-alerts'), 'Alerts', style: theme.textTheme.titleMedium),
+            Text(
+              key: const ValueKey('tour-field-alerts'),
+              'Alerts',
+              style: theme.textTheme.titleMedium,
+            ),
             const SizedBox(height: 4),
+            if (alerts.isNotEmpty) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: phoneSearchBox(
+                  key: const ValueKey('field-alerts-search'),
+                  hint: 'Search alerts',
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             if (alerts.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -277,36 +322,40 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
                 ),
               ),
             for (final a in alerts)
-              Card(
-                key: a['id'] == widget.focusAlertId ? _focused : null,
-                color: a['id'] == widget.focusAlertId
-                    ? theme.colorScheme.secondaryContainer
-                    : null,
-                child: ListTile(
-                  selected: a['id'] == widget.focusAlertId,
-                  leading: Icon(
-                    a['kind'] == 'sos' ? Icons.sos : Icons.warning_amber,
-                    color: a['acknowledged_at'] == null
-                        ? theme.colorScheme.error
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                  title: Text(
-                    '${fieldAlertLabels[a['kind']] ?? a['kind']} · '
-                    '${(a['user'] as Map?)?['name'] ?? ''}',
-                  ),
-                  subtitle: Text(
-                    '${_when(a['created_at'] as String?)}'
-                    '${a['acknowledged_at'] != null ? ' · acknowledged' : ''}',
-                  ),
-                  trailing:
-                      widget.canAcknowledge && a['acknowledged_at'] == null
-                      ? TextButton(
-                          onPressed: () => _acknowledge(a['id'] as String),
-                          child: const Text('Acknowledge'),
-                        )
+              if (phoneSearchHit(_query, [
+                fieldAlertLabels[a['kind']] ?? a['kind'] as String?,
+                (a['user'] as Map?)?['name'] as String?,
+              ]))
+                Card(
+                  key: a['id'] == widget.focusAlertId ? _focused : null,
+                  color: a['id'] == widget.focusAlertId
+                      ? theme.colorScheme.secondaryContainer
                       : null,
+                  child: ListTile(
+                    selected: a['id'] == widget.focusAlertId,
+                    leading: Icon(
+                      a['kind'] == 'sos' ? Icons.sos : Icons.warning_amber,
+                      color: a['acknowledged_at'] == null
+                          ? theme.colorScheme.error
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                    title: Text(
+                      '${fieldAlertLabels[a['kind']] ?? a['kind']} · '
+                      '${(a['user'] as Map?)?['name'] ?? ''}',
+                    ),
+                    subtitle: Text(
+                      '${_when(a['created_at'] as String?)}'
+                      '${a['acknowledged_at'] != null ? ' · acknowledged' : ''}',
+                    ),
+                    trailing:
+                        widget.canAcknowledge && a['acknowledged_at'] == null
+                        ? TextButton(
+                            onPressed: () => _acknowledge(a['id'] as String),
+                            child: const Text('Acknowledge'),
+                          )
+                        : null,
+                  ),
                 ),
-              ),
           ],
         ),
       ),

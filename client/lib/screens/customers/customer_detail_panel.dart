@@ -3,20 +3,26 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/job_status.dart';
+import '../../core/live_changes.dart';
 import '../../core/numbers.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/address_fields.dart';
+import '../../widgets/copy_button.dart';
+import '../../widgets/formatted_notes.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/book_job_panel.dart';
+import '../../widgets/record_facts.dart';
 import '../../widgets/side_panel.dart';
+import '../phone/call_tab.dart';
 import '../../core/theme.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
 import '../jobs/job_detail_panel.dart';
+import 'customer_tags.dart';
 import 'customer_workiz.dart';
 
 /// One customer, opened from the list.
@@ -32,6 +38,7 @@ class CustomerDetailPanel extends StatefulWidget {
     required this.id,
     this.onDone,
     this.dirty,
+    this.knownTags = const [],
   });
 
   final ApiClient api;
@@ -45,6 +52,9 @@ class CustomerDetailPanel extends StatefulWidget {
   /// True while something typed here is unsaved, so the list beside a docked
   /// panel can refuse to switch customers underneath it. See JobDetailPanel.
   final ValueNotifier<bool>? dirty;
+
+  /// Tags already used on the list beside this panel, offered as you type.
+  final Iterable<String> knownTags;
 
   @override
   State<CustomerDetailPanel> createState() => _CustomerDetailPanelState();
@@ -63,7 +73,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
   final _city = TextEditingController();
   final _state = TextEditingController();
   final _postal = TextEditingController();
-  final _notes = TextEditingController();
+  var _notes = FormattedNotesController();
   final _reason = TextEditingController();
 
   Map<String, dynamic>? _row;
@@ -91,23 +101,62 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     _city,
     _state,
     _postal,
-    _notes,
   ];
 
-  String get _typed => _fields.map((c) => c.text).join('\u0000');
+  // Notes count by their markup, so bolding a word is an edit too.
+  String get _typed =>
+      [..._fields.map((c) => c.text), _notes.markup].join('\u0000');
 
-  void _markDirty() => widget.dirty?.value = !_loading && _typed != _loaded;
+  void _markDirty() {
+    widget.dirty?.value = !_loading && _typed != _loaded;
+    // Save lights as soon as something changed (design 196).
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
-    for (final c in _fields) {
+    for (final c in [..._fields, _notes]) {
       c.addListener(_markDirty);
     }
     _load();
+    // Live: a sync, webhook or another person changing this customer shows
+    // here, unless something is being typed.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'customers'},
+      (batch) {
+        if (batch.reload || batch.touched('customers').contains(widget.id)) {
+          return _refresh();
+        }
+      },
+      active: LiveChanges.visible(this),
+    );
   }
 
+  LiveSubscription? _live;
+
+  /// The customer read again in place, with no spinner. Skipped while
+  /// somebody is typing or saving: their edit is never overwritten.
+  Future<void> _refresh() async {
+    if (_loading || _busy || _reassigning || _typed != _loaded) return;
+    final response = await widget.api.get('/customers/${widget.id}', {
+      'today': formatCalendarDay(DateTime.now()),
+    });
+    if (!mounted || !response.ok || _busy || _typed != _loaded) return;
+    final row = Map<String, dynamic>.from(response.data as Map);
+    setState(() {
+      _fill(row);
+      _row = row;
+    });
+    _loaded = _typed;
+    widget.dirty?.value = false;
+  }
+
+  /// A tag saved on its own, so a plain close still refreshes the list.
+  bool _changed = false;
+
   void _done(bool? changed) {
+    changed ??= _changed ? true : null;
     final onDone = widget.onDone;
     if (onDone != null) {
       onDone(changed ?? false);
@@ -119,6 +168,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _name.dispose();
     _phone.dispose();
     _email.dispose();
@@ -172,7 +222,12 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     // the stored form and never sends the pretty one.
     _phone.text = formatPhoneNumber(row['phone'] as String?);
     _email.text = row['email'] as String? ?? '';
-    _notes.text = row['notes'] as String? ?? '';
+    // A new controller: formatting loads only through the constructor.
+    _notes
+      ..removeListener(_markDirty)
+      ..dispose();
+    _notes = FormattedNotesController(markup: row['notes'] as String?)
+      ..addListener(_markDirty);
 
     final address = row['address'] as Map<String, dynamic>? ?? const {};
     _line1.text = address['line1'] as String? ?? '';
@@ -198,7 +253,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       'city': _city.text.trim().isEmpty ? null : _city.text.trim(),
       'state': _state.text.trim().isEmpty ? null : _state.text.trim().toUpperCase(),
       'postal_code': _postal.text.trim().isEmpty ? null : _postal.text.trim(),
-      'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+      'notes': _notes.text.trim().isEmpty ? null : _notes.markup.trim(),
       'is_active': ?active,
     });
 
@@ -223,6 +278,36 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     });
 
     _done(true);
+  }
+
+  /// "No marketing email" saves on its own, at once.
+  Future<void> _saveOptOut(bool on) async {
+    final response = await widget.api.patch('/customers/${widget.id}', {
+      'email_opt_out': on,
+    });
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() => _error = response.reason);
+      return;
+    }
+    final saved = (response.data as Map?)?['email_opt_out'] ?? on;
+    setState(() => _row = {...?_row, 'email_opt_out': saved});
+    _changed = true;
+  }
+
+  /// Tags save on their own, at once, with the whole list (UI queue 174).
+  Future<bool> _saveTags(List<String> tags) async {
+    final response =
+        await widget.api.patch('/customers/${widget.id}', {'tags': tags});
+    if (!mounted) return false;
+    if (!response.ok) {
+      setState(() => _error = response.reason);
+      return false;
+    }
+    final saved = (response.data as Map?)?['tags'] ?? tags;
+    setState(() => _row = {...?_row, 'tags': saved});
+    _changed = true;
+    return true;
   }
 
   Future<void> _reassign() async {
@@ -270,6 +355,20 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     _done(true);
   }
 
+  /// The address as one line, for copying.
+  String get _addressLine => [
+    _line1.text,
+    _line2.text,
+    _city.text,
+    [_state.text, _postal.text].where((s) => s.trim().isNotEmpty).join(' '),
+  ].map((s) => s.trim()).where((s) => s.isNotEmpty).join(', ');
+
+  /// A field's copy icon, only while it holds something.
+  Widget? _copyOf(TextEditingController c, String what, String key) =>
+      c.text.trim().isEmpty
+      ? null
+      : CopyButton(c.text.trim(), key: ValueKey(key), what: what);
+
   @override
   Widget build(BuildContext context) {
     final row = _row;
@@ -280,50 +379,28 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
 
     return SidePanel(
       title: row == null ? 'Customer' : row['name'] as String,
-      subtitle: row == null
-          ? null
-          : [
-              row['number'],
-              if (workizClientNumbers(row) case final workiz?) 'Workiz $workiz',
-              // The company as well as the franchise, as on the list row: two
-              // companies may each run a "Texas", and this subtitle is what
-              // somebody reads before editing or reassigning the customer.
-              // The list said which Texas; the panel it opens must not stop.
-              (owner?['company'] as Map<String, dynamic>?)?['name'],
-              owner?['name'],
-            ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
+      // Design 196: the rest of what this line held is the facts grid.
+      subtitle: row?['number'] as String?,
       width: 520,
       docked: widget.onDone != null,
       onClose: widget.onDone == null ? null : () => _done(null),
       actions: [
-        if (row != null && widget.session.me!.can('jobs.create'))
-          TextButton.icon(
-            key: const ValueKey('customer-book-job'),
-            onPressed: _busy
-                ? null
-                : () => showBookJobPanel(
-                    context,
-                    api: widget.api,
-                    session: widget.session,
-                    prefill: BookPrefill(
-                      customerId: row['id'] as String,
-                      franchiseId: owner?['id'] as String?,
-                    ),
-                  ),
-            icon: const Icon(Icons.event_available_outlined, size: 18),
-            label: const Text('Book a job'),
+        // Save and Cancel belong to the Customer tab's fields; Money and the
+        // Workiz notes are read only (deep dive 2026-11-02).
+        if (_tab != 'money' && _tab != 'notes') ...[
+          TextButton(
+            onPressed: _busy ? null : () => _done(null),
+            child: const Text('Cancel'),
           ),
-        TextButton(
-          onPressed: _busy ? null : () => _done(null),
-          child: const Text('Cancel'),
-        ),
-        Refused(
-          reason: _editRefusal,
-          child: FilledButton(
-            onPressed: editable ? () => _save() : null,
-            child: const Text('Save'),
+          Refused(
+            reason: _editRefusal,
+            child: FilledButton(
+              // Lit once something changed (design 196).
+              onPressed: editable && _typed != _loaded ? () => _save() : null,
+              child: const Text('Save'),
+            ),
           ),
-        ),
+        ],
       ],
       child: _loading
           ? const Padding(
@@ -390,6 +467,85 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     );
   }
 
+  /// Design 196 (Jose, 2026-11-17: the lead header is "how stuff should be
+  /// all around the app"): the actions on one line, then the facts grid.
+  Widget _head(
+    BuildContext context,
+    Map<String, dynamic> row,
+    Map<String, dynamic>? owner,
+    bool active,
+    int jobs,
+  ) {
+    final phone = row['phone'] as String?;
+    final canCall =
+        phone != null && phone.isNotEmpty && _me.can('phone.phone.view');
+    final company = (owner?['company'] as Map<String, dynamic>?)?['name'];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (!active) const Tag('Inactive', warn: true),
+              if (canCall)
+                OutlinedButton.icon(
+                  key: const ValueKey('customer-call'),
+                  onPressed: () => showSidePanel<void>(
+                    context,
+                    builder: (_) => SidePanel(
+                      title: 'Call',
+                      subtitle: phone,
+                      scrollable: false,
+                      child: CallTab(
+                        api: widget.api,
+                        session: widget.session,
+                        initialNumber: phone,
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.call_outlined, size: 18),
+                  label: const Text('Call'),
+                ),
+              if (_me.can('jobs.create'))
+                FilledButton.icon(
+                  key: const ValueKey('customer-book-job'),
+                  onPressed: _busy
+                      ? null
+                      : () => showBookJobPanel(
+                          context,
+                          api: widget.api,
+                          session: widget.session,
+                          prefill: BookPrefill(
+                            customerId: row['id'] as String,
+                            franchiseId: owner?['id'] as String?,
+                          ),
+                        ),
+                  icon: const Icon(Icons.event_available_outlined, size: 18),
+                  label: const Text('Book a job'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          RecordFacts([
+            // Company as well as branch: two companies may each run a
+            // "Texas", and this is read before editing or reassigning.
+            RecordFact(
+              'Branch',
+              [?company, owner?['name'] ?? 'Unassigned'].join(' · '),
+            ),
+            RecordFact('Jobs', jobs == 0 ? '' : '$jobs'),
+            RecordFact('Customer #', '${row['number'] ?? ''}', copy: true),
+            RecordFact('Workiz', workizClientNumbers(row) ?? '', copy: true),
+          ]),
+        ],
+      ),
+    );
+  }
+
   Widget _customerPage(
     BuildContext context,
     Map<String, dynamic>? row,
@@ -401,16 +557,15 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (row != null) _head(context, row, owner, active, jobs),
                 if (row != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 14),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        Tag(owner?['name'] as String? ?? 'Unassigned'),
-                        if (!active) const Tag('Inactive', warn: true),
-                      ],
+                    child: CustomerTagsEditor(
+                      tags: customerTags(row),
+                      suggestions: widget.knownTags,
+                      enabled: _editRefusal == null && !_loading,
+                      onChanged: _saveTags,
                     ),
                   ),
                 TextField(
@@ -421,7 +576,10 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _phone,
-                  decoration: const InputDecoration(labelText: 'Phone'),
+                  decoration: InputDecoration(
+                    labelText: 'Phone',
+                    suffixIcon: _copyOf(_phone, 'Number', 'copy-phone'),
+                  ),
                   keyboardType: TextInputType.phone,
                   inputFormatters: const [PhoneNumberInputFormatter()],
                   enabled: editable,
@@ -429,10 +587,26 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _email,
-                  decoration: const InputDecoration(labelText: 'Email'),
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    suffixIcon: _copyOf(_email, 'Email', 'copy-email'),
+                  ),
                   keyboardType: TextInputType.emailAddress,
                   enabled: editable,
                 ),
+                // Newsletters skip this customer (customers.email_opt_out_at).
+                // Saves at once, like the tags, behind customers.edit.
+                if (row != null)
+                  SwitchListTile(
+                    key: const ValueKey('customer-email-opt-out'),
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('No marketing email'),
+                    subtitle: const Text('Newsletters are not sent to them.'),
+                    value: row['email_opt_out'] == true,
+                    onChanged: _editRefusal == null && !_loading
+                        ? _saveOptOut
+                        : null,
+                  ),
                 const SizedBox(height: 12),
                 // Found with the lookup, kept in parts (Jose, 2026-09-30).
                 AddressFields(
@@ -445,14 +619,32 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                   enabled: editable,
                   dense: false,
                 ),
+                if (_addressLine.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Copy the address',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        CopyButton(
+                          _addressLine,
+                          key: const ValueKey('copy-address'),
+                          what: 'Address',
+                        ),
+                      ],
+                    ),
+                  ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _notes,
-                  decoration: const InputDecoration(labelText: 'Notes'),
-                  minLines: 2,
-                  maxLines: 5,
-                  enabled: editable,
-                ),
+                if (editable)
+                  FormattedNotesField(controller: _notes, minLines: 2)
+                else
+                  InputDecorator(
+                    decoration: const InputDecoration(labelText: 'Notes'),
+                    child: FormattedNotesText(_notes.markup),
+                  ),
                 const SizedBox(height: 20),
                 if (row != null && _me.can('jobs.view')) ...[
                   _CustomerJobs(
@@ -549,6 +741,10 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                     Refused(
                       reason: _deleteRefusal,
                       child: OutlinedButton(
+                        // Red: it destroys the record (phone audit 2026-11-04).
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.error,
+                        ),
                         onPressed:
                             (_deleteRefusal == null && !_busy && !_loading)
                             ? _delete
@@ -615,15 +811,32 @@ class _CustomerJobsState extends State<_CustomerJobs> {
   void initState() {
     super.initState();
     _load();
+    // A job booked, moved or closed for this customer anywhere: read again.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      (_) {
+        if (_jobs != null) return _load(quiet: true);
+      },
+      active: LiveChanges.visible(this),
+    );
   }
 
-  Future<void> _load() async {
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the jobs on screen.
+  Future<void> _load({bool quiet = false}) async {
     final response = await widget.api.get('/jobs', {
       'customer_id': widget.customerId,
       'per_page': '50',
     });
 
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       if (!response.ok) {

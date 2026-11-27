@@ -11,6 +11,8 @@ import 'package:ezbizi_client/screens/email/gmail_inbox.dart';
 import 'package:ezbizi_client/screens/email/inbox_rows.dart';
 import 'package:ezbizi_client/widgets/open_destination.dart';
 import 'package:flutter/gestures.dart';
+import 'package:ezbizi_client/screens/email/message_body.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -144,7 +146,8 @@ void main() {
     final server = _Server();
     await _pump(tester, server);
 
-    expect(server.lists.first.queryParameters['category'], 'primary');
+    // All is the default tab: the whole inbox, no category (Jose, 2026-11-03).
+    expect(server.lists.first.queryParameters.containsKey('category'), isFalse);
     expect(server.lists.first.queryParameters['folder'], 'inbox');
     expect(
       find.byKey(const ValueKey('email-category-count-people')),
@@ -320,34 +323,160 @@ void main() {
     expect(find.byKey(const ValueKey('email-forward')), findsOneWidget);
   });
 
-  testWidgets('Older › asks for the server\'s cursor, and ‹ goes back', (
-    tester,
-  ) async {
+  testWidgets('reaching the bottom of the list loads the next page under it '
+      '(Jose, 11-04: it stopped at Nov 1)', (tester) async {
     final server = _Server(cursor: 'CUR-2');
     await _pump(tester, server);
 
-    expect(server.lists.single.queryParameters.containsKey('cursor'), isFalse);
+    // The fixture is shorter than the screen, so the bottom is in view at once.
+    await tester.pumpAndSettle();
 
-    await _tap(tester, find.byKey(const ValueKey('email-older')));
     expect(server.lists.last.queryParameters['cursor'], 'CUR-2');
+    // The last page has no cursor: the spinner goes and nothing more is asked.
+    expect(find.byKey(const ValueKey('email-more')), findsNothing);
+    expect(server.lists.length, 2);
+  });
 
-    await _tap(tester, find.byKey(const ValueKey('email-newer')));
-    expect(server.lists.last.queryParameters.containsKey('cursor'), isFalse);
+  testWidgets('back from an open mail finds the list where it was scrolled '
+      '(Jose 11-11)', (tester) async {
+    final server = _Server();
+    // Short enough that the fixture's rows scroll (360 since the underlined
+    // module tabs, 2026-11-13, are shorter than the old pills).
+    await _pump(tester, server, size: const Size(1500, 360));
+
+    ScrollPosition position() => tester
+        .state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey('tour-email-list')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        )
+        .position;
+
+    position().jumpTo(position().maxScrollExtent);
+    await tester.pumpAndSettle();
+    final scrolled = position().pixels;
+    expect(scrolled, greaterThan(0), reason: 'The fixture must scroll.');
+
+    await _tap(tester, find.textContaining('You received money').first);
+    expect(find.byKey(const ValueKey('email-reader')), findsOneWidget);
+    await _tap(tester, find.byTooltip('Back to the messages'));
+
+    expect(position().pixels, scrolled);
+  });
+
+  testWidgets('one Primary tab holds everything, its badge is all unread '
+      '(Jose 11-11: no All beside a Primary)', (tester) async {
+    final server = _Server();
+    await _pump(tester, server);
+
+    expect(find.text('All'), findsNothing);
+    expect(find.text('Primary'), findsOneWidget);
+    expect(find.byKey(const ValueKey('email-category-primary')), findsNothing);
+    // unread_loaded is 2; the old Primary's own count was 3.
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('email-category-count-all')))
+          .data,
+      '2',
+    );
+    expect(server.lists.last.queryParameters.containsKey('category'), isFalse);
+  });
+
+  /// Lucas Snyder 11-24: "I can't read my emails at all, the whole workspace
+  /// feels too compact" -- pane below, the mail had two lines under its
+  /// header. The mail gets two thirds, and Open full gives it everything.
+  testWidgets('with the pane below, the open mail gets most of the height '
+      'and can be opened full', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final server = _Server();
+    await _pump(tester, server, size: const Size(2560, 1300));
+
+    await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
+    await _tap(tester, find.byKey(const ValueKey('email-pane-below')));
+    await _tap(tester, find.textContaining('You received money').first);
+
+    final list = tester.getRect(find.byKey(const ValueKey('tour-email-list')));
+    final reader = tester.getRect(find.byKey(const ValueKey('email-reader')));
+    expect(reader.height, greaterThan(list.height * 1.8));
+
+    await _tap(tester, find.byKey(const ValueKey('email-open-full')));
+    expect(find.byKey(const ValueKey('tour-email-list')), findsNothing);
+    expect(find.byKey(const ValueKey('email-reader')), findsOneWidget);
+
+    await _tap(tester, find.byTooltip('Back to the messages'));
+    expect(find.byKey(const ValueKey('tour-email-list')), findsOneWidget);
+    expect(find.byKey(const ValueKey('email-reader')), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  /// Lucas Snyder 11-24, again: "about 5% reading visibility" at 2576x1205
+  /// with the pane below. A short window puts the mail beside the list, and
+  /// the mail's body gets most of the reader.
+  for (final size in const [Size(2576, 1205), Size(1366, 768)]) {
+    testWidgets(
+      'a short window at $size on a desktop puts the mail beside the list, '
+      'its body most of the reader',
+      (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        final server = _Server();
+        await _pump(tester, server, size: size);
+
+        await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
+        await _tap(tester, find.byKey(const ValueKey('email-pane-below')));
+        await _tap(tester, find.textContaining('You received money').first);
+
+        final list = tester.getRect(
+          find.byKey(const ValueKey('tour-email-list')),
+        );
+        final reader = tester.getRect(
+          find.byKey(const ValueKey('email-reader')),
+        );
+        expect(reader.left, greaterThanOrEqualTo(list.right - 1));
+
+        final body = tester.getRect(find.byType(MessageBody).first);
+        final shown = (reader.bottom - body.top).clamp(0, reader.height);
+        expect(shown / reader.height, greaterThan(0.6));
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+  }
+
+  /// Jose 11-24: "this should not even be an option on mobile, the expanded
+  /// view should be the default there". A phone or tablet has no pane
+  /// setting, and a mail opens over the list with back.
+  testWidgets('on a phone or tablet there is no pane setting and a mail '
+      'opens full', (tester) async {
+    final server = _Server();
+    await _pump(tester, server, size: const Size(1366, 1024));
+
+    expect(find.byKey(const ValueKey('email-pane-setting')), findsNothing);
+    await _tap(tester, find.textContaining('You received money').first);
+    expect(find.byKey(const ValueKey('tour-email-list')), findsNothing);
+    expect(find.byTooltip('Back to the messages'), findsOneWidget);
   });
 
   testWidgets('the reading pane setting is remembered', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final server = _Server();
-    await _pump(tester, server);
+    // Tall enough for a reader below the list (1300px, 11-24).
+    await _pump(tester, server, size: const Size(1500, 1400));
 
     await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
     await _tap(tester, find.byKey(const ValueKey('email-pane-below')));
 
-    expect(local_store.readItem('email_reading_pane_u-1'), 'below');
+    expect(local_store.readItem('email_reading_pane_v2_u-1'), 'below');
 
     await _tap(tester, find.textContaining('You received money').first);
     final list = tester.getRect(find.byKey(const ValueKey('tour-email-list')));
     final reader = tester.getRect(find.byKey(const ValueKey('email-reader')));
     expect(reader.top, greaterThanOrEqualTo(list.bottom));
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('at 390×844 it is the Gmail app: nothing overflows, swipe '
@@ -395,6 +524,71 @@ void main() {
     expect(find.byKey(const ValueKey('tour-email-list')), findsOneWidget);
   });
 
+  testWidgets(
+    'at 390 an opened mail fills the screen: full width, icon '
+    'actions with tooltips, the mail below a capped header, back to the list',
+    (tester) async {
+      final server = _Server();
+      await _pump(tester, server, size: const Size(390, 844));
+
+      await _tap(tester, find.text('Riverbank'));
+      final reader = tester.getRect(find.byKey(const ValueKey('email-reader')));
+      expect(reader.width, 390);
+      expect(find.byKey(const ValueKey('tour-email-list')), findsNothing);
+
+      final actions = find.byKey(const ValueKey('email-icon-actions'));
+      expect(actions, findsOneWidget);
+      expect(
+        find.descendant(of: actions, matching: find.byType(IconButton)),
+        findsWidgets,
+      );
+      expect(find.byTooltip('Mark handled'), findsOneWidget);
+      expect(find.textContaining('Reply as '), findsNothing);
+      // The header never takes more than a third of the reader.
+      final header = tester.getRect(
+        find.ancestor(of: actions, matching: find.byType(ConstrainedBox)).first,
+      );
+      expect(header.height, lessThanOrEqualTo(reader.height * 0.31));
+      expect(tester.takeException(), isNull);
+
+      await _tap(tester, find.byTooltip('Back to the messages'));
+      expect(find.byKey(const ValueKey('tour-email-list')), findsOneWidget);
+      expect(find.text('Riverbank'), findsOneWidget);
+    },
+  );
+
+  for (final width in [471.0, 700.0]) {
+    testWidgets('at ${width.toInt()} an opened mail takes the whole pane, the '
+        'actions are one icon row, and the mail starts right under it', (
+      tester,
+    ) async {
+      final server = _Server();
+      await _pump(tester, server, size: Size(width, 900));
+
+      await _tap(tester, find.text('Riverbank'));
+      expect(find.byKey(const ValueKey('tour-email-list')), findsNothing);
+      final reader = tester.getRect(find.byKey(const ValueKey('email-reader')));
+      final actions = find.byKey(const ValueKey('email-icon-actions'));
+      final row = tester.getRect(actions);
+      final buttons = find.descendant(
+        of: actions,
+        matching: find.byType(IconButton),
+      );
+      for (final b in buttons.evaluate()) {
+        expect(tester.getRect(find.byWidget(b.widget)).top, row.top);
+      }
+      expect(row.height, lessThanOrEqualTo(56));
+      final header = tester.getRect(
+        find.ancestor(of: actions, matching: find.byType(ConstrainedBox)).first,
+      );
+      expect(header.height, lessThanOrEqualTo(reader.height * 0.31));
+      expect(tester.takeException(), isNull);
+
+      await _tap(tester, find.byTooltip('Back to the messages'));
+      expect(find.byKey(const ValueKey('tour-email-list')), findsOneWidget);
+    });
+  }
+
   testWidgets('an inbox not counted yet shows a dash, never 0, and a company '
       'sums only what is known', (tester) async {
     final server = _Server();
@@ -415,20 +609,14 @@ void main() {
     );
     expect(find.descendant(of: garage, matching: find.text('0')), findsNothing);
 
+    // Inbox rows carry no count (Jose, 11-04); the company total stays.
     await _tap(tester, home);
+    final info = find.byKey(const ValueKey('email-inbox-mb-info'));
+    expect(find.descendant(of: info, matching: find.text('12')), findsNothing);
     final billing = find.byKey(const ValueKey('email-inbox-mb-billing'));
     expect(
       find.descendant(of: billing, matching: find.text('—')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: billing, matching: find.text('0')),
       findsNothing,
-    );
-    final info = find.byKey(const ValueKey('email-inbox-mb-info'));
-    expect(
-      find.descendant(of: info, matching: find.text('12')),
-      findsOneWidget,
     );
   });
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/empty_state.dart';
 import '../../widgets/report_grid.dart';
+import '../../widgets/table_download.dart';
 import '../../widgets/module_overview.dart';
 import '../../core/numbers.dart';
 import '../../core/job_money.dart';
@@ -21,11 +22,15 @@ class ThumbtackReport extends StatefulWidget {
     this.now,
     this.formats = DisplayFormats.fallback,
     this.span,
+    this.canExport = false,
   });
 
   /// The range from the Reports screen's shared date bar (review item 14);
   /// with it, this tab draws no date bar of its own.
   final DateSpan? span;
+
+  /// A Download button over the table (reports.export; Merav, 2026-11-19).
+  final bool canExport;
 
   final ApiClient api;
   final DateTime Function()? now;
@@ -228,6 +233,9 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
           else
             ReportGrid(
               key: const ValueKey('thumbtack-table'),
+              download: widget.canExport
+                  ? TableFile.name('Thumbtack', _span)
+                  : null,
               columns: const [
                 GridColumn('Category', pinned: true),
                 GridColumn('State'),

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HR Recruiting</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a;--prif:#d8eef5;
+--ok:#1d7a3e;--okf:#dcf2e3;--cau:#8a5a00;--cauf:#fdf0d3;--bad:#a12a2a;--badf:#f9dede;--info:#1e5aa8;--infof:#dde9f9;--pur:#6b3fa0;--purf:#ece3f7}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;
+--ok:#7fd49b;--okf:#18321f;--cau:#f0c46a;--cauf:#3a2e12;--bad:#f09a9a;--badf:#3a1a1a;--info:#9cc2f2;--infof:#18263a;--pur:#c9a6f2;--purf:#2a1f3a}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.rc-lead{margin:0 0 20px;color:var(--mut);max-width:1000px}
+.rc-opt{margin-bottom:28px}.rc-opt>h2{font-size:15px;margin:0 0 2px}.rc-opt>p{margin:0 0 8px;color:var(--mut);font-size:12.5px;max-width:1000px}
+.rc-rec{color:var(--pri)}
+.rc-win{max-width:1180px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.rc-tabs{display:flex;gap:16px;padding:10px 16px 0;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--mut)}
+.rc-tabs span{padding-bottom:8px}.rc-tabs .on{color:var(--pri);border-bottom:2px solid var(--pri);font-weight:600}
+.rc-sub{display:flex;gap:6px;padding:10px 16px 0}.rc-sub span{border-radius:16px;padding:4px 12px;font-size:12px;color:var(--mut);border:1px solid var(--line)}.rc-sub .on{background:var(--prif);color:var(--pri);border-color:transparent;font-weight:600}
+.rc-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px}
+.rc-search{border:1px solid var(--line);border-radius:8px;padding:7px 10px;color:var(--mut);width:230px}
+.rc-pick{border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--mut);font-size:12px}
+.rc-sp{flex:1}.rc-btn{border-radius:18px;padding:6px 14px;font-weight:600;font-size:12.5px;white-space:nowrap}
+.rc-fill{background:var(--pri);color:#fff}.rc-out{border:1px solid var(--line);color:var(--pri)}
+.rc-chips{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 10px}
+.rc-chip{border-radius:10px;padding:5px 11px;font-size:12px;display:flex;gap:6px;align-items:baseline}.rc-chip b{font-size:15px}
+.n{background:var(--bg)}.c{background:var(--cauf);color:var(--cau)}.k{background:var(--okf);color:var(--ok)}.x{background:var(--badf);color:var(--bad)}.i{background:var(--infof);color:var(--info)}.p{background:var(--purf);color:var(--pur)}
+table{width:100%;border-collapse:collapse}
+th{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);text-align:left;font-weight:600;padding:7px 10px;border-bottom:1px solid var(--line)}
+td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.r{text-align:right}.mut{color:var(--mut);font-size:11.5px}
+.rc-pill{display:inline-block;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:600}
+.rc-split{display:flex}.rc-split>div:first-child{flex:1;min-width:0}
+.rc-pane{width:340px;border-left:1px solid var(--line);padding:14px}
+.rc-pane h3{margin:0;font-size:15px}
+.rc-lab{font-size:11px;color:var(--mut);margin:10px 0 3px}
+.rc-in{border:1px solid var(--line);border-radius:6px;padding:6px 9px}
+.rc-tog{display:inline-block;width:30px;height:16px;border-radius:9px;background:var(--pri);vertical-align:middle;position:relative}.rc-tog:after{content:"";position:absolute;right:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#fff}
+.rc-iv{border:1px solid var(--line);border-radius:8px;padding:7px 9px;margin-top:6px}
+.rc-sel{background:var(--prif)}
+.rc-kan{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:0 16px 16px}
+.rc-col{background:var(--bg);border-radius:10px;padding:8px}.rc-col>b{display:block;margin-bottom:6px;font-size:12px}
+.rc-card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px;margin-bottom:6px}
+.rc-left{width:220px;border-right:1px solid var(--line);padding:10px}.rc-left div{padding:7px 10px;border-radius:8px;display:flex;justify-content:space-between}.rc-left .on{background:var(--prif);color:var(--pri);font-weight:600}
+.rc-phones{display:flex;flex-wrap:wrap;gap:24px}
+.rc-ph{width:375px}.rc-ph>h2{font-size:15px;margin:0 0 2px}.rc-ph>p{margin:0 0 8px;color:var(--mut);font-size:12.5px}
+.rc-scr{width:375px;height:700px;border:1px solid var(--line);border-radius:22px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column}
+.rc-ttl{background:var(--card);padding:10px 14px;border-bottom:1px solid var(--line);font-weight:700;font-size:16px}
+.rc-body{flex:1;overflow:hidden;padding:10px 12px;display:flex;flex-direction:column;gap:9px}
+.rc-rc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px}
+.rc-row{display:flex;gap:8px;align-items:center}
+</style></head><body>
+<h1>201 · HR › Recruiting</h1>
+<p class="rc-lead">HR asked (Shoval, owner, 11-20; server 9dfa1e434). This is a new HR tab, <b>Recruiting</b>. Applicants come from every source and move through stages. Each has a "Relevant" flag and phone or in-person interviews with an outcome, and the monthly spend is per position. It's gated on hr.view, and hr.edit is needed to change anything, so the write controls are hidden without it. Positions, stages and sources are the organization's lists (Settings › Lists), and their labels come from the server. No dialogs.</p>
+
+<div class="rc-opt"><h2>1 · A list with stage chips, the applicant docked beside it; Spend as a sub-tab <span class="rc-rec">(recommended)</span></h2>
+<p>This is the house list (Leads, Daily approval). The sub-tabs are <b>Applicants · Spend</b>. Above the list are the search bar and pickers for position, stage, source, Company · Branch and dates, plus "+ Applicant". Chips show applicants, relevant, interviewed, hired and the median first response. Rows show name and contact, position, source, a stage pill, the relevant mark, interviews, applied and first response.<br>Clicking a row docks the applicant beside the list. The panel has details you edit in place, a Relevant switch, a stage picker and the interviews (each with kind, time, held, outcome and interviewer), plus "+ Interview". <b>Spend</b> is a month × position grid you edit in the cell, with each position's total, cost per hire (spend ÷ hires) and "+ Spend".</p>
+<div class="rc-win">
+<div class="rc-tabs"><span>Dashboard</span><span>Records</span><span>Contracts</span><span>Invitations</span><span>Onboarding</span><span>Payroll</span><span class="on">Recruiting</span></div>
+<div class="rc-sub"><span class="on">Applicants</span><span>Spend</span></div>
+<div class="rc-bar"><span class="rc-search">🔍 Name, phone, email</span><span class="rc-pick">Position ▾</span><span class="rc-pick">Stage ▾</span><span class="rc-pick">Source ▾</span><span class="rc-pick">Company · Branch ▾</span><span class="rc-pick">📅 Last 30 days</span><span class="rc-sp"></span><span class="rc-btn rc-fill">+ Applicant</span></div>
+<div class="rc-chips"><span class="rc-chip n">Applicants <b>64</b></span><span class="rc-chip k">Relevant <b>21</b></span><span class="rc-chip i">Interviewed <b>12</b></span><span class="rc-chip p">Hired <b>3</b></span><span class="rc-chip c">First response <b>3.2 h</b></span></div>
+<div class="rc-split"><div><table><tr><th>Applicant</th><th>Position</th><th>Source</th><th>Stage</th><th class="r">Interviews</th><th>Applied</th><th>First response</th></tr>
+<tr class="rc-sel"><td><b>Marco Diaz</b> <span class="mut">★ relevant</span><div class="mut">(614) 555-0142 · Columbus</div></td><td>Technician</td><td>Indeed</td><td><span class="rc-pill i">Interview</span></td><td class="r">1</td><td>Nov 18</td><td>40 min</td></tr>
+<tr><td><b>Kayla Brooks</b><div class="mut">kayla@… · Akron</div></td><td>Dispatcher</td><td>Facebook</td><td><span class="rc-pill n">New</span></td><td class="r">0</td><td>Nov 19</td><td class="mut">—</td></tr>
+<tr><td><b>Sam Lee</b> <span class="mut">★ relevant</span><div class="mut">(216) 555-0199 · Cleveland</div></td><td>Technician</td><td>Referral</td><td><span class="rc-pill p">Hired</span></td><td class="r">2</td><td>Nov 2</td><td>15 min</td></tr></table></div>
+<div class="rc-pane"><h3>Marco Diaz</h3><div class="mut">Technician · Columbus · applied Nov 18 via Indeed</div>
+<div class="rc-lab">Stage</div><div class="rc-in">Interview ▾</div>
+<div class="rc-lab">Relevant</div><div><span class="rc-tog"></span> Yes</div>
+<div class="rc-lab">Phone · Email</div><div class="rc-in">(614) 555-0142 · marco@…</div>
+<div class="rc-lab">Interviews</div><div class="rc-iv"><b>In person</b> · Nov 20, 10:00 AM · <span class="rc-pill k">Pass</span><div class="mut">with Melissa · "Strong on gas inserts"</div></div>
+<div style="margin-top:8px"><span class="rc-btn rc-out">+ Interview</span></div>
+<div class="rc-lab">Notes</div><div class="rc-in mut">Can start Dec 1.</div></div></div>
+<p style="margin:10px 16px 6px;color:var(--mut)">Spend:</p>
+<table><tr><th>Position</th><th class="r">Sep</th><th class="r">Oct</th><th class="r">Nov</th><th class="r">Total</th><th class="r">Hires</th><th class="r">Cost per hire</th></tr>
+<tr><td><b>Technician</b><div class="mut">Indeed, Facebook</div></td><td class="r">$800</td><td class="r">$950</td><td class="r"><span class="rc-in">$1,100</span></td><td class="r"><b>$2,850</b></td><td class="r">3</td><td class="r">$950</td></tr>
+<tr><td><b>Dispatcher</b></td><td class="r">—</td><td class="r">$300</td><td class="r">$250</td><td class="r"><b>$550</b></td><td class="r">0</td><td class="r mut">no hires</td></tr></table>
+</div></div>
+
+<div class="rc-opt"><h2>2 · A board by stage</h2>
+<p>A column per stage, and dragging a card moves its stage. You can see the whole pipeline at once, but searching and comparing sources is harder, and with 8 stages a laptop scrolls sideways.</p>
+<div class="rc-win"><div class="rc-sub"><span class="on">Applicants</span><span>Spend</span></div><div class="rc-bar"><span class="rc-search">🔍 Name, phone, email</span><span class="rc-pick">Position ▾</span><span class="rc-sp"></span><span class="rc-btn rc-fill">+ Applicant</span></div>
+<div class="rc-kan"><div class="rc-col"><b>New · 31</b><div class="rc-card"><b>Kayla Brooks</b><div class="mut">Dispatcher · Facebook</div></div><div class="rc-card"><b>Jon Park</b><div class="mut">Technician · Indeed</div></div></div><div class="rc-col"><b>Contacted · 14</b><div class="rc-card"><b>Lia Ruiz</b><div class="mut">Technician</div></div></div><div class="rc-col"><b>Interview · 9</b><div class="rc-card"><b>Marco Diaz</b> ★<div class="mut">Technician</div></div></div><div class="rc-col"><b>Offer · 2</b><div class="rc-card"><b>Dee Hall</b></div></div><div class="rc-col"><b>Hired · 3</b><div class="rc-card"><b>Sam Lee</b> ★</div></div></div></div></div>
+
+<div class="rc-opt"><h2>3 · Positions on the left</h2>
+<p>A list of positions with counts sits on the left, with the chosen position's applicants and its spend on the right. Spend sits right beside the people, but you can't see every position's applicants at once.</p>
+<div class="rc-win"><div class="rc-split"><div class="rc-left" style="flex:none"><div class="on">Technician <span>38</span></div><div>Dispatcher <span>14</span></div><div>Office <span>9</span></div><div>Sales <span>3</span></div></div>
+<div style="flex:1"><div class="rc-chips" style="padding-top:10px"><span class="rc-chip n">Applicants <b>38</b></span><span class="rc-chip p">Hired <b>3</b></span><span class="rc-chip c">Spend <b>$2,850</b></span><span class="rc-chip i">Per hire <b>$950</b></span></div><table><tr><th>Applicant</th><th>Stage</th><th>Applied</th></tr><tr><td><b>Marco Diaz</b></td><td><span class="rc-pill i">Interview</span></td><td>Nov 18</td></tr><tr><td><b>Sam Lee</b></td><td><span class="rc-pill p">Hired</span></td><td>Nov 2</td></tr></table></div></div></div></div>
+
+<div class="rc-phones">
+<div class="rc-ph"><h2>4 · Cards; the applicant full screen <span class="rc-rec">(recommended)</span></h2><p>The sub-tabs are chips, then the figures and search plus Filters. Each applicant is a card with a stage pill, and tapping one opens it full screen with the same panel. Spend shows a card per position with its months.</p>
+<div class="rc-scr"><div class="rc-ttl">Recruiting</div><div class="rc-body"><div class="rc-row"><span class="rc-chip i" style="border-radius:16px">Applicants</span><span class="rc-chip n" style="border-radius:16px">Spend</span><span class="rc-sp"></span><span class="rc-btn rc-fill">+ </span></div>
+<div class="rc-row" style="flex-wrap:wrap;gap:6px"><span class="rc-chip n">All <b>64</b></span><span class="rc-chip k">Relevant <b>21</b></span><span class="rc-chip p">Hired <b>3</b></span></div>
+<div class="rc-row"><span class="rc-search" style="flex:1;width:auto">🔍 Name, phone</span><span class="rc-btn rc-out">Filters · 2</span></div>
+<div class="rc-rc"><div class="rc-row"><b style="flex:1">Marco Diaz ★</b><span class="rc-pill i">Interview</span></div><div class="mut">Technician · Indeed · Columbus</div><div class="mut">Applied Nov 18 · answered in 40 min · 1 interview</div></div>
+<div class="rc-rc"><div class="rc-row"><b style="flex:1">Kayla Brooks</b><span class="rc-pill n">New</span></div><div class="mut">Dispatcher · Facebook · Akron</div><div class="mut">Applied Nov 19 · not answered yet</div></div>
+<div class="rc-rc"><div class="rc-row"><b style="flex:1">Sam Lee ★</b><span class="rc-pill p">Hired</span></div><div class="mut">Technician · Referral · Cleveland</div></div></div></div></div>
+<div class="rc-ph"><h2>5 · A board you swipe</h2><p>One stage column per screen, swiped sideways. It works for walking the pipeline, but it's slow for finding someone.</p>
+<div class="rc-scr"><div class="rc-ttl">Recruiting · Interview (9)</div><div class="rc-body"><div class="mut">‹ Contacted · Offer ›</div><div class="rc-rc"><b>Marco Diaz ★</b><div class="mut">Technician</div></div><div class="rc-rc"><b>Ana Cole</b><div class="mut">Dispatcher</div></div></div></div></div>
+<div class="rc-ph"><h2>6 · Positions first</h2><p>A list of positions, then the applicants and spend of the one you pick. That's three taps to reach a person.</p>
+<div class="rc-scr"><div class="rc-ttl">Recruiting</div><div class="rc-body"><div class="rc-rc rc-row"><b style="flex:1">Technician</b><span>38 ›</span></div><div class="rc-rc rc-row"><b style="flex:1">Dispatcher</b><span>14 ›</span></div><div class="rc-rc rc-row"><b style="flex:1">Office</b><span>9 ›</span></div></div></div></div>
+</div>
+</body></html>

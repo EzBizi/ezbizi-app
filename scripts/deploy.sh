@@ -89,12 +89,17 @@ fi
 if [ -n "${EZBIZI_RELEASE_SHA:-}" ] && [ "$GATED_SHA" != "$EZBIZI_RELEASE_SHA" ]; then
   echo "✗ deploy SHA disagrees with the orchestrator release SHA" >&2; exit 1
 fi
+# Progress for the Development tab's Releases screen. Never fails the deploy.
+source scripts/lib/release-status.sh
+RELEASE_STATUS_SHA=$GATED_SHA
 
 if [ "$SKIP_GATES" -eq 1 ]; then
   echo "⚠ GATES SKIPPED (--skip-gates) — $GATED_SHA is being shipped untested."
+  release_status server_tests 100 "skipped (gates off)"
   BACKEND_TESTS=""
 else
 echo "→ testing the tree about to ship ($GATED_SHA)"
+release_status server_tests 0 "starting the gate on the box"
 # Captured, not just streamed. STATUS.md's test count was retyped by hand and was
 # wrong three times in one day; the number is right here, in the run that gates
 # the deploy, so it is taken from there rather than remembered.
@@ -137,9 +142,104 @@ WIPE=$(git ls-tree --name-only "$GATED_SHA" | grep -vx storage | tr '
 # archive, so $WIPE never touches it; files older than a week are removed.
 GATE_RUNS=/opt/ezbizi-test/.gate-runs
 GATE_RUN="${GATED_SHA}-$(date +%s)-$$"
+gate_ssh() {  # a short call to the box, retried: a dropped connection is not a failed gate
+  local try
+  for try in 1 2 3 4 5 6; do
+    ssh -o ConnectTimeout=20 "$REMOTE" "$@" < /dev/null && return 0
+    sleep 10
+  done
+  return 1
+}
+gate_put() {  # gate_put <local file> <remote path>: re-opened on every try, and the size checked
+  local try size
+  size=$(wc -c < "$1" | tr -d ' ')
+  for try in 1 2 3 4 5 6; do
+    ssh -o ConnectTimeout=20 "$REMOTE" "cat > '$2.part' && [ \$(stat -c %s '$2.part') = $size ] && mv '$2.part' '$2'" < "$1" && return 0
+    sleep 10
+  done
+  return 1
+}
+
+# ── re-run only what failed (2026-11-24) ─────────────────────────
+#
+# Jose, 11-24: a one-test failure cost a full hour, every time; three cuts in a
+# row. After a FULL run fails, scripts/gate-backend.sh points
+# <gate-runs>/full-failed at it and records the test files that failed (.failed)
+# and every PHP file they load when run alone (.exercised). When everything this
+# cut changes since that SHA is one of these, the gate runs only the failed test
+# files plus the test files the change brings:
+#
+#   tests/{Unit,Feature}/**/*Test.php, added or modified    runs
+#   app/**/*.php, modified, that the failed tests load
+#   docs/ client/ www/ wordpress-plugin/ assets/ store-screenshots/
+#                                   every test file that names that directory runs
+#
+# Anything else runs the full suite: other app code, migrations, config, routes,
+# composer, bootstrap, resources, scripts, deploy, the tests' shared helpers,
+# phpunit.xml, any deletion or rename. So does a cut that does not build on the
+# failed SHA, a missing record, more than 10 failed files or more than 60 to run,
+# and EZBIZI_GATE_FULL=1.
+#
+# A re-run that passes ships, and the gate starts the FULL suite in the
+# background on the box against the same tree (scripts/gate-background.sh). If
+# that goes red, the release gets a ✗ server_tests line (Releases screen), the
+# next cut prints it below, and its failures become the record the next cut
+# checks against.
+rerun_plan() {  # rerun_plan <failed run>: writes the test files to run to $GATE_PLAN, or says why not and returns 1
+  local run=$1 base=${1%%-*} failed exercised status path dir dirs="" tests
+  git merge-base --is-ancestor "$base" "$GATED_SHA" 2>/dev/null \
+    || { echo "   full suite: ${GATED_SHA:0:9} does not build on the failed ${base:0:9}"; return 1; }
+  failed=$(gate_ssh "cat '$GATE_RUNS/$run.failed'") && exercised=$(gate_ssh "cat '$GATE_RUNS/$run.exercised'") \
+    && [ -n "$failed" ] && [ -n "$exercised" ] \
+    || { echo "   full suite: the record of the failed run is incomplete"; return 1; }
+  [ "$(wc -l <<< "$failed")" -le 10 ] || { echo "   full suite: more than 10 test files failed"; return 1; }
+  tests=$failed
+  while read -r status path; do
+    case "$status $path" in
+      [AM]" tests/Unit/"*Test.php|[AM]" tests/Feature/"*Test.php)
+        tests+=$'\n'$path ;;
+      "M app/"*.php)
+        grep -qxF "$path" <<< "$exercised" \
+          || { echo "   full suite: $path is app code the failed tests do not load"; return 1; } ;;
+      [AM]" docs/"*|[AM]" client/"*|[AM]" www/"*|[AM]" wordpress-plugin/"*|[AM]" assets/"*|[AM]" store-screenshots/"*)
+        dir=${path%%/*}
+        case " $dirs " in *" $dir "*) ;; *)
+          dirs+=" $dir"
+          # A test names such a file by its directory: "client/lib", base_path('client'.…).
+          tests+=$'\n'$(git grep -lE "$dir/|'$dir'|\"$dir\"" "$GATED_SHA" -- 'tests/*Test.php' | sed "s/^$GATED_SHA://") ;;
+        esac ;;
+      *) echo "   full suite: $status $path"; return 1 ;;
+    esac
+  done < <(git diff --no-renames --name-status "$base" "$GATED_SHA")
+  tests=$(grep -v '^$' <<< "$tests" | sort -u)
+  [ "$(wc -l <<< "$tests")" -le 60 ] || { echo "   full suite: more than 60 test files to re-run"; return 1; }
+  printf '%s\n' "$tests" > "$GATE_PLAN"
+}
+GATE_MODE=full
+GATE_TESTS=""
+GATE_PLAN=$(mktemp)
+# What the background full suite last said, so a red one cannot go unread.
+LAST_BACKGROUND=$(gate_ssh "cd '$GATE_RUNS' 2>/dev/null && f=\$(ls -t -- *-full.log 2>/dev/null | head -1) && [ -n \"\$f\" ] && echo \"\${f%.log} \$(cat \"\${f%.log}.status\" 2>/dev/null || echo running)\"; true" || true)
+case "${LAST_BACKGROUND##* }" in
+  "") ;;
+  0)       echo "   background full suite for ${LAST_BACKGROUND:0:9}: ✓ green" ;;
+  running) echo "   background full suite for ${LAST_BACKGROUND:0:9}: still running" ;;
+  *)       echo "✗ background full suite for ${LAST_BACKGROUND:0:9} FAILED after it shipped: $GATE_RUNS/${LAST_BACKGROUND%% *}.log" ;;
+esac
+LAST_FULL_FAILED=$(gate_ssh "cat '$GATE_RUNS/full-failed' 2>/dev/null; true" || true)
+if [ "${EZBIZI_GATE_FULL:-0}" != 1 ] && [[ "$LAST_FULL_FAILED" =~ ^[0-9a-f]{40}-[0-9]+-[0-9]+(-full)?$ ]]; then
+  if rerun_plan "$LAST_FULL_FAILED"; then
+    GATE_MODE=tests
+    GATE_TESTS=$(tr '\n' ' ' < "$GATE_PLAN")
+    echo "→ re-running only what failed in ${LAST_FULL_FAILED:0:9}, and the tests this cut changes: $(wc -l < "$GATE_PLAN") test files"
+    sed 's/^/     /' "$GATE_PLAN"
+  fi
+fi
+rm -f "$GATE_PLAN"
 GATE_LOCAL=$(mktemp -d)
 {
-  printf 'WIPE=%q\nGATE_RUNS=%q\nGATE_RUN=%q\n' "$WIPE" "$GATE_RUNS" "$GATE_RUN"
+  printf 'WIPE=%q\nGATE_RUNS=%q\nGATE_RUN=%q\nGATE_MODE=%q\nGATE_TESTS=%q\n' \
+    "$WIPE" "$GATE_RUNS" "$GATE_RUN" "$GATE_MODE" "$GATE_TESTS"
   # The exit status lands in $GATE_RUN.status whatever happens: that file is
   # what deploy.sh polls for, so a gate that dies early still answers.
   echo 'trap '"'"'rc=$?; echo "$rc" > "$GATE_RUNS/$GATE_RUN.status.tmp"; mv "$GATE_RUNS/$GATE_RUN.status.tmp" "$GATE_RUNS/$GATE_RUN.status"'"'"' EXIT'
@@ -183,37 +283,37 @@ GATE_LOCAL=$(mktemp -d)
   # run: it grows until phpunit dies inside DefaultResultCache on a 128M limit.
   rm -f .phpunit.result.cache
   tar -x -f "$GATE_RUNS/$GATE_RUN.tar"
-  rm -f "$GATE_RUNS/$GATE_RUN.tar"
+  # A re-run keeps the tree: the full suite runs on it next, in the background.
+  [ "$GATE_MODE" = tests ] || rm -f "$GATE_RUNS/$GATE_RUN.tar"
   # Releases install --no-dev and have no phpunit; this sandbox keeps dev deps,
   # its own .env and its own test database.
   composer install --no-interaction -q
-  php8.4 -d memory_limit=1G vendor/bin/phpunit --colors=never --log-junit /opt/ezbizi-test/backend-junit.xml
-  php8.4 scripts/phpunit-count.php /opt/ezbizi-test/backend-junit.xml
+  # The suite, and the JUnit count, are scripts/gate-backend.sh (parallel since
+  # 2026-11-24: about an hour serially, see the script).
+  if [ "$GATE_MODE" = full ]; then
+    # One real migrate:fresh, every migration from zero; the workers load its result.
+    APP_ENV=testing php8.4 -d memory_limit=1G scripts/gate-template-db.php
+    bash scripts/gate-backend.sh full /opt/ezbizi-test/backend-junit.xml "$GATE_RUNS/$GATE_RUN"
+  else
+    # shellcheck disable=SC2086  # test file paths, one word each
+    bash scripts/gate-backend.sh tests /opt/ezbizi-test/backend-junit.xml "$GATE_RUNS/$GATE_RUN" $GATE_TESTS \
+      || { rm -f "$GATE_RUNS/$GATE_RUN.tar"; exit 1; }
+    # Passed: the full suite still runs, detached, on this same tree. `9>&-`, or
+    # it would inherit this gate's lock and hold the next cut for its whole run.
+    cp scripts/gate-background.sh "$GATE_RUNS/$GATE_RUN.background.sh"
+    setsid nohup bash "$GATE_RUNS/$GATE_RUN.background.sh" "$GATE_RUNS" "$GATE_RUN" \
+      > /dev/null 2>&1 < /dev/null 9>&- &
+    echo "full suite started in the background: $GATE_RUNS/$GATE_RUN-full.log"
+  fi
 GATE
 } > "$GATE_LOCAL/gate.sh"
 git -c core.autocrlf=false archive "$GATED_SHA" > "$GATE_LOCAL/tree.tar"
-gate_ssh() {  # a short call to the box, retried: a dropped connection is not a failed gate
-  local try
-  for try in 1 2 3 4 5 6; do
-    ssh -o ConnectTimeout=20 "$REMOTE" "$@" < /dev/null && return 0
-    sleep 10
-  done
-  return 1
-}
-gate_put() {  # gate_put <local file> <remote path>: re-opened on every try, and the size checked
-  local try size
-  size=$(wc -c < "$1" | tr -d ' ')
-  for try in 1 2 3 4 5 6; do
-    ssh -o ConnectTimeout=20 "$REMOTE" "cat > '$2.part' && [ \$(stat -c %s '$2.part') = $size ] && mv '$2.part' '$2'" < "$1" && return 0
-    sleep 10
-  done
-  return 1
-}
 if ! { gate_ssh "mkdir -p '$GATE_RUNS' && find '$GATE_RUNS' -type f -mtime +7 -delete" \
     && gate_put "$GATE_LOCAL/tree.tar" "$GATE_RUNS/$GATE_RUN.tar" \
     && gate_put "$GATE_LOCAL/gate.sh" "$GATE_RUNS/$GATE_RUN.sh" \
     && gate_ssh "setsid nohup bash '$GATE_RUNS/$GATE_RUN.sh' > '$GATE_RUNS/$GATE_RUN.log' 2>&1 < /dev/null &"; }; then
-  rm -rf "$GATE_LOCAL"; echo "✗ could not start the gate on the box — nothing deployed"; exit 1
+  rm -rf "$GATE_LOCAL"; echo "✗ could not start the gate on the box — nothing deployed"
+  release_status server_tests 0 "✗ could not start the gate on the box"; exit 1
 fi
 rm -rf "$GATE_LOCAL"
 echo "   gate running on the box: $GATE_RUNS/$GATE_RUN.log"
@@ -222,13 +322,21 @@ for ((poll = 1; poll <= 450; poll++)); do   # 450 x 20 s = 2.5 h: an hour's lock
   sleep 20
   GATE_STATUS=$(ssh -o ConnectTimeout=20 "$REMOTE" "cat '$GATE_RUNS/$GATE_RUN.status' 2>/dev/null" 2>/dev/null || true)
   [ -n "$GATE_STATUS" ] && break
+  release_status_gate "$GATE_RUNS/$GATE_RUN.log"
 done
 BACKEND_OUT=$(gate_ssh "cat '$GATE_RUNS/$GATE_RUN.log'" 2>&1 || echo "(could not read $GATE_RUNS/$GATE_RUN.log)")
-[ -n "$GATE_STATUS" ] || { echo "$BACKEND_OUT" | tail -20; echo "✗ the gate did not answer within 2.5 hours — nothing deployed ($GATE_RUNS/$GATE_RUN.log)"; exit 1; }
-[ "$GATE_STATUS" = "0" ] || { echo "$BACKEND_OUT"; echo "✗ backend tests failed — nothing deployed"; exit 1; }
+[ -n "$GATE_STATUS" ] || { echo "$BACKEND_OUT" | tail -20; echo "✗ the gate did not answer within 2.5 hours — nothing deployed ($GATE_RUNS/$GATE_RUN.log)"; release_status server_tests 0 "✗ the gate did not answer within 2.5 hours"; exit 1; }
+[ "$GATE_STATUS" = "0" ] || { echo "$BACKEND_OUT"; echo "✗ backend tests failed — nothing deployed"; release_status server_tests 0 "✗ backend tests failed"; exit 1; }
 echo "$BACKEND_OUT" | tail -3
 BACKEND_TESTS=$(echo "$BACKEND_OUT" | sed -n 's/^EZBIZI_BACKEND_TESTS=\([0-9][0-9]*\)$/\1/p' | tail -1)
-[ -n "$BACKEND_TESTS" ] || { echo "✗ backend test report missing — nothing deployed"; exit 1; }
+[ -n "$BACKEND_TESTS" ] || { echo "✗ backend test report missing — nothing deployed"; release_status server_tests 0 "✗ backend test report missing"; exit 1; }
+if [ "$GATE_MODE" = tests ]; then
+  # A re-run's count is not the suite's size; STATUS gets the number from a full run.
+  release_status server_tests 100 "✓ $BACKEND_TESTS re-run tests passed; full suite running in the background"
+  BACKEND_TESTS=""
+else
+  release_status server_tests 100 "✓ $BACKEND_TESTS backend tests passed"
+fi
 fi
 
 if [ "$CODE_ONLY" != "--code" ]; then
@@ -269,9 +377,11 @@ if [ "$CODE_ONLY" != "--code" ]; then
   else
     echo "→ client analyze + tests (at $GATED_SHA, not your working tree)"
   fi
+  release_status web 5 "client pub get, analyze + tests"
   CLIENT_OUT=$( (cd "$WORKTREE/client" && flutter pub get \
     && { [ "$SKIP_GATES" -eq 1 ] || { flutter analyze && flutter test; }; }) 2>&1 ) || {
-    echo "$CLIENT_OUT"; echo "✗ client checks failed — nothing deployed"; exit 1;
+    echo "$CLIENT_OUT"; echo "✗ client checks failed — nothing deployed"
+    release_status web 5 "✗ client checks failed"; exit 1;
   }
 
   # `flutter pub get` rewrites the generated plugin registrants for linux, macos
@@ -295,6 +405,7 @@ if [ "$CODE_ONLY" != "--code" ]; then
   CLIENT_TESTS=$(echo "$CLIENT_OUT" | grep -oE '\+[0-9]+' | tail -1 | tr -d '+') || true
 
   echo "→ building web"
+  release_status web 40 "building web"
   # Same-origin by default, so the built app talks to whatever host serves it
   # and can never point at the wrong API.
   # No --base-href: the default already is "/", and the app IS the site
@@ -308,6 +419,7 @@ fi
 
 # Stage artifacts first; the receive wrapper activates code before UI under one lock.
 echo "→ pushing code"
+release_status web 70 "pushing code + swapping the UI"
 # Pinning the SHA closes the window where main MOVES. It does not close the
 # window where main is REWRITTEN. If a session amends or rebases published main
 # while this runs, the gated commit can stop being reachable from the branch —
@@ -339,6 +451,7 @@ fi
 # receive-release holds one server flock through the hook and UI activation.
 # Explicit SSH command arguments are restricted above to fixed paths and hex SHA.
 git push --receive-pack="bash $DEPLOY_STAGE/receive-release $GATED_SHA $UI_STAGE" "$PRODUCTION_REPO" "$GATED_SHA":main
+release_status web 90 "live — GitHub push, STATUS numbers, smoke checks"
 # GitHub gets what actually shipped, and only once it has shipped.
 #
 # Until 2026-08-28 every commit in this project existed on one disk. The backup
@@ -433,6 +546,9 @@ refresh "$ROOT/deploy/ezbizi-watch-peer.timer" /etc/systemd/system/ezbizi-watch-
 refresh "$ROOT/deploy/ezbizi-watch-peer-failed.service" /etc/systemd/system/ezbizi-watch-peer-failed.service 0644
 refresh "$ROOT/deploy/ezbizi-transcribe.service" /etc/systemd/system/ezbizi-transcribe.service 0644
 refresh "$ROOT/deploy/ezbizi-transcribe.timer" /etc/systemd/system/ezbizi-transcribe.timer 0644
+refresh "$ROOT/deploy/ezbizi-label.service" /etc/systemd/system/ezbizi-label.service 0644
+refresh "$ROOT/deploy/ezbizi-label.timer" /etc/systemd/system/ezbizi-label.timer 0644
+refresh "$ROOT/deploy/ezbizi-worker-staff.service" /etc/systemd/system/ezbizi-worker-staff.service 0644
 if [ "$updated" -eq 1 ]; then
   sudo systemctl daemon-reload
 else
@@ -534,14 +650,11 @@ if [ "$CODE_ONLY" != "--code" ]; then
   rm -f "$BUNDLE"
 fi
 
-# The marketing site, last, for the same reason the code goes before the UI:
-# www/index.html loads the snippet from app.ezbizi.com, so a site published
-# ahead of the API advertises a URL that is not there yet.
-#
-# Announced rather than fatal. Everything above has already shipped by this
-# point, and a red exit here would say the release failed when the release is
-# live. Re-run it alone with scripts/deploy-www.sh.
-echo "→ publishing the marketing site"
-scripts/deploy-www.sh "$GATED_SHA" || echo "⚠ the SITE did not publish — the app release above is fine. Re-run: scripts/deploy-www.sh" >&2
+# The marketing site is not published from here any more. Since 2026-11-02
+# www.ezbizi.com is WordPress on the websites box, and www/ in this repo no
+# longer goes live. Comparing the live pages with www/ printed a red line on
+# every cut. Edit the WordPress pages instead (see docs/WEBSITE-CLAIMS.md).
+# /download/* is still served from /var/www/www, and release.sh writes it.
 
 echo "✓ done — https://app.ezbizi.com"
+release_status web 100 "✓ done — https://app.ezbizi.com"

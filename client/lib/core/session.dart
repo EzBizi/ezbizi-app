@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'api_client.dart';
+import 'issue_reporter.dart';
 import 'password_policy.dart';
 import 'permissions.dart';
 import 'timestamps.dart';
@@ -65,6 +68,7 @@ class Session extends ChangeNotifier {
     _scopeGeneration++;
     _switchingScope = false;
     _me = null;
+    _keptToken = null;
     _api.setToken(token);
     await refresh();
     if (generation != _identityGeneration) return false;
@@ -75,6 +79,7 @@ class Session extends ChangeNotifier {
     if (signedIn) {
       TokenStore.save(tenant: token, persist: persist);
       TokenStore.dropStaff();
+      _keptToken = persist ? token : null;
     }
 
     return signedIn;
@@ -88,6 +93,7 @@ class Session extends ChangeNotifier {
   /// token means the sign-in screen rather than a broken shell.
   Future<void> restore() async {
     final generation = ++_identityGeneration;
+    _keptToken = null;
     final token = TokenStore.tenantToken;
 
     if (token == null) {
@@ -110,6 +116,19 @@ class Session extends ChangeNotifier {
     // server means a refresh during an outage permanently loses the session.
     if (!signedIn && !_unreachable) {
       TokenStore.clear();
+    }
+
+    // Kept only if it is the copy that survives a restart: on the web a
+    // sessionStorage token ("do not keep me signed in") is restored too, and
+    // must never be promoted to localStorage by _keepToken.
+    if (signedIn) {
+      String? persisted;
+      try {
+        persisted = await TokenStore.persistedTenant();
+      } catch (_) {}
+      if (generation == _identityGeneration && persisted == token) {
+        _keptToken = token;
+      }
     }
 
     _restored = true;
@@ -154,6 +173,7 @@ class Session extends ChangeNotifier {
       // session that ended stops being true here rather than lingering.
       expired = false;
       notifyListeners();
+      unawaited(_keepToken());
       return;
     }
 
@@ -171,6 +191,60 @@ class Session extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  /// Start "View as" (design 205): [body] is {role_id, scope_type, scope_id}
+  /// or {user_id}. Null on success, else the server's sentence.
+  Future<String?> startViewAs(Map<String, dynamic> body) async {
+    final response = await _api.post('/view-as', body);
+    if (!response.ok) return response.reason;
+    await refresh();
+    return null;
+  }
+
+  /// End "View as" and come back as yourself.
+  Future<String?> stopViewAs() async {
+    final response = await _api.delete('/view-as');
+    if (!response.ok) return response.reason;
+    await refresh();
+    return null;
+  }
+
+  /// The token "keep me signed in" put in the keychain, or null when the
+  /// person did not tick it (or nobody is signed in).
+  String? _keptToken;
+  bool _keeping = false;
+
+  /// After a /me that worked: make sure the kept token is still on disk.
+  ///
+  /// 2026-11-16 (TokenStore.keepTenant): the desktop lost it from the
+  /// keychain mid-session and only found out at the next restart, an
+  /// update. Each refresh (60 s in the shell, and on resume) now checks and
+  /// writes it back, and reports that it had to, so whatever removed it
+  /// shows up in Health with its time and breadcrumbs.
+  Future<void> _keepToken() async {
+    final token = _keptToken;
+    if (token == null || _keeping) return;
+    final identity = _identityGeneration;
+    _keeping = true;
+    try {
+      final repaired = await TokenStore.keepTenant(
+        token,
+        stillWanted: () =>
+            identity == _identityGeneration && _keptToken == token,
+      );
+      if (repaired) {
+        IssueReporter.instance.record(
+          'dart_error',
+          'Saved sign-in was missing from this device and was written back',
+          detail:
+              'TokenStore.keepTenant: the keychain no longer held the '
+              'token this session kept with "keep me signed in".',
+        );
+      }
+    } finally {
+      _keeping = false;
+    }
   }
 
   /// The last refresh could not reach the server, as opposed to being refused.
@@ -294,6 +368,7 @@ class Session extends ChangeNotifier {
     readOnlyNotice = null;
     staffToken = null;
     expired = false;
+    _keptToken = null;
     _api.setToken(null);
     TokenStore.clear();
     notifyListeners();
@@ -342,6 +417,7 @@ class Session extends ChangeNotifier {
     staffToken = null;
     _unreachable = false;
     expired = true;
+    _keptToken = null;
     _api.setToken(null);
     TokenStore.clear();
     notifyListeners();
@@ -367,6 +443,36 @@ class Session extends ChangeNotifier {
   }
 }
 
+/// The companies that are switched on: on themselves, under a parent that is
+/// on (Jose, 2026-11-10: a switched-off company does not show up anywhere).
+/// The server's `Company::switchedOn` rule, for lists `/me` already carries.
+List<CompanySummary> switchedOnCompanies(List<CompanySummary> companies) {
+  final byId = {for (final c in companies) c.id: c};
+  bool on(CompanySummary c) {
+    final parent = c.parentCompanyId == null ? null : byId[c.parentCompanyId];
+    return c.isActive && (parent == null || parent.isActive);
+  }
+
+  return companies.where(on).toList();
+}
+
+/// Places that are on, in a company that is not switched off. A company the
+/// list does not name counts as on, as it does on the server.
+List<FranchiseSummary> switchedOnFranchises(
+  List<FranchiseSummary> franchises,
+  List<CompanySummary> companies,
+) {
+  final on = {for (final c in switchedOnCompanies(companies)) c.id};
+  final named = {for (final c in companies) c.id};
+  return franchises
+      .where(
+        (f) =>
+            f.isActive &&
+            (!named.contains(f.companyId) || on.contains(f.companyId)),
+      )
+      .toList();
+}
+
 class Me {
   const Me({
     required this.id,
@@ -388,9 +494,13 @@ class Me {
     required this.franchises,
     required this.onboardingId,
     this.screenMonitoringExempt = false,
+    this.accessVersion,
     this.timeClock = TimeClockStatus.absent,
     this.phoneIncomingPopup = true,
     this.profileMissing = const [],
+    this.viewAsAvailable = false,
+    this.viewingAs,
+    this.mobileBar,
   });
 
   final String id;
@@ -441,6 +551,17 @@ class Me {
   /// somebody with no staff account behind them, whatever the client believes.
   final DevelopmentAccess? development;
 
+  /// "View as" (design 205): may this person open it (an Administrator with
+  /// a platform-staff link and `development.view_as`), and who the app is
+  /// being shown as right now, or null.
+  final bool viewAsAvailable;
+  final ViewingAs? viewingAs;
+
+  /// This person's role's phone bottom bar (design 208): up to four slots,
+  /// a module or one of its tabs, already filtered to what they can reach.
+  /// Null when the role has not chosen; the shell's default fills the rest.
+  final List<MobileBarSlot>? mobileBar;
+
   /// The organization has made a second factor mandatory (§6
   /// `security.require_two_factor`) and this account has not set one up.
   ///
@@ -461,6 +582,11 @@ class Me {
   /// without it the app comes back with saves failing and nothing on
   /// screen saying why.
   final bool emailConfirmationRequired;
+
+  /// One value for everything this person may reach. The shell keys the page
+  /// on it, so a grant or a role change made elsewhere redraws the screen on
+  /// the next /me (Jose, 2026-11-10).
+  final String? accessVersion;
 
   /// The minimum length THIS organization's passwords must reach — the platform
   /// floor, or higher where an administrator has raised it (§6
@@ -508,26 +634,12 @@ class Me {
   /// Where the view switcher may go (Jose, 2026-10-15: "if a company is
   /// switched off, it should not appear on the company picker"): companies
   /// that are on, under a parent that is on.
-  List<CompanySummary> get switchableCompanies {
-    final byId = {for (final c in companies) c.id: c};
-    bool on(CompanySummary c) {
-      final parent = c.parentCompanyId == null ? null : byId[c.parentCompanyId];
-      return c.isActive && (parent == null || parent.isActive);
-    }
-
-    return companies.where(on).toList();
-  }
+  List<CompanySummary> get switchableCompanies =>
+      switchedOnCompanies(companies);
 
   /// Places that are on, in a company that is on and switchable.
-  List<FranchiseSummary> get switchableFranchises {
-    final on = {for (final c in switchableCompanies) c.id};
-    return franchises
-        .where(
-          (f) =>
-              f.isActive && (f.companyId == null || on.contains(f.companyId)),
-        )
-        .toList();
-  }
+  List<FranchiseSummary> get switchableFranchises =>
+      switchedOnFranchises(franchises, companies);
 
   /// Companies the current view covers — the scoped company plus its Sub
   /// Companies, already intersected with [companies] (reach).
@@ -535,31 +647,55 @@ class Me {
   /// `/me` sends every company this person can act on. The switcher then
   /// narrows what they are looking at. A picker that offered the rest would
   /// let somebody standing in A-1 Chimney file a record on Everdoors.
+  ///
+  /// Switched-on only (Jose, 2026-11-10: a switched-off company does not show
+  /// up anywhere). Settings › Organization still lists them; names of records
+  /// already filed on one resolve from [companies].
   List<CompanySummary> get companiesInView {
     final scope = this.scope;
-    if (scope.type == 'organization') return companies;
+    final on = switchableCompanies;
+    if (scope.type == 'organization') return on;
     if (scope.type == 'franchise') {
       final place = franchises.where((f) => f.id == scope.id).firstOrNull;
       if (place == null) return const [];
-      return companies.where((c) => c.id == place.companyId).toList();
+      return on.where((c) => c.id == place.companyId).toList();
     }
     final rootId = scope.id;
     if (rootId == null) return const [];
-    return companies.where((c) => _inCompanySubtree(c, rootId)).toList();
+    return on.where((c) => _inCompanySubtree(c, rootId)).toList();
   }
 
   /// Franchises the current view covers. Organization: every reachable
   /// franchise. Company: that company and its Sub Companies. Franchise: that
-  /// one branch.
+  /// one branch. Switched-on only, like [companiesInView].
   List<FranchiseSummary> get franchisesInView {
     final scope = this.scope;
-    if (scope.type == 'organization') return franchises;
+    final on = switchableFranchises;
+    if (scope.type == 'organization') return on;
     if (scope.type == 'franchise') {
-      return franchises.where((f) => f.id == scope.id).toList();
+      return on.where((f) => f.id == scope.id).toList();
     }
     final ids = {for (final c in companiesInView) c.id};
-    return franchises.where((f) => ids.contains(f.companyId)).toList();
+    return on.where((f) => ids.contains(f.companyId)).toList();
   }
+
+  /// [offered] plus the company [id] names, from reach, when it is not among
+  /// them: a switched-off company is not offered, but a record already filed
+  /// on one still shows where it is.
+  List<CompanySummary> companiesKeeping(
+    List<CompanySummary> offered,
+    String? id,
+  ) => id == null || offered.any((c) => c.id == id)
+      ? offered
+      : [...offered, ...companies.where((c) => c.id == id)];
+
+  /// [companiesKeeping] for places.
+  List<FranchiseSummary> franchisesKeeping(
+    List<FranchiseSummary> offered,
+    String? id,
+  ) => id == null || offered.any((f) => f.id == id)
+      ? offered
+      : [...offered, ...franchises.where((f) => f.id == id)];
 
   /// Franchises of one company, still inside the current view.
   List<FranchiseSummary> franchisesOf(String? companyId) {
@@ -804,9 +940,13 @@ class Me {
     franchises: franchises,
     onboardingId: onboardingId,
     screenMonitoringExempt: screenMonitoringExempt,
+    accessVersion: accessVersion,
     phoneIncomingPopup: phoneIncomingPopup,
     timeClock: timeClock,
     profileMissing: profileMissing,
+    viewAsAvailable: viewAsAvailable,
+    viewingAs: viewingAs,
+    mobileBar: mobileBar,
   );
 
   /// A copy with the punch-clock chrome replaced after a successful POST.
@@ -830,20 +970,36 @@ class Me {
     franchises: franchises,
     onboardingId: onboardingId,
     screenMonitoringExempt: screenMonitoringExempt,
+    accessVersion: accessVersion,
     phoneIncomingPopup: phoneIncomingPopup,
     timeClock: timeClock,
     profileMissing: profileMissing,
+    viewAsAvailable: viewAsAvailable,
+    viewingAs: viewingAs,
+    mobileBar: mobileBar,
   );
 
-  /// Never null and never unknown — an unrecognised stored value falls back to
-  /// following the device rather than leaving the app with no theme at all.
+  /// Never null and never unknown. There is no "match my device" any more
+  /// (Jose 11-24: "just leave dark and light mode"): an old `system`, or no
+  /// choice yet, reads as whatever the device shows now, and [themeChosen]
+  /// tells the shell to save that once so it stays put.
   String get theme => switch (preferences['appearance.theme']) {
     'light' => 'light',
     'dark' => 'dark',
     'mixed_dark_nav' => 'mixed_dark_nav',
     'mixed_light_nav' => 'mixed_light_nav',
-    _ => 'system',
+    _ =>
+      PlatformDispatcher.instance.platformBrightness == Brightness.dark
+          ? 'dark'
+          : 'light',
   };
+
+  bool get themeChosen => const {
+    'light',
+    'dark',
+    'mixed_dark_nav',
+    'mixed_light_nav',
+  }.contains(preferences['appearance.theme']);
 
   String get navigationStyle =>
       preferences['navigation.style'] == 'blocks' ? 'blocks' : 'list';
@@ -858,12 +1014,27 @@ class Me {
 
   /// The companies this person hears from; empty means all of them. Each
   /// covers its sub companies and branches (Bar, 2026-10-22).
+  /// Modules whose notifications collect in the bell without alerting.
+  List<String> get notificationMutedModules =>
+      (preferences['notifications.muted_modules'] as List? ?? const []).whereType<String>().toList();
+
   List<String> get notificationCompanies =>
-      (preferences['notifications.companies'] as List? ?? const []).whereType<String>().toList();
+      (preferences['notifications.companies'] as List? ?? const [])
+          .whereType<String>()
+          .toList();
 
   /// How wide the expanded sidebar is. Clamped on read as well as on write:
   /// a stored value from an older build, or one the server has since tightened
   /// the bounds on, must not be able to render an unusable shell.
+  /// The desktop apps' zoom as a factor (1.0 = 100%); the server bounds it
+  /// to 50–200% and this clamps again, for a value from an older build.
+  double get zoom {
+    final stored = preferences['appearance.zoom'];
+    final value = stored is num ? stored.toDouble() : 100.0;
+
+    return value.clamp(50.0, 200.0) / 100;
+  }
+
   double get navigationWidth {
     final stored = preferences['navigation.width'];
     final value = stored is num ? stored.toDouble() : 220.0;
@@ -890,6 +1061,10 @@ class Me {
   bool get phoneCustomerPanelPinned =>
       preferences['phone.customer_panel_pinned'] == true;
 
+  /// Whether report tables keep their headings on screen while their rows
+  /// scroll. On unless switched off (Jose, 2026-11-16).
+  bool get reportHeadingsPinned => preferences['reports.pin_headings'] != false;
+
   /// The two pane widths on Web Management → Widgets.
   ///
   /// Clamped on read for the same reason [navigationWidth] is: a value stored
@@ -906,8 +1081,26 @@ class Me {
   /// Records. Preferences, so leaving the tab does not reset them.
   double get leadsListShare => _width('leads.list_percent', 30, 15, 70) / 100;
 
+  /// Chat's list pane, dragged on its divider (Chat, 2026-11-25).
+  double get chatListWidth => _width('chat.list_width', 400, 300, 640);
+
   double get hrRecordsListWidth =>
       _width('hr.records.list_width', 300, 240, 900);
+
+  /// The columns this person dragged on the ListTable called [list]:
+  /// index => pixels, for ListTable.widths. Save with
+  /// setPreference('lists.column_widths', {...all, '$list:$i': px}).
+  Map<int, double> listColumnWidths(String list) => {
+    // An empty PHP array arrives as [] — not a Map (PM grey screen, 11-11).
+    for (final e
+        in (preferences['lists.column_widths'] is Map
+                ? preferences['lists.column_widths'] as Map
+                : const {})
+            .entries)
+      if ('${e.key}'.startsWith('$list:') && e.value is num)
+        int.parse('${e.key}'.substring(list.length + 1)): (e.value as num)
+            .toDouble(),
+  };
 
   double _width(String key, double fallback, double min, double max) {
     final stored = preferences[key];
@@ -940,6 +1133,7 @@ class Me {
           ),
     twoFactorEnrolmentRequired: json['two_factor_enrolment_required'] == true,
     emailConfirmationRequired: json['email_confirmation_required'] == true,
+    accessVersion: json['access_version'] as String?,
     // Falls back to the compiled floor rather than to zero. A server that
     // does not send this is an older one, and its own minimum is the floor —
     // asking for nothing would be a form that promises to accept `a`.
@@ -968,7 +1162,49 @@ class Me {
         (json['display'] as Map<String, dynamic>?)?['phone.incoming_popup'] !=
         false,
     timeClock: TimeClockStatus.fromJson(json['time_clock']),
+    viewAsAvailable: json['view_as_available'] == true,
+    viewingAs: ViewingAs.from(json['viewing_as']),
+    mobileBar: json['mobile_bar'] is List
+        ? [
+            for (final m in json['mobile_bar'] as List)
+              if (m is Map && m['module'] is String)
+                MobileBarSlot(
+                  '${m['module']}',
+                  m['tab'] is String ? m['tab'] as String : null,
+                  '${m['label'] ?? ''}',
+                ),
+          ]
+        : null,
   );
+}
+
+/// `/me.viewing_as`: the role or person the app is being shown as.
+/// One slot of the phone's bottom bar: a module, or one of its tabs.
+class MobileBarSlot {
+  const MobileBarSlot(this.module, this.tab, this.label);
+
+  final String module;
+  final String? tab;
+  final String label;
+}
+
+class ViewingAs {
+  const ViewingAs({required this.kind, required this.label, this.expiresAt});
+
+  /// 'role' or 'person'.
+  final String kind;
+
+  /// "Nick Frias" or "Local Manager at Texas".
+  final String label;
+  final DateTime? expiresAt;
+
+  static ViewingAs? from(dynamic json) => json is Map
+      ? ViewingAs(
+          kind: '${json['kind'] ?? 'person'}',
+          label: '${json['label'] ?? ''}',
+          expiresAt: DateTime.tryParse('${json['expires_at'] ?? ''}'),
+        )
+      : null;
 }
 
 /// `/me`'s `time_clock` block — whether the chrome draws Clock in / Clock out.

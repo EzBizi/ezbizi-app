@@ -3,6 +3,7 @@
 namespace App\Support\Notifications;
 
 use App\Models\DeviceToken;
+use App\Support\Jwt;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -26,16 +27,13 @@ use Throwable;
  * OpenSSL and one POST already do. The FCM v1 API is a JSON endpoint with an
  * OAuth bearer token; nothing about it is easier through a wrapper.
  *
- * ── The duplication in here, named rather than hidden ────────────
+ * ── The assertion is signed by Jwt, beside Workspace's ─────────
  *
- * `GoogleWorkspace::signJwt` already signs a service-account assertion, and
- * this signs a second one. They are not the same request: Workspace uses
- * domain-wide delegation and carries a `sub` claim impersonating a mailbox
- * owner, and this is a plain service-account grant with no subject at all. The
- * shared part is about fifteen lines of RFC 7519, and extracting it would mean
- * refactoring an eight-hundred-line file another module owns, in a shared tree,
- * to save them. If a third caller ever appears that is the moment to lift all
- * three out together — two is not yet a pattern.
+ * `GoogleWorkspace` signs a service-account assertion too. They are not the
+ * same request: Workspace uses domain-wide delegation and carries a `sub`
+ * claim impersonating a mailbox owner, and this is a plain service-account
+ * grant with no subject at all. Only the RFC 7519 signing is shared
+ * (App\Support\Jwt); each keeps its own claims, POST and refusal.
  */
 class PushSender
 {
@@ -278,13 +276,15 @@ class PushSender
 
             $now = time();
 
-            $assertion = $this->signJwt([
+            $assertion = Jwt::signRs256([
                 'iss' => $credentials['client_email'],
                 'aud' => self::TOKEN_ENDPOINT,
                 'scope' => self::SCOPE,
                 'iat' => $now,
                 'exp' => $now + 3600,
-            ], $credentials['private_key']);
+            ], $credentials['private_key'], 'EzBizi could not sign a push request. The FCM service account private key is '
+                .'present but unusable — most often a key that lost its line breaks on its way '
+                .'into the environment.');
 
             $response = Http::timeout(self::TIMEOUT)->asForm()->post(self::TOKEN_ENDPOINT, [
                 'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
@@ -305,29 +305,6 @@ class PushSender
         });
     }
 
-    private function signJwt(array $claims, string $privateKey): string
-    {
-        $header = $this->base64Url(json_encode(['alg' => 'RS256', 'typ' => 'JWT'], JSON_THROW_ON_ERROR));
-        $body = $this->base64Url(json_encode($claims, JSON_THROW_ON_ERROR));
-        $signing = $header.'.'.$body;
-        $signature = '';
-
-        if (openssl_sign($signing, $signature, $privateKey, OPENSSL_ALGO_SHA256) !== true || $signature === '') {
-            throw new RuntimeException(
-                'EzBizi could not sign a push request. The FCM service account private key is '
-                .'present but unusable — most often a key that lost its line breaks on its way '
-                .'into the environment.'
-            );
-        }
-
-        return $signing.'.'.$this->base64Url($signature);
-    }
-
-    private function base64Url(string $value): string
-    {
-        return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
-    }
-
     private function projectId(): ?string
     {
         $id = config('services.fcm.project_id');
@@ -340,7 +317,7 @@ class PushSender
      *
      * A PATH rather than the JSON inlined into the environment, because the
      * private key inside it is multi-line and a .env carrying one is how a key
-     * arrives with its newlines eaten — the failure signJwt's message names.
+     * arrives with its newlines eaten — the failure the signing refusal above names.
      *
      * @return array{client_email: string, private_key: string}|null
      */

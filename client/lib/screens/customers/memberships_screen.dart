@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/module_page_header.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../customers_screen.dart';
 import 'memberships_dashboard.dart';
 import 'memberships_members.dart';
+import 'memberships_promotions.dart';
 import 'memberships_settings.dart';
 
 /// Customers with its Memberships pane beside it (Jose, 2026-10-05).
@@ -35,8 +37,14 @@ class _CustomersWithMembershipsState extends State<CustomersWithMemberships> {
   @override
   Widget build(BuildContext context) {
     final customers = CustomersScreen(api: widget.api, session: widget.session);
-    if (!(widget.session.me?.can('memberships.view') ?? false)) {
+    final me = widget.session.me;
+    if (!(me?.reaches('memberships') ?? false)) {
       return customers;
+    }
+    // Here through Memberships alone (roles audit 2026-11-24): the sidebar
+    // draws Customers for a reachable child, and the customer list refused.
+    if (!(me?.reaches('customers') ?? false)) {
+      return MembershipsScreen(api: widget.api, session: widget.session);
     }
 
     return Column(
@@ -64,12 +72,23 @@ class _CustomersWithMembershipsState extends State<CustomersWithMemberships> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Offstage(offstage: _tab != 0, child: customers),
+              // Gated: offstage, Customers still handed "Add customer" to the
+              // header over Memberships (UI pass 2026-11-17).
+              Offstage(
+                offstage: _tab != 0,
+                child: ModuleActionGate(active: _tab == 0, child: customers),
+              ),
               Offstage(
                 offstage: _tab != 1,
-                child: _membershipsOpened
-                    ? MembershipsScreen(api: widget.api, session: widget.session)
-                    : const SizedBox.shrink(),
+                child: ModuleActionGate(
+                  active: _tab == 1,
+                  child: _membershipsOpened
+                      ? MembershipsScreen(
+                          api: widget.api,
+                          session: widget.session,
+                        )
+                      : const SizedBox.shrink(),
+                ),
               ),
             ],
           ),
@@ -103,6 +122,8 @@ class _MembershipsScreenState extends State<MembershipsScreen> {
       ('members', 'Members', Icons.groups_outlined),
     if (_may('memberships.settings.view'))
       ('settings', 'Settings', Icons.tune),
+    if (_may('memberships.promotions.view'))
+      ('promotions', 'Promotions', Icons.campaign_outlined),
   ];
 
   @override
@@ -155,6 +176,10 @@ class _MembershipsScreenState extends State<MembershipsScreen> {
                 session: widget.session,
               ),
               'members' => MembershipsMembers(
+                api: widget.api,
+                session: widget.session,
+              ),
+              'promotions' => MembershipsPromotions(
                 api: widget.api,
                 session: widget.session,
               ),

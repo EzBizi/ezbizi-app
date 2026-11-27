@@ -7,12 +7,15 @@ use App\Models\EmploymentEvent;
 use App\Models\Invitation;
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
+use App\Models\PersonCertification;
 use App\Models\TimeClockDay;
 use App\Models\TimeClockShift;
 use App\Models\User;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Widgets\Hr\ScopesToPlaces;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use App\Support\Training\LapsedPasses;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -35,10 +38,6 @@ final class HrOverview
 
     private const LIST_CAP = 200;
 
-    private const EXPIRING_DAYS = 60;
-
-    /** An invitation unopened this long reads as stalled (InvitationsStalled's default). */
-    private const QUIET_DAYS = 3;
 
     public function for(User $viewer, DashboardPeriod $period): array
     {
@@ -75,9 +74,9 @@ final class HrOverview
             'to' => $to,
 
             'on_the_books' => [
-                'total' => $people()->count(),
+                'total' => $people()->removed(false)->count(),
                 'active' => $people()->where('users.is_active', true)->count(),
-                'inactive' => $people()->where('users.is_active', false)->count(),
+                'inactive' => $people()->where('users.is_active', false)->removed(false)->count(),
             ],
 
             'joined' => [
@@ -192,7 +191,7 @@ final class HrOverview
 
     private function stalledInvitations(array $places): Collection
     {
-        $quietBefore = now()->subDays(self::QUIET_DAYS);
+        $quietBefore = now()->subDays((int) app(SettingsResolver::class)->get('hr.alerts.quiet_days', app(TenantContext::class)->get()));
 
         return $this->constrainToPlaces(
             Invitation::query()->whereNull('accepted_at')->whereNull('revoked_at'),
@@ -213,7 +212,7 @@ final class HrOverview
     /** The expiry questions on contracts (ExpiringCertifications' rule): lapsed, or due within 60 days. */
     private function certifications(array $places, string $today): Collection
     {
-        $until = Carbon::parse($today)->addDays(self::EXPIRING_DAYS)->toDateString();
+        $until = Carbon::parse($today)->addDays((int) app(SettingsResolver::class)->get('hr.alerts.expiring_days', app(TenantContext::class)->get()))->toDateString();
         $rows = collect();
 
         $onboardings = Onboarding::query()->with(['contractVersion', 'user:id,name'])
@@ -224,15 +223,23 @@ final class HrOverview
                 }
             })->get();
 
+        // Every expiry answer in one query rather than one per onboarding
+        // (full-code audit, 2026-11-27).
+        $expiryKeys = $onboardings->mapWithKeys(fn ($o) => [$o->getKey() => collect($o->contractVersion?->fieldSet()->fields ?? [])
+            ->filter(fn ($f) => $f instanceof FieldDefinition && $f->isExpiry)->keyBy('key')]);
+        $allAnswers = OnboardingAnswer::query()
+            ->whereIn('onboarding_id', $expiryKeys->filter(fn ($e) => $e->isNotEmpty())->keys())
+            ->whereIn('field_key', $expiryKeys->flatMap(fn ($e) => $e->keys())->unique()->values())
+            ->get()->groupBy('onboarding_id');
+
         foreach ($onboardings as $onboarding) {
-            $expiries = collect($onboarding->contractVersion?->fieldSet()->fields ?? [])
-                ->filter(fn ($f) => $f instanceof FieldDefinition && $f->isExpiry)->keyBy('key');
+            $expiries = $expiryKeys[$onboarding->getKey()];
             if ($expiries->isEmpty()) {
                 continue;
             }
 
-            $answers = OnboardingAnswer::query()->where('onboarding_id', $onboarding->getKey())
-                ->whereIn('field_key', $expiries->keys())->get();
+            $answers = ($allAnswers[$onboarding->getKey()] ?? collect())
+                ->filter(fn ($a) => $expiries->has($a->field_key));
 
             foreach ($answers as $answer) {
                 try {
@@ -251,6 +258,22 @@ final class HrOverview
                     'date' => $date,
                 ]);
             }
+        }
+
+        // Certifications recorded on the person (Jose, 2026-11-20).
+        $held = PersonCertification::query()->with('user:id,name')
+            ->whereIn('user_id', $this->inView($places)->select('users.id'))
+            ->whereNotNull('expires_on')->whereDate('expires_on', '<=', $until)
+            ->whereDate('expires_on', '>=', Carbon::parse($today)->subYear()->toDateString())->get();
+        foreach ($held as $c) {
+            $date = $c->expires_on->toDateString();
+            $rows->push([
+                'user_id' => $c->user_id,
+                'name' => $c->user?->name ?? 'Somebody',
+                'certification' => $c->name,
+                'state' => $date < $today ? 'lapsed' : 'expiring',
+                'date' => $date,
+            ]);
         }
 
         return $rows->sortBy('date')->values();

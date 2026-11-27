@@ -472,7 +472,7 @@ final class PdfRenderer
         string $sourceFingerprint,
         string $sourceAlgorithm,
     ): string {
-        $organization = $this->e($organizationName);
+        $organization = e($organizationName);
 
         // Presentation only. This box cannot be made to survive a hostile
         // stylesheet and no attempt is made here to pretend otherwise — see the
@@ -490,11 +490,11 @@ final class PdfRenderer
                 .'one held by '.$organization.', and this PDF was made from it — it is not '
                 .'itself the thing that was agreed to. Where the two ever disagree, the signed '
                 .'document is the one that counts.</div>'
-            .'<div style="'.$line.'"><b>Document:</b> '.$this->e($contractName)
+            .'<div style="'.$line.'"><b>Document:</b> '.e($contractName)
                 .' — version '.$version.', revision '.$revision.'</div>'
             .'<div style="'.$line.'"><b>Fingerprint of the signed document ('
-                .$this->e($sourceAlgorithm).'):</b></div>'
-            .'<div style="'.$mono.'">'.$this->e($sourceFingerprint).'</div>'
+                .e($sourceAlgorithm).'):</b></div>'
+            .'<div style="'.$mono.'">'.e($sourceFingerprint).'</div>'
             .'<div style="margin:0">This copy has a fingerprint of its own. It was recorded '
                 .'against whoever downloaded it, in '.$organization.'\'s audit log, which is '
                 .'what ties a PDF somebody has in their hands back to the document above.</div>'
@@ -627,10 +627,5 @@ final class PdfRenderer
         $ascii = mb_convert_encoding($latin1, 'UTF-8', 'ISO-8859-1');
 
         return mb_strlen($ascii) > 48 ? mb_substr($ascii, 0, 47).'-' : ($ascii ?: 'Contract');
-    }
-
-    private function e(string $value): string
-    {
-        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 }

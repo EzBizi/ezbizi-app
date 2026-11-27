@@ -29,6 +29,9 @@ class TimeClockDayApproval extends Model implements HoldsPersonalData
 
     public const APPROVED = 'approved';
 
+    /** A no-show the approver excused (day off, sick): nothing to pay. */
+    public const EXCUSED = 'excused';
+
     public static function personalDataPurpose(): string
     {
         return 'Whether a manager approved this person\'s clock-ins for one day, and who.';

@@ -3,6 +3,7 @@
 namespace App\Support\Notifications;
 
 use App\Models\DeviceToken;
+use App\Support\Jwt;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -120,7 +121,7 @@ class ApnsSender
                 ->withOptions(['version' => 2.0])
                 ->withHeaders([
                     'authorization' => 'bearer '.$jwt,
-                    'apns-topic' => $this->settings()['topic'],
+                    'apns-topic' => $this->topicFor($device),
                     'apns-push-type' => 'alert',
                     'apns-priority' => '10',
                 ])
@@ -143,6 +144,15 @@ class ApnsSender
         }
 
         if ($response->successful()) {
+            // Recorded because a 200 is Apple's acceptance, not the phone
+            // showing it (2026-11-24: Jose saw nothing for pushes Apple took).
+            // The apns-id is what Apple's own delivery log is searched by.
+            Log::info('Push accepted by APNs.', [
+                'device_token_id' => $device->getKey(),
+                'user_id' => $device->user_id,
+                'apns_id' => $response->header('apns-id'),
+            ]);
+
             return true;
         }
 
@@ -202,17 +212,17 @@ class ApnsSender
                 throw new RuntimeException('No APNs key is configured.');
             }
 
-            $header = $this->base64Url(json_encode(
+            $header = Jwt::base64Url(json_encode(
                 ['alg' => 'ES256', 'kid' => $settings['key_id'], 'typ' => 'JWT'],
                 JSON_THROW_ON_ERROR,
             ));
 
-            $claims = $this->base64Url(json_encode(
+            $claims = Jwt::base64Url(json_encode(
                 ['iss' => $settings['team_id'], 'iat' => time()],
                 JSON_THROW_ON_ERROR,
             ));
 
-            return $header.'.'.$claims.'.'.$this->base64Url(
+            return $header.'.'.$claims.'.'.Jwt::base64Url(
                 $this->joseSignature($header.'.'.$claims, $settings['key'])
             );
         });
@@ -261,14 +271,21 @@ class ApnsSender
         return str_pad($r, 32, "\x00", STR_PAD_LEFT).str_pad($s, 32, "\x00", STR_PAD_LEFT);
     }
 
+    /**
+     * The bundle id the token was minted for: EzBizi's, or EzChat's. One team
+     * key signs for both; a token sent with the other app's topic is refused
+     * with DeviceTokenNotForTopic.
+     */
+    private function topicFor(DeviceToken $device): string
+    {
+        return $device->app === 'ezchat'
+            ? (string) config('services.apns.ezchat_topic', 'com.ezbizi.ezchat')
+            : (string) $this->settings()['topic'];
+    }
+
     private function endpoint(): string
     {
         return config('services.apns.production') ? self::PRODUCTION : self::SANDBOX;
-    }
-
-    private function base64Url(string $value): string
-    {
-        return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
     }
 
     /**

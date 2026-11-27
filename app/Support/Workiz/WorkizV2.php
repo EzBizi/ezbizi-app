@@ -143,6 +143,8 @@ final class WorkizV2
                 'Name' => $file['name'] ?? null,
                 'Url' => $file['fileUrl'] ?? null,
             ], array_filter((array) $job['attachments'], 'is_array')));
+            // Which version of the job its files were read at (ReadWorkizJobFiles).
+            $payload['AttachmentsReadAt'] = $job['utcUpdatedAt'] ?? null;
         }
 
         return $payload;

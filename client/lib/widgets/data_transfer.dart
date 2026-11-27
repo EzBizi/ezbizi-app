@@ -59,6 +59,8 @@ class DataTransfer extends StatefulWidget {
     required this.session,
     required this.resource,
     this.onImported,
+    this.menu = false,
+    this.extra = const [],
   });
 
   final ApiClient api;
@@ -71,6 +73,13 @@ class DataTransfer extends StatefulWidget {
   /// Called after an import commits, so the list behind this can refetch.
   /// Null for a resource that cannot be imported.
   final VoidCallback? onImported;
+
+  /// A phone's list header (design 195): one ⋯ holding [extra], Import and
+  /// Export, instead of a row of buttons above the list.
+  final bool menu;
+
+  /// The screen's own rarely-used actions, first in the ⋯ when [menu].
+  final List<Widget> extra;
 
   @override
   State<DataTransfer> createState() => _DataTransferState();
@@ -139,6 +148,8 @@ class _DataTransferState extends State<DataTransfer> {
   Widget build(BuildContext context) {
     final entry = _resource;
 
+    if (widget.menu) return _menu(entry);
+
     // Either the answer has not arrived, or this person may not read this
     // resource in bulk. Both are "no controls", and neither is worth a sentence
     // in a header — the second is the same answer the tab itself would give.
@@ -184,6 +195,51 @@ class _DataTransferState extends State<DataTransfer> {
           ),
         ),
       ],
+    );
+  }
+
+  /// The same two controls as menu rows, after the screen's [extra]. A
+  /// refused one stays, disabled, with the server's sentence as its tooltip.
+  Widget _menu(Map<String, dynamic>? entry) {
+    final label = (entry?['label'] as String?)?.toLowerCase() ?? '';
+    final importable = entry?['importable'] as bool? ?? false;
+    final importPermission = entry?['import_permission'] as String?;
+    final refusedImport = importable && importPermission != null
+        ? widget.session.me!.refusal(importPermission, 'import $label')
+        : null;
+    final refusedExport = entry?['export_refusal'] as String?;
+
+    Widget item(String key, IconData icon, String text, String? refused,
+        VoidCallback onTap) {
+      final row = MenuItemButton(
+        key: ValueKey(key),
+        leadingIcon: Icon(icon, size: 18),
+        onPressed: (_busy || refused != null) ? null : onTap,
+        child: Text(text),
+      );
+      return refused == null ? row : Tooltip(message: refused, child: row);
+    }
+
+    final children = [
+      ...widget.extra,
+      if (entry != null && importable)
+        item('data-transfer-import', Icons.upload_outlined, 'Import',
+            refusedImport, _openImport),
+      if (entry != null)
+        item('data-transfer-export', Icons.download_outlined,
+            _busy ? 'Exporting…' : 'Export', refusedExport, _export),
+    ];
+    if (children.isEmpty) return const SizedBox.shrink();
+
+    return MenuAnchor(
+      menuChildren: children,
+      builder: (context, controller, _) => IconButton(
+        key: const ValueKey('data-transfer-more'),
+        tooltip: 'More',
+        icon: const Icon(Icons.more_horiz),
+        onPressed: () =>
+            controller.isOpen ? controller.close() : controller.open(),
+      ),
     );
   }
 

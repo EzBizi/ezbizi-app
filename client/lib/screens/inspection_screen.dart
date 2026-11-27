@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_window.dart';
+import '../core/deep_links.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'customer_experience/review_qr_panel.dart';
 import 'inspection/builder_tab.dart';
 import 'inspection/new_tab.dart';
 import 'inspection/reports_tab.dart';
@@ -34,7 +37,28 @@ class _InspectionScreenState extends State<InspectionScreen> {
   void initState() {
     super.initState();
     _tab = 0;
+    _takeTab();
+    DeepLinks.pending.addListener(_tabArrived);
   }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_tabArrived);
+    super.dispose();
+  }
+
+  /// A phone bottom-bar slot (design 208): these tabs are known by their
+  /// words, so the slot's label finds it.
+  void _takeTab() {
+    if (DeepLinks.pending.value case final l?
+        when l.module == 'inspection' && l.type == 'tab') {
+      DeepLinks.take('inspection');
+      final at = _tabs.indexWhere((t) => t.$1 == l.label);
+      if (at >= 0) _tab = at;
+    }
+  }
+
+  void _tabArrived() => setState(_takeTab);
 
   /// Owner's order, filtered by TWO rules that are not the same rule.
   ///
@@ -79,6 +103,11 @@ class _InspectionScreenState extends State<InspectionScreen> {
           Icons.science_outlined,
           () => TestingTab(api: widget.api, session: widget.session),
         ),
+      // Jose 11-23: Review QR here too, on New Inspection's tab and Create
+      // (the registry names `new.view`). Jose 11-24: a ticked tab shows; the
+      // POST needs no Reviews grant, so none is asked for here.
+      if (_mayOpen('new') && can('inspection.create'))
+        ('Review QR', Icons.qr_code_2, () => ReviewQrPanel(api: widget.api)),
     ];
   }
 
@@ -103,13 +132,19 @@ class _InspectionScreenState extends State<InspectionScreen> {
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
             key: const ValueKey('tour-inspection-tabs'),
+            windowPaths: [
+              for (final tab in tabs)
+                AppWindow.pathFor('inspection', tab: tab.$1, label: tab.$1),
+            ],
             labels: [for (final tab in tabs) (tab.$1, tab.$2)],
             selected: selected,
             onSelected: (tab) => setState(() => _tab = tab),
           ),
         ),
         const Divider(height: 1),
-        Expanded(child: tabs.isEmpty ? const SizedBox.shrink() : tabs[selected].$3()),
+        Expanded(
+          child: tabs.isEmpty ? const SizedBox.shrink() : tabs[selected].$3(),
+        ),
       ],
     );
   }

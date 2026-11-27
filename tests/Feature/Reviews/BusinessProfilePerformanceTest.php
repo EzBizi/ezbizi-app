@@ -87,6 +87,15 @@ class BusinessProfilePerformanceTest extends TestCase
         $this->assertSame(0, $mine['by_location'][1]['CALL_CLICKS']);
     }
 
+    public function test_each_listing_is_named_with_its_city_so_same_titled_listings_differ(): void
+    {
+        // Desktop review 2026-11-13, Top 4: 39 listings all read "A1 Chimney".
+        BusinessLocation::withoutGlobalScopes()->where('title', 'North')->update(['city' => 'Alexandria', 'state' => 'VA']);
+
+        $data = $this->signedInAs($this->t['admin'])->getJson('/api/v1/business-profile/performance')->assertOk()->json('data');
+        $this->assertContains('North · Alexandria, VA', array_column($data['by_location'], 'name'));
+    }
+
     public function test_search_terms_are_read_live_and_ranked(): void
     {
         $terms = $this->signedInAs($this->t['admin'])->getJson("/api/v1/business-profile/locations/{$this->mine->id}/search-terms")

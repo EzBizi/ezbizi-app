@@ -209,6 +209,21 @@ void main() {
     expect(colour('used', '0'), scheme.outline);
   });
 
+  // The unfolded Duo: the tab is 640 wide, the person's panel beside the
+  // list ~290. Four tiles in a row broke "Expired" and the dates mid-word;
+  // the panel's own width puts them two by two.
+  testWidgets('a narrow panel beside the list puts the tiles two by two', (
+    tester,
+  ) async {
+    await _pump(tester, _body(), width: 640);
+    expect(tester.takeException(), isNull);
+    final tops = {
+      for (final k in ['total', 'used', 'left', 'expired'])
+        tester.getTopLeft(find.byKey(Key('pto-tile-$k'))).dy,
+    };
+    expect(tops, hasLength(2), reason: 'Two rows in a narrow panel.');
+  });
+
   testWidgets('"When they can be used", and no "you" in the card for any '
       'state', (tester) async {
     await _pump(tester, _body(), width: 1200);
@@ -616,6 +631,10 @@ void main() {
     await tester.tap(find.text('Dana Reyes'));
     await tester.pumpAndSettle();
 
+    // Two taps: the first only arms it (full-code audit, 2026-11-27).
+    await tester.tap(find.byKey(const Key('pto-remove-d-1')));
+    await tester.pumpAndSettle();
+    expect(requests.where((r) => r.method == 'DELETE'), isEmpty);
     await tester.tap(find.byKey(const Key('pto-remove-d-1')));
     await tester.pumpAndSettle();
 

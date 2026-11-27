@@ -58,6 +58,18 @@ class WhatsAppGroupsApiTest extends TestCase
             ->assertJsonMissing(['id' => $stranger->id]);
     }
 
+    /** Jose, 2026-11-04: every business value editable - the purpose names come from settings. */
+    public function test_purpose_names_are_the_orgs_setting(): void
+    {
+        $this->inTenant($this->t['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)
+            ->set('ai_assistance.group_purposes', $this->t['org'], ['dispatch' => 'Dispatch desk']));
+
+        $this->signedInAs($this->t['admin'])->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->assertJsonFragment(['key' => 'dispatch', 'label' => 'Dispatch desk'])
+            ->assertJsonMissing(['key' => 'messages']);
+    }
+
     public function test_reading_and_changing_groups_needs_manage(): void
     {
         $reader = $this->userWithRole($this->t, 'Reader', ['ai_assistance.view', 'ai_assistance.ai.view']);

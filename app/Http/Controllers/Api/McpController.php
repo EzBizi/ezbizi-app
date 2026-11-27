@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Route as RouteObject;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route;
 use Throwable;
 
@@ -83,7 +84,7 @@ class McpController
             'instructions' => 'EzBizi is a field-service CRM (leads, customers, jobs, scheduling, '
                 .'inventory, fleet, HR, phone, marketing, automations, reports). You act as the person '
                 .'who owns the API key, with exactly their permissions. Find an endpoint with '
-                .'list_endpoints, then call it with call_api. Start with GET me to see who you are, '
+                .'list_endpoints, then call it with call_api. Start with GET me to see who you are, the exact permissions you hold, '
                 .'which companies you can reach, and which modules are switched on.',
         ];
     }
@@ -141,10 +142,7 @@ class McpController
 
     private function endpoints(string $search): string
     {
-        $lines = collect(Route::getRoutes()->getRoutes())
-            ->filter(fn (RouteObject $route) => in_array('tenant', $route->gatherMiddleware(), true)
-                && str_starts_with($route->uri(), 'api/v1/')
-                && $this->allowed(substr($route->uri(), 7)))
+        $lines = self::routes()
             ->map(fn (RouteObject $route) => sprintf(
                 '%s %s  (%s)',
                 implode('|', array_diff($route->methods(), ['HEAD'])),
@@ -166,7 +164,7 @@ class McpController
         if (! in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)
             || ! preg_match('#^[A-Za-z0-9_\-./]+$#', $path)
             || str_contains($path, '..')
-            || ! $this->allowed($path)) {
+            || ! self::allowed($path)) {
             return $this->text("Refused: {$method} {$path} is not reachable through MCP.", isError: true);
         }
 
@@ -184,6 +182,14 @@ class McpController
 
         $status = $response->getStatusCode();
         $result = ['status' => $status] + $this->shape((string) $response->getContent(), $args);
+
+        // A refusal for want of a permission is the ROLE's answer, not the key's
+        // (Rodrigo, 2026-11-17: a write key looked broken where his role lacked
+        // Ads view). Say where the ceiling is and how it moves.
+        if ($status === 403 && ! str_starts_with((string) ($result['body']['code'] ?? ''), 'api_key_')) {
+            $result['hint'] = "Refused by the role, not the key: a key can never do more than its owner's role. "
+                .'GET me lists `permissions` held; an administrator grants more in Roles & permissions.';
+        }
 
         return $this->text($this->json($result), isError: $status >= 400);
     }
@@ -263,7 +269,17 @@ class McpController
         return (string) json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
-    private function allowed(string $path): bool
+    /** Tenant routes a key may call; also what the public reference (OpenApiController) lists. */
+    public static function routes(): Collection
+    {
+        return collect(Route::getRoutes()->getRoutes())
+            ->filter(fn (RouteObject $route) => in_array('tenant', $route->gatherMiddleware(), true)
+                && str_starts_with($route->uri(), 'api/v1/')
+                && self::allowed(substr($route->uri(), 7)))
+            ->values();
+    }
+
+    private static function allowed(string $path): bool
     {
         foreach (self::BLOCKED as $prefix) {
             if ($path === $prefix || str_starts_with($path, $prefix.'/')) {

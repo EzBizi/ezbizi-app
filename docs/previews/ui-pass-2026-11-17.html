@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UI pass choices</title>
+<style>
+:root{--bg:#f6f8f9;--paper:#fff;--ink:#14191c;--muted:#5d6970;--line:#dde3e6;--pri:#00739a;--pric:#dff1f8;--offc:#eceff1;--amb:#fdf0d5;--ambi:#7a4b00;--red:#fbe2e0;--redi:#9b1c14;--ok:#dff3e4;--oki:#1d6b33}
+.dark{--bg:#0c1014;--paper:#151b20;--ink:#e8eef1;--muted:#93a1a8;--line:#26313a;--pri:#5fc8ea;--pric:#0f3443;--offc:#222b32;--amb:#3d2e10;--ambi:#f2c46b;--red:#40191a;--redi:#ff9a92;--ok:#14331f;--oki:#8fd9a5}
+body{margin:0;font:14px/1.4 Inter,Segoe UI,Roboto,sans-serif;background:#e9edef;color:#14191c}
+.wrap{max-width:1240px;margin:0 auto;padding:24px 16px}h1{margin:0 0 4px}h2{margin:36px 0 6px;font-size:18px}h3{margin:44px 0 4px;font-size:20px;border-top:2px solid #c9d1d5;padding-top:18px}.cap{color:#4c575d;margin:0 0 12px;max-width:880px}
+.rec{background:#00739a;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:8px}
+.built{background:#1d6b33;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:6px}
+.trio{display:grid;grid-template-columns:2fr 1fr;gap:12px}@media(max-width:900px){.trio{grid-template-columns:1fr}}
+.frame{background:var(--bg);color:var(--ink);border-radius:10px;padding:14px;border:1px solid #cfd6da;overflow:hidden}.frame.phone{max-width:390px}
+.lbl{font-size:11px;color:#4c575d;margin:0 0 4px;font-weight:600}.muted{color:var(--muted)}.sm{font-size:12px}
+h4{margin:0 0 8px;font-size:16px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chip{padding:4px 10px;border-radius:99px;font-size:12px;font-weight:600;background:var(--offc);color:var(--ink);white-space:nowrap}
+.chip.amb{background:var(--amb);color:var(--ambi)}.chip.red{background:var(--red);color:var(--redi)}.chip.on{outline:2px solid var(--pri)}
+.badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:99px;font-size:11px;font-weight:700;background:var(--red);color:var(--redi);margin-left:6px;text-align:center}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.tile{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px}.tile b{display:block;font-size:16px}
+.mini{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px}
+.mini b{font-size:13px}
+.search{flex:1;min-width:140px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--muted);background:var(--paper)}
+.split{display:grid;grid-template-columns:2fr 3fr;gap:8px;margin-top:8px}.list,.rec2{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px}
+.li{padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}.li:last-child{border:0}
+.rec2 .f{height:16px;background:var(--offc);border-radius:4px;margin:6px 0}
+.h{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+table{border-collapse:collapse;width:100%;font-size:12px;background:var(--paper)}td,th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;white-space:nowrap}th{color:var(--muted);font-size:11px}
+.tw{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:8px}.tw .fade{position:absolute;top:0;right:0;bottom:0;width:36px;background:linear-gradient(90deg,transparent,var(--paper))}
+.sticky td:first-child,.sticky th:first-child{position:sticky;left:0;background:var(--paper);box-shadow:2px 0 0 var(--line)}
+.sec{color:var(--muted);font-size:11px;display:block}
+</style></head><body><div class="wrap">
+<h1>UI pass 2026-11-17: three choices</h1>
+<p class="cap">From the overnight UI pass (docs/reviews/ui-pass-2026-11-17.md). Each choice shows the same screen as A, B and C. A is recommended. Choice 1 option A is already built, because it is a small change. Choices 2 and 3 are not built, because each one changes a shared layout.</p>
+
+<!-- ───────────── 1. Over chips ───────────── -->
+<h3>1 · Scheduling › Re-Scheduling › Overbooking: how loud "N over" is</h3>
+<p class="cap">Today all ten day chips are red, even at "1 over". On a phone they fill five rows before the first area.</p>
+<template id="c1a">
+<h4>Overbooking</h4>
+<div class="row"><span class="chip amb">Mon 16 · 2 over</span><span class="chip red on">Tue 17 · 8 over</span><span class="chip red">Wed 18 · 8 over</span><span class="chip red">Thu 19 · 4 over</span><span class="chip red">Fri 20 · 4 over</span><span class="chip amb">Mon 23 · 2 over</span><span class="chip amb">Tue 24 · 1 over</span><span class="chip amb">Wed 25 · 1 over</span></div>
+<p class="sm muted" style="margin:8px 0 0">Amber for 1–2 over, red from 3. The bad days stand out.</p>
+</template>
+<template id="c1b">
+<h4>Overbooking</h4>
+<div class="row"><span class="chip">Mon 16<span class="badge">2</span></span><span class="chip on">Tue 17<span class="badge">8</span></span><span class="chip">Wed 18<span class="badge">8</span></span><span class="chip">Thu 19<span class="badge">4</span></span><span class="chip">Fri 20<span class="badge">4</span></span><span class="chip">Mon 23<span class="badge">2</span></span><span class="chip">Tue 24<span class="badge">1</span></span><span class="chip">Wed 25<span class="badge">1</span></span></div>
+<p class="sm muted" style="margin:8px 0 0">Neutral chips, each with a red count. Shorter, so more fit on a row.</p>
+</template>
+<template id="c1c">
+<h4>Overbooking</h4>
+<div class="row"><span class="chip red">Mon 16 · 2 over</span><span class="chip red on">Tue 17 · 8 over</span><span class="chip red">Wed 18 · 8 over</span><span class="chip red">Thu 19 · 4 over</span><span class="chip red">Fri 20 · 4 over</span><span class="chip red">Mon 23 · 2 over</span><span class="chip red">Tue 24 · 1 over</span><span class="chip red">Wed 25 · 1 over</span></div>
+<p class="sm muted" style="margin:8px 0 0">Today: every chip red.</p>
+</template>
+<h2>A · Amber 1–2 over, red from 3 <span class="rec">RECOMMENDED</span><span class="built">BUILT</span></h2><div data-o="c1a"></div>
+<h2>B · Neutral chips with a red count</h2><div data-o="c1b"></div>
+<h2>C · Keep all red</h2><div data-o="c1c"></div>
+
+<!-- ───────────── 2. Docked record ───────────── -->
+<h3>2 · Jobs: a record opened beside the list at 1440 × 900</h3>
+<p class="cap">The tiles, two rows of status chips, the search, Upcoming/Past/All and Filters/Export take about 330 px above the list. With a job open, the record gets about 260 px of height and you have to scroll for every field.</p>
+<template id="c2a">
+<div class="mini"><b>Billed $2.15M</b><span>Paid $1.09M</span><span>Due $1.06M</span><span style="color:var(--redi)">Overdue $705K</span><span class="chip">All · 2,681 ▾</span><span class="search">Job number, customer, phone…</span><span class="chip">Filters</span></div>
+<div class="split"><div class="list"><div class="li"><b>Chimney Inspection</b><br>John Cohane · CT</div><div class="li"><b>Chimney Sweep</b><br>Maureen Mcree</div><div class="li"><b>Chimney Inspection</b><br>Kelsie Ryan</div><div class="li"><b>Chimney Inspection</b><br>Dr. Koplan</div></div>
+<div class="rec2"><b>Chimney Inspection</b><div class="sm muted">JOB-59077 · John Cohane</div><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div></div></div>
+<p class="sm muted" style="margin:8px 0 0">With a record open, the tiles, chips and search fold into one line. Closing the record brings them back.</p>
+</template>
+<template id="c2b">
+<div class="tiles"><div class="tile">Billed<b>$2.15M</b></div><div class="tile">Paid<b>$1.09M</b></div><div class="tile">Due<b>$1.06M</b></div><div class="tile">Overdue<b>$705K</b></div></div>
+<div class="row" style="margin-top:8px"><span class="chip on">All 2,681</span><span class="chip">Submitted</span><span class="chip">Pending</span><span class="chip">In progress</span></div>
+<div class="split" style="grid-template-columns:1fr"><div class="rec2" style="margin-left:35%"><b>Chimney Inspection</b> <span class="muted sm">· panel over the list, full height</span><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div></div></div>
+<p class="sm muted" style="margin:8px 0 0">The record opens as a full-height SidePanel over the list, as Leads does.</p>
+</template>
+<template id="c2c">
+<div class="tiles"><div class="tile">Billed<b>$2.15M</b></div><div class="tile">Paid<b>$1.09M</b></div><div class="tile">Due<b>$1.06M</b></div><div class="tile">Overdue<b>$705K</b></div></div>
+<div class="row" style="margin-top:8px"><span class="chip on">All 2,681</span><span class="chip">Submitted</span><span class="chip">Pending</span><span class="chip">In progress</span><span class="chip">Done, pending approval</span><span class="chip">Done</span></div>
+<div class="row" style="margin-top:8px"><span class="chip">Canceled</span></div>
+<div class="row" style="margin-top:8px"><span class="search">Job number, title…</span></div>
+<div class="row" style="margin-top:8px"><span class="chip">Upcoming</span><span class="chip">Past</span><span class="chip">All</span></div>
+<div class="split"><div class="list"><div class="li"><b>Chimney Inspection</b></div></div><div class="rec2"><b>Chimney Inspection</b><div class="f"></div></div></div>
+<p class="sm muted" style="margin:8px 0 0">Today.</p>
+</template>
+<h2>A · Fold the controls to one line while a record is open <span class="rec">RECOMMENDED</span></h2><div data-o="c2a"></div>
+<h2>B · Open the record as a full-height panel over the list</h2><div data-o="c2b"></div>
+<h2>C · Keep as is</h2><div data-o="c2c"></div>
+
+<!-- ───────────── 3. Wide tables ───────────── -->
+<h3>3 · Tables wider than the screen (Technicians, Project Management, Monitoring, HR Payroll)</h3>
+<p class="cap">Still open from the 11-13 review (D1). The last columns are cut at the right edge with no sign that there is more. Emails wrap in the middle of a word.</p>
+<template id="c3a">
+<div class="tw sticky" style="overflow-x:auto"><table><tr><th>Name</th><th>Branch</th><th>Email</th><th>Areas</th><th>Status</th><th>Linked user</th></tr>
+<tr><td><b>Adeline Pierrelouis</b></td><td>A-1 Chimney · Nationwide</td><td>dispatcher1@a-1chimney.com</td><td>—</td><td>Active</td><td>Adeline P.</td></tr>
+<tr><td><b>Ace Fireplace services</b></td><td>A-1 Chimney · Ohio</td><td>office@cle.a-1chimney.com</td><td>Cleveland +2</td><td>Field tech</td><td>—</td></tr></table><div class="fade"></div></div>
+<p class="sm muted" style="margin:8px 0 0">The name column stays put while the rest scrolls sideways, and a fade at the right edge shows there is more. Emails never wrap.</p>
+</template>
+<template id="c3b">
+<div class="tw"><table><tr><th>Name</th><th>Branch</th><th>Status</th></tr>
+<tr><td><b>Adeline Pierrelouis</b><span class="sec">dispatcher1@a-1chimney.com</span></td><td>A-1 Chimney · Nationwide</td><td>Active</td></tr>
+<tr><td><b>Ace Fireplace services</b><span class="sec">office@cle.a-1chimney.com · Cleveland +2</span></td><td>A-1 Chimney · Ohio</td><td>Field tech</td></tr></table></div>
+<p class="sm muted" style="margin:8px 0 0">Secondary columns (email, areas, linked user) move to a grey second line under the name, so the table always fits.</p>
+</template>
+<template id="c3c">
+<div class="tw" style="overflow:hidden"><table><tr><th>Name</th><th>Branch</th><th>Email</th><th>Areas</th><th>Sta</th></tr>
+<tr><td><b>Adeline Pierrelouis</b></td><td>A-1 Chimney ·<br>Nationwide</td><td>dispatcher1@a-1chimne<br>y.com</td><td>—</td><td>Act</td></tr></table></div>
+<p class="sm muted" style="margin:8px 0 0">Today: cut at the right edge.</p>
+</template>
+<h2>A · Sticky first column and a fade at the edge <span class="rec">RECOMMENDED</span></h2><div data-o="c3a"></div>
+<h2>B · Secondary columns move to a second line</h2><div data-o="c3b"></div>
+<h2>C · Keep as is</h2><div data-o="c3c"></div>
+</div>
+<script>
+document.querySelectorAll('[data-o]').forEach(h=>{const t=document.getElementById(h.dataset.o).innerHTML;
+h.innerHTML=`<div class="trio"><div><p class="lbl">Desktop · light</p><div class="frame">${t}</div><p class="lbl" style="margin-top:10px">Desktop · dark</p><div class="frame dark">${t}</div></div><div><p class="lbl">Phone · light</p><div class="frame phone">${t}</div></div></div>`});
+document.body.dataset.rendered=document.querySelectorAll('.trio').length;
+</script></body></html>

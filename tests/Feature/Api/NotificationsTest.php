@@ -83,7 +83,10 @@ class NotificationsTest extends TestCase
                 'created_at' => now(),
             ]);
 
-            $w->forceFill(['active_version_id' => $v->id])->save();
+            // Made AFTER the events it must hear: switching a rule on stamps activated_at
+            // = now() and the engine skips older events, so on a loaded box a second tick
+            // in between made it hear nothing (0608 gate, 11-19). No stamp = hears all.
+            $w->forceFill(['active_version_id' => $v->id, 'activated_at' => null])->save();
         });
     }
 
@@ -102,7 +105,10 @@ class NotificationsTest extends TestCase
                 'created_at' => now(),
             ]);
 
-            $w->forceFill(['active_version_id' => $v->id])->save();
+            // Made AFTER the events it must hear: switching a rule on stamps activated_at
+            // = now() and the engine skips older events, so on a loaded box a second tick
+            // in between made it hear nothing (0608 gate, 11-19). No stamp = hears all.
+            $w->forceFill(['active_version_id' => $v->id, 'activated_at' => null])->save();
         });
     }
 
@@ -341,6 +347,94 @@ class NotificationsTest extends TestCase
         $this->assertSame(1, $call($sub->id), 'a missed call on a chosen company arrives');
         $this->assertSame(0, $call($other->id), 'one on another company does not');
         $this->assertSame(0, $call(null), 'nor one whose company is unknown');
+    }
+
+    public function test_a_kind_can_be_switched_off_and_a_burst_of_one_kind_is_one_row(): void
+    {
+        // Jose, 2026-11-17: task board coverage, per-type toggles, no floods.
+        $send = fn (string $kind, string $title) => $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: $title, subject: $this->org['franchise'], onlyTo: $this->org['admin'], source: 'system', kind: $kind,
+        ));
+
+        $this->assertSame(1, $send('task.assigned', 'Assigned: Call back'));
+        $this->assertSame(0, $send('task.assigned', 'Assigned: Call back'), 'the same event again within 10 minutes is grouped');
+        $this->assertSame(1, $send('task.status', 'Status: Done'), 'another kind on the same record is not');
+
+        $this->inTenant(fn () => $this->org['admin']->forceFill(['preferences' => ['notifications.muted_kinds' => ['task.mentioned']]])->save());
+        $this->assertSame(0, $send('task.mentioned', 'You were mentioned'), 'a kind switched off writes nothing');
+
+        $this->travel(11)->minutes();
+        $this->assertSame(1, $send('task.assigned', 'Assigned: Call back'), 'after the window it notifies again');
+    }
+
+    public function test_a_person_marks_unread_deletes_one_and_deletes_all_of_their_own(): void
+    {
+        // Monday parity (desk, 2026-11-24): per-row unread/delete, Delete all.
+        $send = fn (string $t) => $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: $t, onlyTo: $this->org['admin'], source: 'system',
+        ));
+        $send('One');
+        $send('Two');
+        $send('Three');
+        $ids = $this->inTenant(fn () => Notification::query()->orderBy('title')->pluck('id', 'title'));
+
+        $api = $this->as($this->org['admin']);
+        $api->postJson("/api/v1/notifications/{$ids['One']}/read")->assertOk();
+        $api->postJson("/api/v1/notifications/{$ids['One']}/unread")->assertOk();
+        $this->assertNull($this->inTenant(fn () => Notification::query()->find($ids['One'])->read_at));
+
+        $api->deleteJson("/api/v1/notifications/{$ids['Two']}")->assertOk();
+        $this->assertSame(2, $this->inTenant(fn () => Notification::query()->count()), 'only that row went');
+
+        $api->deleteJson('/api/v1/notifications')->assertOk()->assertJsonPath('data.deleted', 2);
+        $this->assertSame(0, $this->inTenant(fn () => Notification::query()->count()));
+    }
+
+    public function test_monday_parity_email_per_kind_and_automation_kinds_can_be_muted(): void
+    {
+        // Jose, 2026-11-25: Monday's settings — per kind, In-app and Email.
+        \Illuminate\Support\Facades\Notification::fake();
+        $this->inTenant(fn () => $this->org['admin']->forceFill(['preferences' => [
+            'notifications.email_kinds' => ['task.assigned'],
+            'notifications.muted_kinds' => ['automation.notify'],
+        ]])->save());
+
+        $send = fn (string $title, ?string $kind, string $source = 'system') => $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: $title, subject: $this->org['franchise'], onlyTo: $this->org['admin'], source: $source, kind: $kind,
+        ));
+
+        $this->assertSame(1, $send('Assigned: A', 'task.assigned'));
+        $this->assertSame(1, $send('Status: B', 'task.status'));
+        \Illuminate\Support\Facades\Notification::assertSentToTimes($this->org['admin'], \App\Notifications\NotificationNotice::class, 1);
+
+        // An automation names no kind; it is filed as automation.notify.
+        $this->assertSame(0, $send('New lead', null, 'automation'), 'automation.notify is muted');
+
+        $groups = collect($this->as($this->org['admin'])->getJson('/api/v1/notifications/kinds')->assertOk()->json('data'))->pluck('group');
+        $this->assertSame(['Communication', 'Collaboration'], $groups->take(2)->all());
+    }
+
+    public function test_an_invitation_unanswered_for_a_week_tells_its_inviter_once(): void
+    {
+        // Monday's "Didn't sign up after I invited them" (Jose, 2026-11-25).
+        $this->inTenant(fn () => \App\Models\Invitation::query()->forceCreate([
+            'id' => (string) \Illuminate\Support\Str::uuid7(),
+            'organization_id' => $this->org['organization']->id,
+            'email' => 'new.hire@example.test',
+            'assigned_franchise_id' => $this->org['franchise']->id,
+            'token_hash' => hash('sha256', 'unanswered-invite'),
+            'expires_at' => now()->addDays(7),
+            'invited_by_user_id' => $this->org['admin']->id,
+            'sent_at' => now()->subDays(7)->subHours(12),
+        ]));
+
+        $this->artisan('ezbizi:notify-invitation-follow-ups')->assertSuccessful();
+        $this->travel(1)->day(); // the next daily run
+        $this->artisan('ezbizi:notify-invitation-follow-ups')->assertSuccessful();
+
+        $rows = $this->inTenant(fn () => Notification::query()->where('kind', 'user.not_signed_up')->get());
+        $this->assertCount(1, $rows, 'once, not on every run');
+        $this->assertSame($this->org['admin']->id, $rows->first()->user_id);
     }
 
     public function test_a_looping_rule_cannot_flood_one_persons_bell(): void

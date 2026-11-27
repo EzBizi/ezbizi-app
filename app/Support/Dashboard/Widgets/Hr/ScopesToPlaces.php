@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
  *
  * ── Why HR cannot use the other widgets' franchise filter ────────
  *
- * `ScopesToReach::reachable()` narrows a query with `where franchise_id in (…)`,
+ * `JobsByStatus` narrows its query with `where franchise_id in (…)`,
  * which is right for jobs and customers: those rows carry a franchise column,
  * because work happens in exactly one place.
  *
@@ -189,7 +189,9 @@ trait ScopesToPlaces
         $qualify = function (?string $companyId, string $leaf) use ($named): string {
             $parent = $companyId === null ? null : $named->get($companyId);
 
-            return $parent === null ? $leaf : $parent->name.' › '.$leaf;
+            // "Company · Branch", the app's one way to name a branch (Jose's
+            // branch-label rule; desktop review 2026-11-13 found "›" here).
+            return $parent === null ? $leaf : $parent->name.' · '.$leaf;
         };
 
         foreach ($companies->whereIn('id', $places['companies']) as $company) {

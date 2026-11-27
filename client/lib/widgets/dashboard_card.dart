@@ -43,7 +43,11 @@ class DashboardCard extends StatelessWidget {
     this.badge,
     this.controls,
     this.expand = false,
+    this.onOpen,
   });
+
+  /// Clicking anywhere on the card (but its own controls) runs this.
+  final VoidCallback? onOpen;
 
   /// The panel's name, as the server labelled it.
   final String title;
@@ -141,12 +145,16 @@ class DashboardCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(radius),
         side: BorderSide(color: EzBiziTheme.edge(context)),
       ),
-      child: expand
-          ? SizedBox.expand(child: body)
-          : ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: minimumHeight),
-              child: body,
-            ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpen,
+        child: expand
+            ? SizedBox.expand(child: body)
+            : ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: minimumHeight),
+                child: body,
+              ),
+      ),
     );
   }
 }

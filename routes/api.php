@@ -1,52 +1,78 @@
 <?php
 
-use App\Http\Controllers\Api\ClientIssuesController;
-use App\Http\Controllers\Api\StaffClientIssuesController;
-use App\Http\Controllers\Api\InstagramCommentsController;
-use App\Http\Controllers\Api\FieldController;
-use App\Http\Controllers\Api\FieldRecordingsController;
-use App\Http\Controllers\Api\AssistantController;
-use App\Http\Controllers\Api\AssistantEntriesController;
-use App\Http\Controllers\Api\TechAssistantController;
-use App\Http\Controllers\Api\GuidelinesController;
 use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
+use App\Http\Controllers\Api\AdSchedulesController;
 use App\Http\Controllers\Api\AdsPerformanceController;
 use App\Http\Controllers\Api\AirtableConnectController;
+use App\Http\Controllers\Api\AlertsController;
+use App\Http\Controllers\Api\ApiKeysController;
+use App\Http\Controllers\Api\AssistantController;
+use App\Http\Controllers\Api\AssistantEntriesController;
 use App\Http\Controllers\Api\AttachmentsController;
+use App\Http\Controllers\Api\AuditEventsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
+use App\Http\Controllers\Api\BusinessListsController;
+use App\Http\Controllers\Api\BusinessProfileAutoReplyController;
 use App\Http\Controllers\Api\BusinessProfileController;
+use App\Http\Controllers\Api\BusinessProfileListingController;
+use App\Http\Controllers\Api\BusinessProfilePerformanceController;
+use App\Http\Controllers\Api\BusinessProfilePostQueueController;
+use App\Http\Controllers\Api\ClientIssuesController;
 use App\Http\Controllers\Api\CompaniesController;
+use App\Http\Controllers\Api\ComplaintsController;
+use App\Http\Controllers\Api\CountyLookupController;
 use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\CustomerWorkizNotesController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\DevelopmentUnlockController;
+use App\Http\Controllers\Api\EkomiController;
+use App\Http\Controllers\Api\EmailFiltersController;
 use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\EstimatesController;
-use App\Http\Controllers\Api\MembershipsController;
 use App\Http\Controllers\Api\ExperimentalCallReportController;
+use App\Http\Controllers\Api\FieldController;
+use App\Http\Controllers\Api\FieldRecordingsController;
+use App\Http\Controllers\Api\FinancialAdjustmentsController;
+use App\Http\Controllers\Api\FinancialBillsController;
+use App\Http\Controllers\Api\FinancialBankController;
+use App\Http\Controllers\Api\FinancialMarketsController;
+use App\Http\Controllers\Api\FinancialResultsController;
+use App\Http\Controllers\Api\FinancialsController;
+use App\Http\Controllers\Api\FinancialSourcesController;
+use App\Http\Controllers\Api\FleetSummaryController;
 use App\Http\Controllers\Api\FranchisesController;
+use App\Http\Controllers\Api\GeocodeController;
+use App\Http\Controllers\Api\GoogleAdsManagerController;
 use App\Http\Controllers\Api\GoogleMailAuthController;
 use App\Http\Controllers\Api\GoogleWorkspaceAuthController;
 use App\Http\Controllers\Api\GoogleWorkspaceManagementController;
-use App\Http\Controllers\Api\EmailFiltersController;
-use App\Http\Controllers\Api\InboxController;
+use App\Http\Controllers\Api\GuidelinesController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\HelpVideosController;
 use App\Http\Controllers\Api\HrContractsController;
 use App\Http\Controllers\Api\HrDashboardController;
 use App\Http\Controllers\Api\HrInvitationsController;
+use App\Http\Controllers\Api\HrInviteLinksController;
 use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
 use App\Http\Controllers\Api\HrPersonDetailsController;
+use App\Http\Controllers\Api\InboxController;
 use App\Http\Controllers\Api\InspectionCodesController;
 use App\Http\Controllers\Api\InspectionDefinitionsController;
+use App\Http\Controllers\Api\BeforeAfterController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
+use App\Http\Controllers\Api\InstagramCommentsController;
+use App\Http\Controllers\Api\SentReportsController;
+use App\Http\Controllers\Api\SocialCommentsController;
+use App\Http\Controllers\Api\IntegrationDependentsController;
+use App\Http\Controllers\Api\IntegrationsOverviewController;
 use App\Http\Controllers\Api\InventoryAdjustmentsController;
 use App\Http\Controllers\Api\InventoryIssuesController;
 use App\Http\Controllers\Api\InventoryItemsController;
@@ -59,40 +85,69 @@ use App\Http\Controllers\Api\InventorySummaryController;
 use App\Http\Controllers\Api\InventoryTransfersController;
 use App\Http\Controllers\Api\InventoryVendorsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
+use App\Http\Controllers\Api\InviteLinkJoinController;
+use App\Http\Controllers\Api\InvoicePaymentsController;
+use App\Http\Controllers\Api\InvoicesController;
+use App\Http\Controllers\Api\JobBookingController;
 use App\Http\Controllers\Api\JobLinesController;
+use App\Http\Controllers\Api\JobNotesController;
+use App\Http\Controllers\Api\JobPhotosController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\LeadDashboardController;
+use App\Http\Controllers\Api\LeaderboardController;
+use App\Http\Controllers\Api\LeadHiddenController;
+use App\Http\Controllers\Api\LeadOfficeHoursController;
 use App\Http\Controllers\Api\LeadPresenceController;
 use App\Http\Controllers\Api\LeadReplyTemplatesController;
+use App\Http\Controllers\Api\LeadsRecoveryController;
 use App\Http\Controllers\Api\LeadsController;
+use App\Http\Controllers\Api\LeadSourcesController;
+use App\Http\Controllers\Api\LeadStatsController;
 use App\Http\Controllers\Api\MailboxesController;
 use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MailchimpConnectController;
 use App\Http\Controllers\Api\MarketingController;
+use App\Http\Controllers\Api\MarketingReportController;
+use App\Http\Controllers\Api\McpController;
+use App\Http\Controllers\Api\MembershipsController;
+use App\Http\Controllers\Api\MembershipsPublicController;
+use App\Http\Controllers\Api\MetaAdsController;
+use App\Http\Controllers\Api\MetaAdsReportController;
 use App\Http\Controllers\Api\MetaCallbacksController;
+use App\Http\Controllers\Api\MetaMediaController;
+use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\MondayWebhookController;
 use App\Http\Controllers\Api\Monitoring\CameraBridgeController;
 use App\Http\Controllers\Api\Monitoring\CameraRelayController;
-use App\Http\Controllers\Api\Monitoring\CameraSitesController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
+use App\Http\Controllers\Api\Monitoring\CameraSitesController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
-use App\Http\Controllers\Api\Monitoring\FloorPlansController as MonitoringFloorPlansController;
-use App\Http\Controllers\Api\Monitoring\OwnershipController as MonitoringOwnershipController;
-use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
-use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
 use App\Http\Controllers\Api\Monitoring\FilesController as MonitoringFilesController;
+use App\Http\Controllers\Api\Monitoring\FloorPlansController as MonitoringFloorPlansController;
+use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\Monitoring\LightingController as MonitoringLightingController;
+use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
+use App\Http\Controllers\Api\Monitoring\OwnershipController as MonitoringOwnershipController;
 use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
 use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScreenshotsController;
+use App\Http\Controllers\Api\MySignatureController;
 use App\Http\Controllers\Api\NewsletterAudiencesController;
+use App\Http\Controllers\Api\NewsletterImportController;
+use App\Http\Controllers\Api\NewsletterBrandSectionsController;
 use App\Http\Controllers\Api\NewslettersController;
 use App\Http\Controllers\Api\NewsletterUnsubscribeController;
+use App\Http\Controllers\Api\NoteActivityController;
 use App\Http\Controllers\Api\NotificationsController;
+use App\Http\Controllers\Api\OpenApiController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
+use App\Http\Controllers\Api\OwnershipController;
 use App\Http\Controllers\Api\PasswordController;
+use App\Http\Controllers\Api\PendingSettingsController;
 use App\Http\Controllers\Api\Phone\AddressesController as PhoneAddressesController;
 use App\Http\Controllers\Api\Phone\AnsweredWebhookController as PhoneAnsweredWebhookController;
+use App\Http\Controllers\Api\Phone\AudioController;
 use App\Http\Controllers\Api\Phone\BlockedNumbersController as PhoneBlockedNumbersController;
 use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
 use App\Http\Controllers\Api\Phone\CallTagsController as PhoneCallTagsController;
@@ -119,30 +174,42 @@ use App\Http\Controllers\Api\Phone\TrustController as PhoneTrustController;
 use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
+use App\Http\Controllers\Api\PlaidWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
-use App\Http\Controllers\Api\MarketingReportController;
-use App\Http\Controllers\Api\MetaAdsReportController;
-use App\Http\Controllers\Api\ScoringReportController;
-use App\Http\Controllers\Api\StaffBotMenusController;
-use App\Http\Controllers\Api\ThumbtackReportController;
 use App\Http\Controllers\Api\ProfitLossController;
+use App\Http\Controllers\Api\ProjectBoardController;
+use App\Http\Controllers\Api\ProjectInboxController;
+use App\Http\Controllers\Api\PromotionsController;
+use App\Http\Controllers\Api\ProofreadController;
+use App\Http\Controllers\Api\PtoRequestsController;
+use App\Http\Controllers\Api\QrCodesController;
+use App\Http\Controllers\Api\ReportDraftsController;
+use App\Http\Controllers\Api\ReportGoalsController;
+use App\Http\Controllers\Api\ReportPeriodController;
+use App\Http\Controllers\Api\RecruitingController;
 use App\Http\Controllers\Api\ReportsController;
+use App\Http\Controllers\Api\ReportWorkspaceController;
+use App\Http\Controllers\Api\ReviewLinkEventsController;
+use App\Http\Controllers\Api\ReviewLinkReportController;
 use App\Http\Controllers\Api\ReviewsController;
+use App\Http\Controllers\Api\RingCentralConnectController;
 use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\SchedulingAreaMapController;
-use App\Http\Controllers\Api\SchedulingRosterController;
 use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingBoardController;
 use App\Http\Controllers\Api\SchedulingDispatchController;
 use App\Http\Controllers\Api\SchedulingFranchiseLimitsController;
+use App\Http\Controllers\Api\SchedulingHelpersController;
 use App\Http\Controllers\Api\SchedulingLocationsController;
 use App\Http\Controllers\Api\SchedulingOverbookingController;
 use App\Http\Controllers\Api\SchedulingPatternController;
+use App\Http\Controllers\Api\SchedulingRosterController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
 use App\Http\Controllers\Api\SchedulingTechniciansController;
 use App\Http\Controllers\Api\SchedulingTimeSlotsController;
+use App\Http\Controllers\Api\ScoringReportController;
 use App\Http\Controllers\Api\SendingServersController;
 use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
@@ -151,20 +218,34 @@ use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SmsCodesController;
 use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SocialConnectionsController;
-use App\Http\Controllers\Api\SocialMediaHandoffController;
-use App\Http\Controllers\Api\QrCodesController;
 use App\Http\Controllers\Api\SocialLibraryController;
+use App\Http\Controllers\Api\SocialMediaHandoffController;
 use App\Http\Controllers\Api\SocialPostsController;
 use App\Http\Controllers\Api\SocialProvidersController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
+use App\Http\Controllers\Api\StaffBotMenusController;
+use App\Http\Controllers\Api\StaffClientIssuesController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
+use App\Http\Controllers\Api\StaffHelpVideosController;
+use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\StaffMessagesController;
 use App\Http\Controllers\Api\StaffPhoneRequestsController;
 use App\Http\Controllers\Api\StaffSuggestionsController;
 use App\Http\Controllers\Api\SuggestionsController;
+use App\Http\Controllers\Api\TaskBoardsController;
+use App\Http\Controllers\Api\TaskBoardGalleryController;
+use App\Http\Controllers\Api\TaskBoardSettingsController;
+use App\Http\Controllers\Api\TaskBoardViewsController;
+use App\Http\Controllers\Api\TasksController;
+use App\Http\Controllers\Api\TechAssistantController;
+use App\Http\Controllers\Api\TelegramConnectController;
+use App\Http\Controllers\Api\TelegramWebhookController;
+use App\Http\Controllers\Api\ThumbtackReportController;
 use App\Http\Controllers\Api\ThumbtackWebhookController;
+use App\Http\Controllers\Api\TimeClockApprovalsController;
+use App\Http\Controllers\Api\TimeClockPayrollController;
 use App\Http\Controllers\Api\TimeClockController;
 use App\Http\Controllers\Api\TimeClockCorrectionsController;
 use App\Http\Controllers\Api\TimeClockReportsController;
@@ -173,9 +254,9 @@ use App\Http\Controllers\Api\Training\DashboardController as TrainingDashboardCo
 use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesController;
 use App\Http\Controllers\Api\Training\LearnController as TrainingLearnController;
 use App\Http\Controllers\Api\Training\MediaController as TrainingMediaController;
-use App\Http\Controllers\Api\Training\VideoController as TrainingVideoController;
 use App\Http\Controllers\Api\Training\ProgressController as TrainingProgressController;
 use App\Http\Controllers\Api\Training\TestsController as TrainingTestsController;
+use App\Http\Controllers\Api\Training\VideoController as TrainingVideoController;
 use App\Http\Controllers\Api\TwoFactorController;
 use App\Http\Controllers\Api\UiStringsController;
 use App\Http\Controllers\Api\VehicleAssignmentsController;
@@ -183,34 +264,32 @@ use App\Http\Controllers\Api\VehicleInsuranceController;
 use App\Http\Controllers\Api\VehicleOwnershipController;
 use App\Http\Controllers\Api\VehiclePaymentsController;
 use App\Http\Controllers\Api\VehiclesController;
-use App\Http\Controllers\Api\FinancialsController;
-use App\Http\Controllers\Api\FinancialSourcesController;
-use App\Http\Controllers\Api\FinancialBillsController;
-use App\Http\Controllers\Api\FinancialResultsController;
-use App\Http\Controllers\Api\FinancialAdjustmentsController;
-use App\Http\Controllers\Api\InvoicesController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
 use App\Http\Controllers\Api\Web\HoursBatchController as WebHoursBatchController;
-use App\Http\Controllers\Api\Web\SeoHelperController as WebSeoHelperController;
+use App\Http\Controllers\Api\Web\ListsController as WebListsController;
 use App\Http\Controllers\Api\Web\PluginController as WebPluginController;
 use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesController;
+use App\Http\Controllers\Api\Web\SeoHelperController as WebSeoHelperController;
 use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Controllers\Api\Web\WidgetsController as WebWidgetsController;
-use App\Http\Controllers\Api\Web\ListsController as WebListsController;
-use App\Http\Controllers\Api\MetaMessagesWebhookController;
-use App\Http\Controllers\Api\WhatsAppTemplatesController;
 use App\Http\Controllers\Api\WhatsAppGroupsController;
+use App\Http\Controllers\Api\WhatsAppLaunchController;
+use App\Http\Controllers\Api\WhatsAppMediaController;
+use App\Http\Controllers\Api\WhatsAppTemplatesController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
-use App\Http\Controllers\Api\TelegramConnectController;
-use App\Http\Controllers\Api\TelegramWebhookController;
-use App\Http\Controllers\Api\WorkizWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
+use App\Http\Controllers\Api\WorkizTagsController;
+use App\Http\Controllers\Api\WorkizWebhookController;
 use App\Http\Controllers\Api\WorkizWebSessionController;
-use App\Http\Controllers\Api\RingCentralConnectController;
+use App\Http\Middleware\AuthenticateCameraBridge;
+use App\Models\Company;
+use App\Models\Lead;
+use App\Models\MailboxGrant;
+use App\Models\Onboarding;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
 use App\Support\Auth\TwoFactorPolicy;
@@ -268,6 +347,16 @@ use Illuminate\Support\Facades\Route;
 // the outer fence.
 Route::post('v1/client-issues', [ClientIssuesController::class, 'store'])
     ->middleware('throttle:60,1');
+
+// The public API reference www.ezbizi.com/developers/ renders, generated from
+// the routes a key may call (Jose, 2026-11-06). Paths only, no tenant data.
+Route::get('v1/openapi.json', OpenApiController::class)
+    ->middleware('throttle:60,1');
+
+// Signature pictures (2026-11-09): Gmail fetches them from every inbox a
+// signed mail reaches, so they are public. Random 40-character names.
+Route::get('v1/signature-photos/{name}', [GoogleWorkspaceManagementController::class, 'photo'])
+    ->middleware('throttle:120,1');
 
 Route::prefix('v1/auth')->group(function () {
     // The front door (§3, TODO #10). One request, one transaction: the person,
@@ -349,6 +438,13 @@ Route::prefix('v1/auth')->group(function () {
 Route::prefix('v1/invitations')->middleware('throttle:invitation')->group(function () {
     Route::post('lookup', [InvitationAcceptanceController::class, 'show']);
     Route::post('accept', [InvitationAcceptanceController::class, 'accept']);
+});
+
+// An invite link's public side: what it is for, and making an account through it
+// (Jose, 2026-11-23). Same limiter, same body-not-URL token rule as above.
+Route::prefix('v1/invite-links')->middleware('throttle:invitation')->group(function () {
+    Route::post('lookup', [InviteLinkJoinController::class, 'show']);
+    Route::post('join', [InviteLinkJoinController::class, 'join']);
 });
 
 /*
@@ -442,10 +538,28 @@ Route::get('v1/training/media/{media}', [TrainingMediaController::class, 'show']
     ->whereUuid('media')
     ->name('training.media');
 
-Route::get('v1/whatsapp/media/{phone}/{media}', \App\Http\Controllers\Api\WhatsAppMediaController::class)
+// A promotion's picture (MMS): Twilio fetches it by this signed link as each text goes.
+Route::get('v1/promotions/media/{path}', [PromotionsController::class, 'show'])
+    ->middleware(['signed', 'throttle:600,1'])
+    ->where('path', 'promotions/[0-9a-f-]{36}/[A-Za-z0-9]{20,64}\.(jpg|jpeg|png|gif)')
+    ->name('promotions.media');
+
+Route::get('v1/whatsapp/media/{phone}/{media}', WhatsAppMediaController::class)
     ->middleware(['signed', 'throttle:120,1'])
     ->where(['phone' => '[0-9]+', 'media' => '[0-9]+'])
     ->name('whatsapp.media');
+
+// A Task Board video (or its poster) for a player that cannot send a token:
+// 10-minute signed link naming its user; board visibility re-checked each time.
+Route::get('v1/attachments/{attachment}/stream', [\App\Http\Controllers\Api\AttachmentStreamController::class, 'show'])
+    ->middleware(['signed', 'throttle:600,1'])
+    ->whereUuid('attachment')
+    ->name('attachments.stream');
+
+Route::get('v1/meta/media/{connection}/{mid}/{index}', MetaMediaController::class)
+    ->middleware(['signed', 'throttle:120,1'])
+    ->where(['connection' => '[0-9a-f-]+', 'mid' => '[A-Za-z0-9_-]+', 'index' => '[0-9]+'])
+    ->name('meta.media');
 
 Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'show'])
     ->middleware(['signed', 'throttle:30,1'])
@@ -541,11 +655,16 @@ Route::post('v1/social/workiz-web/handoff/{connection}', [WorkizWebSessionContro
  * records it. See the controller for what this does and does not defend against.
  */
 Route::get('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'show'])->middleware('throttle:30,1');
+// Artwork an SVG import rasterised, or a library picture: a raster under a random 40-character name,
+// public because the inbox fetching it has no EzBizi login.
+Route::get('v1/newsletter/artwork/{org}/{name}', [NewsletterImportController::class, 'show'])
+    ->where(['org' => '[A-Za-z0-9-]{1,64}', 'name' => '[A-Za-z0-9]{40}\.(png|jpg|gif|webp)'])
+    ->middleware('throttle:120,1');
 Route::post('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'store'])
     ->middleware('throttle:30,1')
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
-Route::get('v1/social/whatsapp/launch', \App\Http\Controllers\Api\WhatsAppLaunchController::class)
+Route::get('v1/social/whatsapp/launch', WhatsAppLaunchController::class)
     ->middleware('throttle:30,1')
     ->name('social.whatsapp.launch');
 
@@ -553,6 +672,23 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
     ->middleware('throttle:30,1')
     ->where('network', SocialProvider::oauthRoutePattern())
     ->name('social.callback');
+
+// Plaid returns here after a bank reconnect (update mode); the state names the bank login.
+Route::get('v1/social/plaid/relinked', [SocialAuthController::class, 'plaidRelinked'])
+    ->middleware('throttle:30,1')
+    ->name('social.plaid.relinked');
+
+// Plaid says a bank login changed. Unauthenticated by necessity; it names an
+// item and EzBizi re-reads that item from Plaid (PlaidWebhookController).
+Route::post('v1/integrations/plaid/webhook', PlaidWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('integrations.plaid.webhook');
+
+// Monday says an item changed. Unauthenticated by necessity: the JWT Monday
+// signs with the app's Signing Secret is what is checked (MondayWebhookController).
+Route::post('v1/integrations/monday/webhook', MondayWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('integrations.monday.webhook');
 
 /*
 |--------------------------------------------------------------------------
@@ -577,7 +713,7 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
  * so AuthenticateCameraBridge looks it up and enters it.
  */
 Route::prefix('v1/monitoring/bridge')
-    ->middleware(['throttle:120,1', App\Http\Middleware\AuthenticateCameraBridge::class])
+    ->middleware(['throttle:120,1', AuthenticateCameraBridge::class])
     ->group(function () {
         Route::post('checkin', [CameraBridgeController::class, 'checkin']);
         Route::get('work', [CameraBridgeController::class, 'work']);
@@ -593,6 +729,11 @@ Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.values');
 
+Route::get('v1/web/plugin/before-after', [WebPluginController::class, 'beforeAfter'])
+    ->middleware('throttle:web-plugin');
+Route::get('v1/web/plugin/before-after/image/{attachment}', [WebPluginController::class, 'beforeAfterImage'])
+    ->middleware(['signed', 'throttle:600,1'])
+    ->name('web.plugin.before-after.image');
 Route::post('v1/web/plugin/service-account', [WebPluginController::class, 'serviceAccount'])
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.service-account');
@@ -629,6 +770,15 @@ Route::get('v1/web/chat/avatar/{user}', [WebEnquiriesController::class, 'avatar'
     ->middleware('signed')
     ->name('web.chat.avatar');
 
+// Project Management (Jose, 2026-11-17): a crew's work order and a client's
+// project page, by signed links that lapse; no login.
+Route::get('v1/work-order/{job}', [ProjectBoardController::class, 'sharedWorkOrder'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('work-order.shared');
+Route::get('v1/project/{job}', [\App\Http\Controllers\Api\ProjectTimelineController::class, 'show'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('project.timeline');
+
 Route::post('v1/web/form', [WebEnquiriesController::class, 'submitForm'])
     ->middleware('throttle:web-enquiry')
     ->name('web.form.submit');
@@ -649,32 +799,32 @@ Route::post('v1/web/booking', [WebEnquiriesController::class, 'submitBooking'])
 
 // Membership program, customer side (spec 2026-10-05). The review faces say who
 // smiled by the site's public key; the join page's signed link is its permission.
-Route::post('v1/web/review', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'review'])
+Route::post('v1/web/review', [MembershipsPublicController::class, 'review'])
     ->middleware('throttle:web-enquiry')
     ->name('web.review');
 // What the customer did with their review link (Customer Experience, 2026-10-15).
-Route::post('v1/web/review-link', [\App\Http\Controllers\Api\ReviewLinkEventsController::class, 'store'])
+Route::post('v1/web/review-link', [ReviewLinkEventsController::class, 'store'])
     ->middleware('throttle:web-enquiry');
 // {{ membership_link }}: app.ezbizi.com/api/m/<code>, under /api because nginx
 // sends only /api and /q/ to Laravel.
-Route::get('m/{code}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'shortJoin'])
+Route::get('m/{code}', [MembershipsPublicController::class, 'shortJoin'])
     ->where('code', '[A-Za-z0-9]{7}')
     ->middleware('throttle:60,1')
     ->name('memberships.short');
 // The review page's membership offer (2026-10-08), by the link's customer token.
-Route::get('v1/web/membership', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'offer'])
+Route::get('v1/web/membership', [MembershipsPublicController::class, 'offer'])
     ->middleware('throttle:web-enquiry');
-Route::post('v1/web/membership/join', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'offerJoin'])
+Route::post('v1/web/membership/join', [MembershipsPublicController::class, 'offerJoin'])
     ->middleware('throttle:web-enquiry');
-Route::get('v1/memberships/join/{customer}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'joinPage'])
+Route::get('v1/memberships/join/{customer}', [MembershipsPublicController::class, 'joinPage'])
     ->middleware(['signed', 'throttle:60,1'])
     ->name('memberships.join');
-Route::post('v1/memberships/join/{customer}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'join'])
+Route::post('v1/memberships/join/{customer}', [MembershipsPublicController::class, 'join'])
     ->middleware(['signed', 'throttle:20,1']);
-Route::get('v1/memberships/visit/{membership}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'visitPage'])
+Route::get('v1/memberships/visit/{membership}', [MembershipsPublicController::class, 'visitPage'])
     ->middleware(['signed', 'throttle:60,1'])
     ->name('memberships.visit');
-Route::post('v1/memberships/visit/{membership}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'visit'])
+Route::post('v1/memberships/visit/{membership}', [MembershipsPublicController::class, 'visit'])
     ->middleware(['signed', 'throttle:20,1']);
 
 Route::get('v1/web/form/challenge', [WebEnquiriesController::class, 'challenge'])
@@ -683,15 +833,29 @@ Route::get('v1/web/form/challenge', [WebEnquiriesController::class, 'challenge']
 
 // A phone recording (menu prompt, voicemail greeting), fetched by Twilio with
 // no session — the signed link is the permission. See Phone\AudioController.
-Route::get('v1/phone/audio/{name}', [\App\Http\Controllers\Api\Phone\AudioController::class, 'file'])
+Route::get('v1/phone/audio/{name}', [AudioController::class, 'file'])
     ->middleware('signed')
     ->name('phone.audio');
 
 // An invoice's PDF behind the link a text or WhatsApp carries (Jose, 2026-10-22).
-Route::get('v1/invoices/shared/{invoice}', [\App\Http\Controllers\Api\InvoicesController::class, 'shared'])
+Route::get('v1/invoices/shared/{invoice}', [InvoicesController::class, 'shared'])
     ->middleware(['signed', 'throttle:60,1'])
     ->whereUuid('invoice')
     ->name('invoice.shared');
+
+// Invoices paid online (Payments, Jose 2026-11-06). The Pay link is signed;
+// the webhook's Stripe signature is its authentication; the pages mark
+// nothing. Under /api because nginx gives every other path to Flutter.
+Route::get('v1/invoices/pay/{invoice}', [InvoicePaymentsController::class, 'pay'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->whereUuid('invoice')
+    ->name('invoice.pay');
+Route::post('v1/payments/stripe/webhook', [InvoicePaymentsController::class, 'webhook'])
+    ->middleware('throttle:600,1')
+    ->name('payments.stripe.webhook');
+Route::get('v1/payments/pages/{page}', [InvoicePaymentsController::class, 'pages'])
+    ->middleware('throttle:60,1')
+    ->name('payments.pages');
 
 // An inspection report's PDF for places that cannot sign in (a Workiz job);
 // the signed link is the permission. See InspectionReport::shareUrl.
@@ -739,6 +903,15 @@ Route::get('v1/web/public/values', [WebPublicValuesController::class, 'show'])
 | Flutter build and never serves Laravel's public/ — see SnippetController for
 | why that is not worked around with an nginx location.
 */
+/*
+| Chat's call page (Twilio Video). Public, as the snippet above and for the same
+| nginx reason: it holds no data, the token arrives in the URL fragment, which
+| no browser sends to a server.
+*/
+Route::get('v1/chat/call', [ChatController::class, 'callPage'])
+    ->middleware('throttle:120,1')
+    ->name('chat.call-page');
+
 Route::get('v1/web/ezbizi.js', [WebSnippetController::class, 'show'])
     ->middleware('throttle:120,1')
     ->name('web.snippet');
@@ -862,10 +1035,15 @@ Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
 
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'verified', 'two-factor', 'idle', 'api-key'])
+    ->middleware(['auth:sanctum', \App\Http\Middleware\ApplyViewAs::class, 'tenant', 'subscription', 'verified', 'two-factor', 'idle', 'api-key', 'bulk-read'])
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
+
+        // View as (Jose, 2026-11-23): developers only; ApplyViewAs does the swap.
+        Route::get('view-as/options', [\App\Http\Controllers\Api\ViewAsController::class, 'options']);
+        Route::post('view-as', [\App\Http\Controllers\Api\ViewAsController::class, 'store']);
+        Route::delete('view-as', [\App\Http\Controllers\Api\ViewAsController::class, 'destroy']);
 
         /*
          * Suggestions — the one module with no permission behind it.
@@ -892,66 +1070,133 @@ Route::prefix('v1')
         // is a perfectly good uuid-shaped-nothing to a route that accepts any
         // id, and the failure is a 404 about a customer rather than a route
         // that was never reached.
-        Route::get('customers/duplicates', [CustomersController::class, 'duplicates']);
-        Route::apiResource('customers', CustomersController::class);
+        Route::get('customers/duplicates', [CustomersController::class, 'duplicates'])->middleware('throttle:60,1,customers-duplicates');
+        Route::get('customers/tags', [CustomersController::class, 'tags']);
+        // Lists throttled per user (2026-11-17): the busiest client asked one list 39
+        // times in a minute over 14 days of nginx logs (p99.9 18). See config/bulk_read.php.
+        Route::apiResource('customers', CustomersController::class)->middlewareFor('index', 'throttle:120,1,customers-list');
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
         // Each branch's Workiz notes on the customer, read live, never copied.
         Route::get('customers/{customer}/workiz-notes', CustomerWorkizNotesController::class);
 
-        // Before the resource, or 'project-management' reads as a job id.
-        Route::get('jobs/book/options', [\App\Http\Controllers\Api\JobBookingController::class, 'options']);
-        Route::post('jobs/book', [\App\Http\Controllers\Api\JobBookingController::class, 'store']);
-        Route::post('jobs/{job}/book/workiz', [\App\Http\Controllers\Api\JobBookingController::class, 'retryWorkiz']);
-        Route::get('jobs/project-management', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'index']);
-        Route::get('jobs/project-management/stats', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stats']);
-        Route::get('jobs/project-management/jobs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stageJobs']);
-        Route::get('jobs/project-management/overview', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'overview']);
-        Route::get('jobs/project-management/cards', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'cards']);
-        Route::get('jobs/project-management/rules', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'rules']);
-        Route::get('jobs/project-management/logs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'logs']);
-        Route::apiResource('jobs', JobsController::class);
-        Route::get('project-management-2/jobs', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'jobs']);
-        Route::get('project-management-2/jobs/{id}', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'job'])->whereUuid('id');
-        Route::post('project-management-2/jobs/{id}/submit', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'submit'])->whereUuid('id');
+        // Before the resource, or 'book' reads as a job id.
+        Route::get('jobs/book/options', [JobBookingController::class, 'options']);
+        Route::post('jobs/book', [JobBookingController::class, 'store']);
+        Route::post('jobs/{job}/book/workiz', [JobBookingController::class, 'retryWorkiz']);
+        Route::get('jobs/photos', JobPhotosController::class)->middleware('throttle:120,1,jobs-photos');
+        Route::get('jobs/{job}/performers', [JobsController::class, 'performers']);
+        Route::apiResource('jobs', JobsController::class)->middlewareFor('index', 'throttle:120,1,jobs-list');
+        Route::get('project-board/jobs', [ProjectBoardController::class, 'jobs']);
+        Route::patch('project-board/jobs/{job}/repair-team', [ProjectBoardController::class, 'repairTeam']);
+        Route::get('project-board/repair-teams', [ProjectBoardController::class, 'repairTeamList']);
+        Route::post('project-board/repair-teams', [ProjectBoardController::class, 'repairTeams']);
+        Route::put('project-board/jobs/{job}/parts', [ProjectBoardController::class, 'parts']);
+        Route::patch('project-board/jobs/{job}/cost', [ProjectBoardController::class, 'cost']);
+        Route::patch('project-board/jobs/{job}/project-costs', [ProjectBoardController::class, 'projectCostsUpdate']);
+        Route::get('project-board/tech-expenses', [ProjectBoardController::class, 'techExpenses']);
+        Route::put('project-board/column-order', [ProjectBoardController::class, 'columnOrder']);
+        Route::get('project-board/jobs/{job}/work-order', [ProjectBoardController::class, 'workOrder']);
+        Route::get('project-board/dashboard', [ProjectBoardController::class, 'dashboard']);
+        Route::get('project-board/inbox', [ProjectInboxController::class, 'index']);
+        Route::get('project-board/inbox/{job}', [ProjectInboxController::class, 'show']);
+        Route::post('project-board/inbox/{job}', [ProjectInboxController::class, 'reply']);
+        Route::patch('project-board/parts/{part}/reminder', [ProjectBoardController::class, 'partReminder']);
+        Route::patch('project-board/jobs/{job}/proposal', [ProjectBoardController::class, 'updateProposal']);
+        Route::post('project-board/jobs/{job}/ready', [ProjectBoardController::class, 'ready']);
+        Route::get('project-board/options', [ProjectBoardController::class, 'options']);
 
         // Task Board (UI queue 80). Visibility and writes are decided per board
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
-        Route::get('task-boards', [\App\Http\Controllers\Api\TaskBoardsController::class, 'index']);
-        Route::get('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'show']);
+        Route::get('task-boards', [TaskBoardsController::class, 'index']);
+        Route::get('task-boards/{taskBoard}', [TaskBoardsController::class, 'show']);
+        Route::get('task-boards/{taskBoard}/group-tasks', [TaskBoardsController::class, 'groupTasks']);
+        Route::get('task-boards/{taskBoard}/search', [TaskBoardsController::class, 'search']);
+        Route::get('task-boards/{taskBoard}/activity', [TasksController::class, 'boardActivity']);
+        Route::get('task-boards/{taskBoard}/export', [TaskBoardsController::class, 'export']);
+        Route::get('task-boards/{taskBoard}/changes', [TaskBoardsController::class, 'changes']);
         // Custom boards and members, monday-style (inbox 0120).
-        Route::post('task-boards', [\App\Http\Controllers\Api\TaskBoardsController::class, 'store']);
-        Route::patch('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'update']);
-        Route::delete('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'destroy']);
-        Route::get('task-boards/{taskBoard}/members', [\App\Http\Controllers\Api\TaskBoardsController::class, 'members']);
-        Route::post('task-boards/{taskBoard}/members', [\App\Http\Controllers\Api\TaskBoardsController::class, 'storeMember']);
-        Route::patch('task-boards/{taskBoard}/members/{member}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'updateMember']);
-        Route::delete('task-boards/{taskBoard}/members/{member}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'destroyMember']);
-        Route::post('task-boards/{taskBoard}/statuses', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeStatus']);
-        Route::patch('task-boards/{taskBoard}/statuses/{status}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateStatus']);
-        Route::delete('task-boards/{taskBoard}/statuses/{status}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyStatus']);
-        Route::post('task-boards/{taskBoard}/columns', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeColumn']);
-        Route::patch('task-boards/{taskBoard}/columns/{column}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateColumn']);
-        Route::delete('task-boards/{taskBoard}/columns/{column}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyColumn']);
-        Route::post('task-boards/{taskBoard}/groups', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeGroup']);
-        Route::patch('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateGroup']);
-        Route::delete('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyGroup']);
-        Route::post('tasks/bulk', [\App\Http\Controllers\Api\TasksController::class, 'bulk']);
-        Route::post('tasks', [\App\Http\Controllers\Api\TasksController::class, 'store']);
-        Route::patch('tasks/{task}/move', [\App\Http\Controllers\Api\TasksController::class, 'move']);
-        Route::post('tasks/{task}/copy', [\App\Http\Controllers\Api\TasksController::class, 'copy']);
-        Route::post('tasks/{id}/restore', [\App\Http\Controllers\Api\TasksController::class, 'restore']);
-        Route::get('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'show']);
-        Route::patch('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'update']);
-        Route::delete('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'destroy']);
-        Route::post('tasks/{task}/updates', [\App\Http\Controllers\Api\TasksController::class, 'storeUpdate']);
-        Route::get('tasks/{task}/links', [\App\Http\Controllers\Api\TasksController::class, 'links']);
-        Route::post('tasks/{task}/links', [\App\Http\Controllers\Api\TasksController::class, 'storeLink']);
-        Route::delete('tasks/{task}/links/{linked}', [\App\Http\Controllers\Api\TasksController::class, 'destroyLink']);
+        Route::post('task-boards', [TaskBoardsController::class, 'store']);
+        Route::patch('task-boards/{taskBoard}', [TaskBoardsController::class, 'update']);
+        Route::delete('task-boards/{taskBoard}', [TaskBoardsController::class, 'destroy']);
+        Route::post('task-boards/{taskBoard}/archive', [TaskBoardsController::class, 'archive']);
+        Route::post('task-boards/{taskBoard}/unarchive', [TaskBoardsController::class, 'unarchive']);
+        Route::post('task-boards/{id}/restore', [TaskBoardsController::class, 'restore']);
+        Route::get('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'members']);
+        Route::get('task-boards/{taskBoard}/people/{user}', [TaskBoardsController::class, 'person']);
+        // Folders and colours on the board list (Jose 11-13), shared for the organization.
+        Route::get('task-board-folders', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'index']);
+        Route::post('task-board-folders', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'store']);
+        Route::patch('task-board-folders/{folder}', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'update']);
+        Route::delete('task-board-folders/{folder}', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'destroy']);
+        // The automatic company and branch groups' colours: one set per organization.
+        Route::get('task-board-group-colours', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'groupColours']);
+        Route::patch('task-board-group-colours', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'updateGroupColours']);
+        Route::get('task-boards/{taskBoard}/attachments', [TaskBoardGalleryController::class, 'index']);
+        Route::post('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'storeMember']);
+        Route::patch('task-boards/{taskBoard}/members/{member}', [TaskBoardsController::class, 'updateMember']);
+        Route::delete('task-boards/{taskBoard}/members/{member}', [TaskBoardsController::class, 'destroyMember']);
+        Route::post('task-boards/{taskBoard}/statuses', [TaskBoardSettingsController::class, 'storeStatus']);
+        Route::patch('task-boards/{taskBoard}/statuses/{status}', [TaskBoardSettingsController::class, 'updateStatus']);
+        Route::delete('task-boards/{taskBoard}/statuses/{status}', [TaskBoardSettingsController::class, 'destroyStatus']);
+        Route::post('task-boards/{taskBoard}/columns', [TaskBoardSettingsController::class, 'storeColumn']);
+        Route::patch('task-boards/{taskBoard}/columns/{column}', [TaskBoardSettingsController::class, 'updateColumn']);
+        Route::delete('task-boards/{taskBoard}/columns/{column}', [TaskBoardSettingsController::class, 'destroyColumn']);
+        Route::post('task-boards/{taskBoard}/groups', [TaskBoardSettingsController::class, 'storeGroup']);
+        Route::patch('task-boards/{taskBoard}/groups/{group}', [TaskBoardSettingsController::class, 'updateGroup']);
+        Route::delete('task-boards/{taskBoard}/groups/{group}', [TaskBoardSettingsController::class, 'destroyGroup']);
+        // Monday's group menu (row 69).
+        Route::post('task-boards/{taskBoard}/groups/{group}/duplicate', [TaskBoardSettingsController::class, 'duplicateGroup']);
+        Route::post('task-boards/{taskBoard}/groups/{group}/move', [TaskBoardSettingsController::class, 'moveGroupToBoard']);
+        Route::post('task-boards/{taskBoard}/groups/{group}/archive', [TaskBoardSettingsController::class, 'archiveGroup']);
+        Route::post('task-boards/{taskBoard}/groups/{group}/restore', [TaskBoardSettingsController::class, 'restoreGroup']);
+        Route::post('task-boards/{taskBoard}/views', [TaskBoardViewsController::class, 'store']);
+        Route::patch('task-boards/{taskBoard}/views/{view}', [TaskBoardViewsController::class, 'update']);
+        Route::delete('task-boards/{taskBoard}/views/{view}', [TaskBoardViewsController::class, 'destroy']);
+        Route::post('tasks/bulk', [TasksController::class, 'bulk']);
+        // Monday's Archive item and the board's Archive (row 69).
+        Route::post('tasks/{task}/archive', [TasksController::class, 'archive']);
+        Route::get('task-boards/{taskBoard}/archived', [TasksController::class, 'archived']);
+        // Sensitive tasks: an authenticator code opens them on this session for 5 minutes.
+        Route::delete('tasks/unlock', [TasksController::class, 'lock']);
+        Route::post('tasks/{task}/unlock', [TasksController::class, 'unlock']);
+        Route::post('tasks', [TasksController::class, 'store']);
+        Route::patch('tasks/{task}/move', [TasksController::class, 'move']);
+        Route::post('tasks/{task}/copy', [TasksController::class, 'copy']);
+        Route::post('tasks/{task}/suggest-label', [TasksController::class, 'suggestLabel']);
+        Route::post('tasks/{id}/restore', [TasksController::class, 'restore']);
+        Route::get('task-search', [TasksController::class, 'search'])->middleware('throttle:120,1,task-search');
+        Route::get('task-updates', [TasksController::class, 'feed']);
+        Route::get('my-work', [TasksController::class, 'myWork']);
+        Route::post('task-updates/read-all', [TasksController::class, 'feedReadAll']);
+        Route::get('tasks/{task}', [TasksController::class, 'show']);
+        Route::patch('tasks/{task}', [TasksController::class, 'update']);
+        Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
+        Route::post('tasks/{task}/updates', [TasksController::class, 'storeUpdate']);
+        Route::patch('tasks/{task}/updates/{update}', [TasksController::class, 'editUpdate']);
+        Route::delete('tasks/{task}/updates/{update}', [TasksController::class, 'destroyUpdate']);
+        Route::post('tasks/{task}/updates/{update}/like', [TasksController::class, 'likeUpdate']);
+        Route::post('tasks/{task}/updates/{update}/follow', [TasksController::class, 'followUpdate']);
+        Route::post('tasks/{task}/updates/{update}/bookmark', [TasksController::class, 'bookmarkUpdate']);
+        Route::post('tasks/{task}/updates/{update}/check', [TasksController::class, 'checkUpdate']);
+        Route::get('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'index']);
+        Route::post('tasks/{task}/reminders', [\App\Http\Controllers\Api\TaskRemindersController::class, 'store']);
+        Route::delete('tasks/{task}/reminders/{reminder}', [\App\Http\Controllers\Api\TaskRemindersController::class, 'destroy']);
+        Route::get('tasks/{task}/activity', [TasksController::class, 'activity']);
+        Route::get('tasks/{task}/links', [TasksController::class, 'links']);
+        Route::get('tasks/{task}/same-caller', [TasksController::class, 'sameCaller']);
+        Route::post('tasks/{task}/links', [TasksController::class, 'storeLink']);
+        Route::delete('tasks/{task}/links/{linked}', [TasksController::class, 'destroyLink']);
 
         // Lines hang off a job and are never addressed without one — a line id
         // alone would be an id oracle across franchises.
         Route::post('jobs/{job}/lines', [JobLinesController::class, 'store']);
-        Route::post('jobs/{job}/notes', [\App\Http\Controllers\Api\JobNotesController::class, 'store']);
+        Route::post('jobs/{job}/notes', [JobNotesController::class, 'store']);
+        Route::patch('jobs/{job}/notes/{note}', [JobNotesController::class, 'update']);
+        Route::delete('jobs/{job}/notes/{note}', [JobNotesController::class, 'destroy']);
+        Route::put('jobs/{job}/workiz-notes', [JobNotesController::class, 'workiz']);
+        // @mentions and unread notes on jobs, leads and tasks (monday port, 2026-11-09).
+        Route::get('mentionable', [NoteActivityController::class, 'mentionable']);
+        Route::post('note-reads', [NoteActivityController::class, 'read']);
         Route::patch('jobs/{job}/lines/{line}', [JobLinesController::class, 'update']);
         Route::delete('jobs/{job}/lines/{line}', [JobLinesController::class, 'destroy']);
 
@@ -963,12 +1208,18 @@ Route::prefix('v1')
         Route::get('memberships/plans', [MembershipsController::class, 'plans']);
         Route::post('memberships/plans', [MembershipsController::class, 'storePlan']);
         Route::patch('memberships/plans/{plan}', [MembershipsController::class, 'updatePlan']);
+        // Memberships > Promotions (Jose, 2026-11-06).
+        Route::get('memberships/promotions', [PromotionsController::class, 'index']);
+        Route::get('memberships/promotions/preview', [PromotionsController::class, 'preview']);
+        Route::post('memberships/promotions', [PromotionsController::class, 'store']);
+        Route::post('memberships/promotions/test', [PromotionsController::class, 'test']);
+        Route::post('memberships/promotions/media', [PromotionsController::class, 'upload']);
         Route::apiResource('memberships', MembershipsController::class)->except('show');
 
         // drivers before {vehicle} so the literal path is not captured as an id
         Route::get('vehicles/drivers', [VehicleAssignmentsController::class, 'drivers']);
         // Fleet's General tab. Before `vehicles/{vehicle}`, same reason as drivers.
-        Route::get('vehicles/summary', [\App\Http\Controllers\Api\FleetSummaryController::class, 'index'])
+        Route::get('vehicles/summary', [FleetSummaryController::class, 'index'])
             ->middleware('permission:fleet_management.general.view');
         Route::post('vehicles/{vehicle}/assignments', [VehicleAssignmentsController::class, 'store']);
         Route::post('vehicles/{vehicle}/unassign', [VehicleAssignmentsController::class, 'unassign']);
@@ -1004,26 +1255,41 @@ Route::prefix('v1')
         // A manager account: what everything beneath it spent. The one place a
         // fan-out is still the answer, and it costs nothing until asked for.
         Route::get('ads/rollup', [AdsPerformanceController::class, 'rollup']);
+        // Facebook/Instagram campaigns, live from Meta: read, pause, resume, re-budget (Jose, 2026-11-04).
+        Route::get('meta-ads/accounts', [MetaAdsController::class, 'accounts']);
+        Route::get('meta-ads/tree', [MetaAdsController::class, 'tree']);
+        Route::post('meta-ads/status', [MetaAdsController::class, 'setStatus']);
+        Route::post('meta-ads/budget', [MetaAdsController::class, 'setBudget']);
+        Route::get('ads-manager/google/campaigns', [GoogleAdsManagerController::class, 'campaigns']);
+        Route::post('ads-manager/google/status', [GoogleAdsManagerController::class, 'status']);
+        Route::post('ads-manager/google/budget', [GoogleAdsManagerController::class, 'budget']);
+        Route::post('ads-manager/google/target', [GoogleAdsManagerController::class, 'target']);
+        Route::get('ad-schedules', [AdSchedulesController::class, 'index']);
+        Route::put('ad-schedules', [AdSchedulesController::class, 'save']);
+        Route::delete('ad-schedules/{schedule}', [AdSchedulesController::class, 'destroy']);
 
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
         Route::post('reviews/replies/draft-batch', [ReviewsController::class, 'draftBatch']);
-        Route::get('reviews/sources', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'sources']);
+        Route::get('reviews/auto-replies', [ReviewsController::class, 'autoReplies']);
+        Route::get('reviews/sources', [BusinessProfileListingController::class, 'sources']);
         // The eKomi screen (Jose, 2026-11-02).
-        Route::get('ekomi', [\App\Http\Controllers\Api\EkomiController::class, 'index']);
-        Route::get('ekomi/{connection}/overview', [\App\Http\Controllers\Api\EkomiController::class, 'overview']);
-        Route::get('ekomi/{connection}/requests', [\App\Http\Controllers\Api\EkomiController::class, 'requests']);
-        Route::post('ekomi/{connection}/requests', [\App\Http\Controllers\Api\EkomiController::class, 'ask']);
-        Route::put('ekomi/{connection}/settings', [\App\Http\Controllers\Api\EkomiController::class, 'updateSettings']);
-        Route::post('ekomi/{connection}/test', [\App\Http\Controllers\Api\EkomiController::class, 'test']);
+        Route::get('ekomi', [EkomiController::class, 'index']);
+        Route::get('ekomi/{connection}/overview', [EkomiController::class, 'overview']);
+        Route::get('ekomi/{connection}/requests', [EkomiController::class, 'requests']);
+        Route::post('ekomi/{connection}/requests', [EkomiController::class, 'ask']);
+        Route::put('ekomi/{connection}/settings', [EkomiController::class, 'updateSettings']);
+        Route::post('ekomi/{connection}/test', [EkomiController::class, 'test']);
         // What customers did with their review links (Customer Experience, 2026-10-15).
-        Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
+        Route::get('customer-experience/review-links', ReviewLinkReportController::class);
+        Route::post('customer-experience/review-qr', \App\Http\Controllers\Api\ReviewQrController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
         // Working a review as a case (UI queue 101, 2026-10-16): reviews.manage.
         Route::patch('reviews/{review}', [ReviewsController::class, 'update']);
         Route::post('reviews/{review}/notes', [ReviewsController::class, 'addNote']);
         Route::get('reviews/{review}/customer-suggestions', [ReviewsController::class, 'customerSuggestions']);
         Route::put('reviews/{review}/customer', [ReviewsController::class, 'setCustomer']);
+        Route::put('reviews/{review}/link-match', [ReviewsController::class, 'settleLinkMatch']);
         Route::post('reviews/{review}/report', [ReviewsController::class, 'report']);
         Route::put('reviews/{review}/reply', [ReviewsController::class, 'draftReply']);
         Route::delete('reviews/{review}/reply', [ReviewsController::class, 'discardReply']);
@@ -1050,56 +1316,73 @@ Route::prefix('v1')
          */
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         // Customer Experience › Complaints (Jose, 2026-10-20). Each checks its own grant.
-        Route::get('complaints', [\App\Http\Controllers\Api\ComplaintsController::class, 'index']);
-        Route::get('complaints/{complaint}', [\App\Http\Controllers\Api\ComplaintsController::class, 'show']);
-        Route::patch('complaints/{complaint}', [\App\Http\Controllers\Api\ComplaintsController::class, 'update']);
-        Route::post('complaints/{complaint}/notes', [\App\Http\Controllers\Api\ComplaintsController::class, 'addNote']);
+        Route::get('complaints', [ComplaintsController::class, 'index']);
+        Route::post('complaints', [ComplaintsController::class, 'store']);
+        Route::get('complaints/{complaint}', [ComplaintsController::class, 'show']);
+        Route::patch('complaints/{complaint}', [ComplaintsController::class, 'update']);
+        Route::post('complaints/{complaint}/notes', [ComplaintsController::class, 'addNote']);
         // How listings perform on Google (A1 Leads takeover, 2026-10-20).
-        Route::get('business-profile/performance', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'index']);
-        Route::get('business-profile/locations/{location}/search-terms', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'searchTerms']);
+        Route::get('business-profile/performance', [BusinessProfilePerformanceController::class, 'index']);
+        Route::get('business-profile/locations/{location}/search-terms', [BusinessProfilePerformanceController::class, 'searchTerms']);
         // Lets a rule publish review replies on this listing (A1 Leads takeover, 2026-10-20). Off by default.
-        Route::put('business-profile/locations/{location}/auto-reply', \App\Http\Controllers\Api\BusinessProfileAutoReplyController::class);
+        Route::put('business-profile/locations/{location}/auto-reply', BusinessProfileAutoReplyController::class);
+        // Weekly AI posts waiting for Approve / Disapprove (Jose, 2026-11-03).
+        Route::get('business-profile/post-queue', [BusinessProfilePostQueueController::class, 'index']);
+        Route::post('business-profile/post-queue/{target}/approve', [BusinessProfilePostQueueController::class, 'approve']);
+        Route::post('business-profile/post-queue/{target}/disapprove', [BusinessProfilePostQueueController::class, 'disapprove']);
+        Route::put('business-profile/locations/{location}/auto-post', [BusinessProfilePostQueueController::class, 'autoPost']);
         // Media, services, phone check (A1 Leads takeover, design 154). Google writes stay behind the write switch.
-        Route::get('business-profile/phone-check', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'phoneCheck']);
-        Route::get('business-profile/whatsapp-links', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'whatsappLinks']);
-        Route::post('business-profile/whatsapp-links/apply', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'applyWhatsappLinks']);
-        Route::get('business-profile/locations/{location}/media', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'media']);
-        Route::post('business-profile/locations/{location}/media/copy', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'copyMedia']);
-        Route::get('business-profile/locations/{location}/services', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'services']);
-        Route::put('business-profile/locations/{location}/services', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'replaceServices']);
-        Route::post('business-profile/locations/{location}/services/copy', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'copyServices']);
+        Route::get('business-profile/phone-check', [BusinessProfileListingController::class, 'phoneCheck']);
+        Route::get('business-profile/whatsapp-links', [BusinessProfileListingController::class, 'whatsappLinks']);
+        Route::post('business-profile/whatsapp-links/apply', [BusinessProfileListingController::class, 'applyWhatsappLinks']);
+        Route::get('business-profile/locations/{location}/media', [BusinessProfileListingController::class, 'media']);
+        Route::post('business-profile/locations/{location}/media/copy', [BusinessProfileListingController::class, 'copyMedia']);
+        Route::get('business-profile/locations/{location}/services', [BusinessProfileListingController::class, 'services']);
+        Route::put('business-profile/locations/{location}/services', [BusinessProfileListingController::class, 'replaceServices']);
+        Route::post('business-profile/locations/{location}/services/copy', [BusinessProfileListingController::class, 'copyServices']);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
         Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
         Route::post('leads/sync', [LeadsController::class, 'sync']);
         Route::post('leads/read-all', [LeadsController::class, 'readAll']);
         Route::get('leads/dashboard', [LeadDashboardController::class, 'show']);
-        Route::get('leads/stats', [\App\Http\Controllers\Api\LeadStatsController::class, 'show']);
-        Route::get('leads/stats/points', [\App\Http\Controllers\Api\LeadStatsController::class, 'points']);
-        Route::get('leads/sources', [\App\Http\Controllers\Api\LeadSourcesController::class, 'index']);
+        Route::get('leads/stats', [LeadStatsController::class, 'show']);
+        Route::get('leads/stats/points', [LeadStatsController::class, 'points']);
+        Route::get('leads/sources', [LeadSourcesController::class, 'index']);
         // Leads › Manage › Hidden (Jose, 2026-10-29): one grant sees, hides and unhides.
-        Route::middleware('permission:'.\App\Models\Lead::HIDDEN_PERMISSION)->group(function () {
-            Route::get('leads/hidden', [\App\Http\Controllers\Api\LeadHiddenController::class, 'index']);
-            Route::post('leads/hidden-numbers', [\App\Http\Controllers\Api\LeadHiddenController::class, 'hideNumberDirectly']);
-            Route::delete('leads/hidden-numbers/{number}', [\App\Http\Controllers\Api\LeadHiddenController::class, 'unhideNumber']);
-            Route::post('leads/{lead}/hide', [\App\Http\Controllers\Api\LeadHiddenController::class, 'hide']);
-            Route::post('leads/{lead}/unhide', [\App\Http\Controllers\Api\LeadHiddenController::class, 'unhide']);
+        Route::middleware('permission:'.Lead::HIDDEN_PERMISSION)->group(function () {
+            Route::get('leads/hidden', [LeadHiddenController::class, 'index'])->middleware('throttle:60,1,leads-hidden');
+            Route::post('leads/hidden-numbers', [LeadHiddenController::class, 'hideNumberDirectly']);
+            Route::delete('leads/hidden-numbers/{number}', [LeadHiddenController::class, 'unhideNumber']);
+            Route::post('leads/{lead}/hide', [LeadHiddenController::class, 'hide']);
+            Route::post('leads/{lead}/unhide', [LeadHiddenController::class, 'unhide']);
         });
         // Leads › Manage › Office hours (Jose, 2026-10-22): the closed-office replies' hours and time zone per place.
         Route::middleware('permission:leads.manage')->group(function () {
-            Route::get('leads/office-hours', [\App\Http\Controllers\Api\LeadOfficeHoursController::class, 'index']);
+            Route::get('leads/office-hours', [LeadOfficeHoursController::class, 'index']);
             // No whereIn on {scope}: the controller's match() refuses any other scope, and a
             // route constraint hides the call from ClientCallsRealRoutesTest (failed the 0.0.0478 precheck).
-            Route::put('leads/office-hours/{scope}/{id}', [\App\Http\Controllers\Api\LeadOfficeHoursController::class, 'update']);
+            Route::put('leads/office-hours/{scope}/{id}', [LeadOfficeHoursController::class, 'update']);
+            // Leads › Manage › Phone lines (Jose, 2026-11-17): whose calls each RingCentral number takes.
+            Route::get('leads/phone-lines', [\App\Http\Controllers\Api\LeadPhoneLinesController::class, 'index']);
+            Route::put('leads/phone-lines', [\App\Http\Controllers\Api\LeadPhoneLinesController::class, 'update']);
+        });
+        // Leads › Manage › Recovery (Jose, 2026-11-16). Edits go through PATCH automations/{id}.
+        Route::middleware('permission:automations.view')->group(function () {
+            Route::get('leads/recovery', [LeadsRecoveryController::class, 'index'])->middleware('throttle:60,1,leads-recovery');
+            Route::post('leads/recovery/preview', [LeadsRecoveryController::class, 'preview']);
         });
         Route::get('leads/reply-templates', [LeadReplyTemplatesController::class, 'index']);
         Route::put('leads/reply-templates/{company}', [LeadReplyTemplatesController::class, 'update']);
-        Route::get('leads', [LeadsController::class, 'index']);
+        Route::get('leads', [LeadsController::class, 'index'])->middleware('throttle:120,1,leads-list');
         Route::get('leads/{lead}', [LeadsController::class, 'show']);
         Route::get('leads/{lead}/conversations/{conversation}/recording', [LeadsController::class, 'recording']);
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
+        Route::post('leads/{lead}/whatsapp-template', [LeadsController::class, 'sendWhatsAppTemplate']);
         Route::post('leads/{lead}/suggest-reply', [LeadsController::class, 'suggestReply']);
+        Route::post('leads/{lead}/proofread', [LeadsController::class, 'proofread']);
         Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
         Route::post('leads/{lead}/follow-up-handled', [LeadsController::class, 'followUpHandled']);
+        Route::post('leads/{lead}/reading/use', [LeadsController::class, 'useReading']);
         Route::post('leads/{lead}/reclassify', [LeadsController::class, 'reclassify']);
         Route::get('leads/{lead}/timeline', [LeadsController::class, 'timeline']);
         Route::patch('leads/{lead}/conversations/{conversation}/caller-type', [LeadsController::class, 'callerType']);
@@ -1108,6 +1391,9 @@ Route::prefix('v1')
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
         Route::get('leads/{lead}/workiz-choices', [LeadsController::class, 'workizChoices']);
         Route::post('leads/{lead}/google-credit', [LeadsController::class, 'requestCredit']);
+        // Another date (Jose, 2026-11-16): the area's open windows, then move and approve.
+        Route::get('leads/{lead}/booking/days', [LeadsController::class, 'bookingDays']);
+        Route::post('leads/{lead}/booking/move', [LeadsController::class, 'moveBooking']);
         Route::post('leads/{lead}/booking/{decision}', [LeadsController::class, 'decideBooking'])->whereIn('decision', ['approve', 'decline']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
@@ -1138,6 +1424,8 @@ Route::prefix('v1')
             Route::post('send', 'send');
             Route::post('send-preview', 'preview');
             Route::get('settings', 'settings');
+            Route::get('payments-account', [InvoicePaymentsController::class, 'account']);
+            Route::post('payments-account/onboarding', [InvoicePaymentsController::class, 'onboarding']);
             Route::get('/', 'index');
             Route::get('{invoice}', 'show');
             Route::patch('{invoice}', 'update');
@@ -1152,6 +1440,23 @@ Route::prefix('v1')
             Route::post('financials/bills', [FinancialBillsController::class, 'store']);
             Route::get('financials/bills/{bill}/image', [FinancialBillsController::class, 'image']);
             Route::delete('financials/bills/{bill}', [FinancialBillsController::class, 'destroy']);
+        });
+        // Bank (Jose, 11-24): banks connected through Plaid, balances, transactions.
+        Route::middleware('permission:financials.bank.view')->group(function (): void {
+            Route::get('financials/bank', [FinancialBankController::class, 'index']);
+            Route::get('financials/bank/transactions', [FinancialBankController::class, 'transactions']);
+            Route::post('financials/bank/{connection}/reconnect', [FinancialBankController::class, 'reconnect']);
+            Route::post('financials/bank/{connection}/refresh', [FinancialBankController::class, 'refresh']);
+            // What a deposit was for: a recorded invoice payment or an open invoice (BankMatcher).
+            Route::get('financials/bank/transactions/{transaction}/candidates', [FinancialBankController::class, 'candidates']);
+            Route::post('financials/bank/transactions/{transaction}/match', [FinancialBankController::class, 'match']);
+            Route::delete('financials/bank/transactions/{transaction}/match', [FinancialBankController::class, 'unmatch']);
+        });
+        // Markets (Shoval, 11-20): QuickBooks expenses per branch, closing rate, cost per closed job.
+        Route::middleware('permission:financials.markets.view')->group(function (): void {
+            Route::get('financials/markets', [FinancialMarketsController::class, 'index']);
+            Route::get('financials/markets/maps', [FinancialMarketsController::class, 'maps']);
+            Route::patch('financials/markets/maps/{map}', [FinancialMarketsController::class, 'updateMap']);
         });
         // Results (ACE): drawn inside Financials; the controller checks each action.
         Route::middleware('permission:financial_results.view')->group(function (): void {
@@ -1182,6 +1487,7 @@ Route::prefix('v1')
             Route::post('airtable-links', 'mirrorAirtable');
             Route::post('tables/{table}/refresh', 'refreshAirtable');
             Route::post('tables/{table}/cut-over', 'cutOver');
+            Route::get('parity', 'parity');
             Route::get('tables/{table}', 'showTable');
             Route::patch('tables/{table}', 'updateTable');
             Route::delete('tables/{table}', 'destroyTable');
@@ -1258,6 +1564,7 @@ Route::prefix('v1')
             // what every other site publishes.
             Route::post('web/sites/{site}/primary', [WebSitesController::class, 'makePrimary']);
             Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
+            Route::get('web/sites/{site}/booking-confirmation-preview', [WebSitesController::class, 'bookingConfirmationPreview']);
             Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
             // Rodrigo's bulk hours editor: review a week edit across websites,
             // then apply exactly what was reviewed. Each site is authorised
@@ -1452,9 +1759,11 @@ Route::prefix('v1')
             Route::post('reports/experimental/workiz', [WorkizConnectController::class, 'store']);
 
             // Hand-set facts the phones cannot say (Jose, 2026-10-05).
-            Route::put('reports/experimental/people/tag', [ExperimentalCallReportController::class, 'tag']);
+            Route::put('reports/experimental/people/tag', [ExperimentalCallReportController::class, 'tag'])->middleware('permission:reports.handles');
             Route::put('reports/experimental/sources', [ExperimentalCallReportController::class, 'sources']);
-            Route::post('reports/experimental/calls/{call}/convert', [ExperimentalCallReportController::class, 'convert']);
+            Route::post('reports/experimental/calls/{call}/convert', [ExperimentalCallReportController::class, 'convert'])->middleware('permission:reports.handles');
+            Route::put('reports/experimental/calls/{call}/override', [ExperimentalCallReportController::class, 'override'])->middleware('permission:reports.handles');
+            Route::delete('reports/experimental/calls/{call}/override', [ExperimentalCallReportController::class, 'revert'])->middleware('permission:reports.handles');
         });
 
         /*
@@ -1474,6 +1783,9 @@ Route::prefix('v1')
         Route::post('social/airtable/replace-token', [AirtableConnectController::class, 'replaceToken']);
         Route::post('social/workiz', [WorkizConnectController::class, 'store']);
         Route::put('social/workiz/{connection}', [WorkizConnectController::class, 'update']);
+        // Every account's tags against the approved standard, and the change log (Jose, 2026-11-10).
+        Route::get('workiz/tags', [WorkizTagsController::class, 'index']);
+        Route::post('workiz/tags/approve', [WorkizTagsController::class, 'approve']);
         Route::post('social/workiz-web/link', [WorkizWebSessionController::class, 'link']);
         Route::get('social/workiz-web/{connection}/accounts', [WorkizWebSessionController::class, 'accounts']);
         Route::put('social/workiz-web/{connection}/accounts', [WorkizWebSessionController::class, 'map']);
@@ -1507,24 +1819,55 @@ Route::prefix('v1')
         // How much each metric counts (Jose, 2026-10-14); seen with the tab, set with its own permission.
         // The weekly/monthly report's goals (A1 Leads takeover, 2026-10-16).
         // Correcting a report draft before it is approved (2026-10-20).
-        Route::get('reports/drafts', [\App\Http\Controllers\Api\ReportDraftsController::class, 'index'])->middleware('permission:reports.correct');
-        Route::post('reports/drafts/{batch}/changes', [\App\Http\Controllers\Api\ReportDraftsController::class, 'change'])->middleware('permission:reports.correct');
-        Route::get('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'index'])->middleware('permission:reports.view');
-        Route::get('reports/period', [\App\Http\Controllers\Api\ReportPeriodController::class, 'show'])->middleware('permission:reports.view');
+        Route::get('reports/drafts', [ReportDraftsController::class, 'index'])->middleware('permission:reports.correct');
+        Route::post('reports/drafts/{batch}/changes', [ReportDraftsController::class, 'change'])->middleware('permission:reports.correct');
+        Route::get('reports/goals', [ReportGoalsController::class, 'index'])->middleware('permission:reports.view');
+        Route::get('reports/period', [ReportPeriodController::class, 'show'])->middleware('permission:reports.view');
         // The Reports workspace (takeover row 10, UI queue 157).
         Route::middleware('permission:reports.view')->group(function () {
-            Route::get('reports/texts/{kind}', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'text']);
-            Route::post('reports/texts/{kind}/send', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'send']);
-            Route::get('reports/batches/{period}', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'batch']);
-            Route::post('reports/batches/{batch}/approve', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'approve']);
+            Route::get('reports/texts/{kind}', [ReportWorkspaceController::class, 'text']);
+            Route::post('reports/texts/{kind}/send', [ReportWorkspaceController::class, 'send']);
+            Route::get('reports/batches/{period}', [ReportWorkspaceController::class, 'batch']);
+            Route::post('reports/batches/{batch}/approve', [ReportWorkspaceController::class, 'approve']);
         });
-        Route::put('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'update'])->middleware('permission:reports.settings');
+        Route::put('reports/goals', [ReportGoalsController::class, 'update'])->middleware('permission:reports.settings');
         Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');
         Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');
         // A scored call's recording, for Scoring alone (Performance's own needs Performance).
         Route::get('reports/scoring/calls/{recording}/recording', [ExperimentalCallReportController::class, 'recording'])->middleware('permission:reports.scoring.view');
+        // Leaderboard (Trey, approved by Jose 2026-11-25): Scoring's top three
+        // marked New, week by week (Sunday to Friday), and the reader's own
+        // Performance and Scoring.
+        Route::get('leaderboard', [LeaderboardController::class, 'board'])->middleware('permission:leaderboard.view');
+        Route::get('leaderboard/weeks', [LeaderboardController::class, 'weeks'])->middleware('permission:leaderboard.view');
+        Route::get('leaderboard/mine', [LeaderboardController::class, 'mine'])->middleware('permission:leaderboard.mine.view');
+        Route::get('leaderboard/mine/calls', [LeaderboardController::class, 'calls'])->middleware('permission:leaderboard.mine.view');
         // Thumbtack lead spend (Jose, 2026-10-13).
         Route::get('reports/thumbtack', [ThumbtackReportController::class, 'show'])->middleware('permission:reports.thumbtack.view');
+        // Every job created in the dates, by source, number dialed and area (Jose, 2026-11-11).
+        Route::get('reports/jobs', [\App\Http\Controllers\Api\JobsReportController::class, 'show'])->middleware('permission:reports.jobs.view');
+        // Jobs cancelled and jobs pending, by the business's own statuses (Shoval, 2026-11-18).
+        Route::get('reports/cancelled', [\App\Http\Controllers\Api\JobStatusReportController::class, 'show'])
+            ->defaults('kind', 'cancelled')->middleware('permission:reports.cancelled.view');
+        Route::get('reports/pending', [\App\Http\Controllers\Api\JobStatusReportController::class, 'show'])
+            ->defaults('kind', 'pending')->middleware('permission:reports.pending.view');
+        // Estimates from both stores, texted and answered derived (Shoval, 2026-11-18).
+        Route::get('reports/estimates', [\App\Http\Controllers\Api\EstimatesReportController::class, 'show'])->middleware('permission:reports.estimates.view');
+        // Per owner: open, done in the dates, overdue, days to done (Shoval's list via Task Board, 2026-11-20).
+        Route::get('reports/tasks', [\App\Http\Controllers\Api\TasksReportController::class, 'show'])->middleware('permission:reports.tasks.view');
+        // Complaints against the business's contact and solve hours (Shoval, 2026-11-18).
+        Route::get('reports/complaints', [\App\Http\Controllers\Api\ComplaintsReportController::class, 'show'])->middleware('permission:reports.complaints.view');
+        // Per dispatcher: leads, messages answered, minutes to the first reply (Shoval, 2026-11-18).
+        Route::get('reports/dispatch', [\App\Http\Controllers\Api\DispatchReportController::class, 'show'])->middleware('permission:reports.dispatch.view');
+        // The money that does not add up, one row per problem (Shoval, 2026-11-18).
+        Route::get('reports/accounting', [\App\Http\Controllers\Api\AccountingReportController::class, 'show'])->middleware('permission:reports.accounting.view');
+        // Per position on HR's recruiting records (Shoval, 2026-11-18).
+        Route::get('reports/recruiting', [\App\Http\Controllers\Api\RecruitingReportController::class, 'show'])->middleware('permission:reports.recruiting.view');
+        // Per technician: the four checks, and the Tech report (Shoval, 2026-11-18).
+        Route::get('reports/tech-checks', [\App\Http\Controllers\Api\TechnicianReportController::class, 'show'])
+            ->defaults('kind', 'checks')->middleware('permission:reports.tech_checks.view');
+        Route::get('reports/technicians', [\App\Http\Controllers\Api\TechnicianReportController::class, 'show'])
+            ->defaults('kind', 'report')->middleware('permission:reports.techs.view');
         Route::middleware('permission:reports.meta.view')->group(function () {
             Route::get('reports/meta', [MetaAdsReportController::class, 'show']);
             Route::get('reports/meta/campaigns', [MetaAdsReportController::class, 'campaigns']);
@@ -1561,6 +1904,9 @@ Route::prefix('v1')
 
         Route::middleware('permission:reports.library.view')->group(function () {
             Route::get('reports', [ReportsController::class, 'index']);
+            // Every report EzBizi sends, and what each sent (Jose, 2026-11-25). Before reports/{id}.
+            Route::get('reports/sent', [SentReportsController::class, 'index']);
+            Route::get('reports/sent/history', [SentReportsController::class, 'history']);
             Route::post('reports/{id}/run', [ReportsController::class, 'run']);
             Route::get('reports/{id}/csv', [ReportsController::class, 'csv']);
             Route::get('reports/{id}', [ReportsController::class, 'show']);
@@ -1596,6 +1942,8 @@ Route::prefix('v1')
         // The Schedule tab: one day's board, read-only.
         // Scheduling › Overbooking (Jose, 2026-09-29).
         // Scheduling › Locations (Jovanni, 2026-10-01; queue 49).
+        // Anyone who sees an area can report a wrong ZIP; the controller asks scheduling.view.
+        Route::post('scheduling/zip-reports', [\App\Http\Controllers\Api\SchedulingZipReportsController::class, 'store']);
         Route::middleware('permission:scheduling.locations.view')->group(function () {
             Route::get('scheduling/locations', [SchedulingLocationsController::class, 'index']);
             Route::get('scheduling/locations/nearest', [SchedulingLocationsController::class, 'nearest']);
@@ -1604,26 +1952,27 @@ Route::prefix('v1')
             Route::put('scheduling/locations/notes/{company}', [SchedulingLocationsController::class, 'note']);
         });
         Route::middleware('permission:scheduling.helpers.view')->group(function () {
-            Route::get('scheduling/helpers', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'index']);
-            Route::post('scheduling/helpers', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'store']);
-            Route::get('scheduling/helpers/bookings', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'bookings']);
-            Route::post('scheduling/helpers/bookings', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'book']);
-            Route::patch('scheduling/helpers/bookings/{booking}', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'updateBooking']);
-            Route::delete('scheduling/helpers/bookings/{booking}', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'destroyBooking']);
-            Route::patch('scheduling/helpers/{helper}', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'update']);
+            Route::get('scheduling/helpers', [SchedulingHelpersController::class, 'index']);
+            Route::post('scheduling/helpers', [SchedulingHelpersController::class, 'store']);
+            Route::get('scheduling/helpers/bookings', [SchedulingHelpersController::class, 'bookings']);
+            Route::post('scheduling/helpers/bookings', [SchedulingHelpersController::class, 'book']);
+            Route::patch('scheduling/helpers/bookings/{booking}', [SchedulingHelpersController::class, 'updateBooking']);
+            Route::delete('scheduling/helpers/bookings/{booking}', [SchedulingHelpersController::class, 'destroyBooking']);
+            Route::patch('scheduling/helpers/{helper}', [SchedulingHelpersController::class, 'update']);
         });
         Route::get('scheduling/routes', [SchedulingAvailabilityController::class, 'routes'])
             ->middleware('permission:scheduling.routing.view');
         Route::get('scheduling/reschedules', [SchedulingAvailabilityController::class, 'reschedules'])
             ->middleware('permission:scheduling.rescheduling.view');
-        Route::middleware('permission:scheduling.overbooking.view')->group(function () {
+        // Overbooking is a sub-tab of Re-Scheduling since 2026-11-09.
+        Route::middleware('permission:scheduling.rescheduling.view')->group(function () {
             Route::get('scheduling/overbooking', [SchedulingOverbookingController::class, 'show']);
             Route::get('scheduling/reports', [SchedulingOverbookingController::class, 'reports']);
         });
         // Booked vs available is drawn by Overbooking and by Re-Scheduling ›
         // Rescheduling Availability (Jose, 2026-10-26); sending offers also
         // needs scheduling.edit, checked in the controller.
-        Route::middleware('permission:scheduling.overbooking.view,scheduling.rescheduling.view')->group(function () {
+        Route::middleware('permission:scheduling.rescheduling.view')->group(function () {
             Route::get('scheduling/overbooking/jobs', [SchedulingOverbookingController::class, 'jobs']);
             Route::get('scheduling/overbooking/fill', [SchedulingOverbookingController::class, 'fill']);
             Route::post('scheduling/overbooking/offers/preview', [SchedulingOverbookingController::class, 'previewOffers']);
@@ -1652,6 +2001,7 @@ Route::prefix('v1')
             Route::get('scheduling/availability/suggestion', [SchedulingAvailabilityController::class, 'suggestion'])
                 ->middleware('cache.headers:etag');
             Route::get('scheduling/availability/fit', [SchedulingAvailabilityController::class, 'fit']);
+            Route::get('scheduling/availability/days', [SchedulingAvailabilityController::class, 'days']);
 
             // Suggest is Availability's search box and has no other caller
             // (grepped across client/lib). It answers with area names, city
@@ -1689,6 +2039,7 @@ Route::prefix('v1')
             Route::put('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'setDate']);
             Route::delete('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'clearDate']);
             Route::put('scheduling/areas/{area}/available-from', [SchedulingAreasController::class, 'availableFrom']);
+            Route::put('scheduling/areas/{area}/latest-windows', [SchedulingAreasController::class, 'latestWindows']);
             Route::put('scheduling/areas/{area}/shares-with', [SchedulingAreasController::class, 'sharesWith']);
             Route::put('scheduling/areas/{area}/limits', [SchedulingAreasController::class, 'limits']);
             Route::put('scheduling/areas/{area}/scheduled/{date}', [SchedulingAreasController::class, 'scheduleChange']);
@@ -1702,9 +2053,17 @@ Route::prefix('v1')
             Route::put('scheduling/areas/{area}/polygons', [SchedulingAreaMapController::class, 'save']);
             Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
             Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
+            Route::get('scheduling/zip-reports', [\App\Http\Controllers\Api\SchedulingZipReportsController::class, 'index']);
+            Route::post('scheduling/zip-reports/{report}/move', [\App\Http\Controllers\Api\SchedulingZipReportsController::class, 'move']);
+            Route::post('scheduling/zip-reports/{report}/dismiss', [\App\Http\Controllers\Api\SchedulingZipReportsController::class, 'dismiss']);
             Route::apiResource('scheduling/areas', SchedulingAreasController::class)
+                ->except('index')
                 ->parameters(['areas' => 'area']);
         });
+        // The areas list is also Routing's first read (roles audit 2026-11-24):
+        // a role with Routing and not Settings got a 403 before any route.
+        Route::get('scheduling/areas', [SchedulingAreasController::class, 'index'])
+            ->middleware('permission:scheduling.routing.view,scheduling.settings.view');
 
         // Field — docs/superpowers/specs/2026-09-25-field-module-design.md.
         // `me` answers anybody (a phone asks before it knows its role); the
@@ -1750,6 +2109,7 @@ Route::prefix('v1')
         });
         Route::get('field/recordings', [FieldRecordingsController::class, 'index']);
         Route::get('field/recordings/{recording}/audio/{seq}', [FieldRecordingsController::class, 'audio'])->whereNumber('seq');
+        Route::get('field/recordings/{recording}/transcript', [FieldRecordingsController::class, 'transcript']);
         Route::post('field/recordings/{recording}/flag', [FieldRecordingsController::class, 'flag']);
 
         // Training — guides people read, the tests they take, and (later
@@ -1764,6 +2124,7 @@ Route::prefix('v1')
         // The learner-facing read (task 6) — `training.view`, not `.manage`;
         // see LearnController's docblock for the answer-key trust boundary.
         Route::get('training/learn', [TrainingLearnController::class, 'index']);
+        Route::get('training/learn/videos', [TrainingLearnController::class, 'videos']);
         Route::get('training/learn/tests/{test}', [TrainingLearnController::class, 'showTest']);
         // Marking a submitted test (task 8) — same `training.view` gate; the
         // gate, the pass mark, the retake cap and the expiry date are all
@@ -1866,7 +2227,7 @@ Route::prefix('v1')
         Route::put('organization/canvas', [OrganizationCanvasController::class, 'save']);
         Route::patch('organization', [OrganizationProfileController::class, 'update']);
         Route::get('address-lookup', AddressLookupController::class);
-        Route::get('places/counties', \App\Http\Controllers\Api\CountyLookupController::class);
+        Route::get('places/counties', CountyLookupController::class);
 
         // ── Branding (§12) ───────────────────────────────────────
         //
@@ -1901,6 +2262,7 @@ Route::prefix('v1')
         // somebody adds one it must already be above it.
         Route::get('roles/catalogue', [RolesController::class, 'catalogue']);
         Route::get('roles', [RolesController::class, 'index']);
+        Route::get('roles/{role}/mobile-bar/options', [RolesController::class, 'mobileBarOptions']);
         Route::post('roles', [RolesController::class, 'store']);
         Route::patch('roles/{role}', [RolesController::class, 'update']);
         Route::delete('roles/{role}', [RolesController::class, 'destroy']);
@@ -1928,7 +2290,7 @@ Route::prefix('v1')
         Route::get('time-clock/me', [TimeClockController::class, 'me']);
         // Address → formatted address + coordinates (Google), for any module's
         // screen; the controller gates it per caller (`for=`).
-        Route::get('geocode', \App\Http\Controllers\Api\GeocodeController::class)
+        Route::get('geocode', GeocodeController::class)
             ->middleware('throttle:geocode');
         // Ask for one of your own shifts to be corrected (2026-09-30). Answered
         // under work_hours.manage below.
@@ -1980,7 +2342,7 @@ Route::prefix('v1')
         Route::middleware('permission:ai_assistance.ai.view')->group(function () {
             Route::get('ai-assistance/menu', [AssistantController::class, 'menu']);
             Route::get('ai-assistance/ask', [AssistantController::class, 'ask']);
-        Route::get('ai-assistance/answer', [AssistantController::class, 'answer']);
+            Route::get('ai-assistance/answer', [AssistantController::class, 'answer']);
         });
         // Guidelines (2026-10-14): read on the Guidelines tab, written under
         // `guidelines.manage` by GuidelinePolicy, place by place.
@@ -2025,11 +2387,21 @@ Route::prefix('v1')
         // Work Hours › Daily approval (2026-10-22).
         // Reading the day is the tab (view-only reads, UI/UX 2026-10-22);
         // approving and adjusting need "Approve daily hours".
-        Route::get('hr/time-clock/approvals', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'index']);
+        Route::get('hr/time-clock/approvals', [TimeClockApprovalsController::class, 'index']);
+        // Work Hours › Payroll (2026-11-19).
+        Route::middleware('permission:work_hours.payroll')->group(function () {
+            Route::get('hr/time-clock/payroll', [TimeClockPayrollController::class, 'index']);
+            Route::get('hr/time-clock/payroll/export', [TimeClockPayrollController::class, 'export']);
+            Route::post('hr/time-clock/payroll/approve', [TimeClockPayrollController::class, 'approve']);
+            Route::post('hr/time-clock/payroll/approve-all', [TimeClockPayrollController::class, 'approveAll']);
+            Route::put('hr/time-clock/payroll/{user}', [TimeClockPayrollController::class, 'update']);
+        });
         Route::middleware('permission:work_hours.approve')->group(function () {
-            Route::post('hr/time-clock/approvals', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'store']);
-            Route::post('hr/time-clock/approvals/all', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'approveAll']);
-            Route::post('hr/time-clock/approvals/shifts/{shift}/adjust', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'adjust']);
+            Route::post('hr/time-clock/approvals', [TimeClockApprovalsController::class, 'store']);
+            Route::post('hr/time-clock/approvals/all', [TimeClockApprovalsController::class, 'approveAll']);
+            Route::post('hr/time-clock/approvals/excuse', [TimeClockApprovalsController::class, 'excuse']);
+            Route::post('hr/time-clock/approvals/hours', [TimeClockApprovalsController::class, 'hours']);
+            Route::post('hr/time-clock/approvals/shifts/{shift}/adjust', [TimeClockApprovalsController::class, 'adjust']);
         });
 
         Route::middleware('permission:work_hours.manage')->group(function () {
@@ -2111,6 +2483,9 @@ Route::prefix('v1')
         // is what adds everybody else's. The controller makes that split —
         // see HrPeopleController::pto.
         Route::get('hr/pto', [HrPeopleController::class, 'pto']);
+        // The ownership chart (Jose, 2026-11-03, design 175). OwnershipController.
+        Route::get('hr/ownership', [OwnershipController::class, 'index']);
+        Route::put('hr/ownership', [OwnershipController::class, 'update']);
         // The Payroll tab (Jose, 2026-10-22). Salary itself rides on hr.pay.view
         // and is changed through the pay-rate history (details/pay-rates).
         Route::get('hr/payroll', [HrPeopleController::class, 'payroll'])->middleware('permission:hr.payroll.view');
@@ -2119,17 +2494,34 @@ Route::prefix('v1')
         // The days themselves (Jose, 2026-10-22: "it can be different days").
         Route::post('hr/people/{user}/pto/days', [HrPeopleController::class, 'addPtoDays']);
         // Staff ask for paid time off; approvers decide (Jose, 2026-10-26).
-        Route::get('hr/pto/requests', [\App\Http\Controllers\Api\PtoRequestsController::class, 'index']);
-        Route::post('hr/pto/requests', [\App\Http\Controllers\Api\PtoRequestsController::class, 'store']);
-        Route::post('hr/pto/requests/{ptoRequest}/approve', [\App\Http\Controllers\Api\PtoRequestsController::class, 'approve']);
-        Route::post('hr/pto/requests/{ptoRequest}/deny', [\App\Http\Controllers\Api\PtoRequestsController::class, 'deny']);
-        Route::post('hr/pto/requests/{ptoRequest}/cancel', [\App\Http\Controllers\Api\PtoRequestsController::class, 'cancel']);
+        Route::get('hr/pto/requests', [PtoRequestsController::class, 'index']);
+        Route::post('hr/pto/requests', [PtoRequestsController::class, 'store']);
+        Route::post('hr/pto/requests/{ptoRequest}/approve', [PtoRequestsController::class, 'approve']);
+        Route::post('hr/pto/requests/{ptoRequest}/deny', [PtoRequestsController::class, 'deny']);
+        Route::post('hr/pto/requests/{ptoRequest}/cancel', [PtoRequestsController::class, 'cancel']);
         Route::delete('hr/people/{user}/pto/days/{day}', [HrPeopleController::class, 'removePtoDay']);
         // Before the {user} PATCH is irrelevant — different verbs — but declared
         // beside it so the three read as one resource. §9's consent answer, which
         // lives next to the person rather than in a privacy module of its own.
         Route::get('hr/people/{user}/consents', [HrPeopleController::class, 'consents']);
         Route::patch('hr/people/{user}', [HrPeopleController::class, 'update']);
+        Route::post('hr/people/{user}/avatar', [ProfileController::class, 'uploadAvatarFor']);
+        Route::post('hr/people/{user}/places', [HrPeopleController::class, 'addPlace']);
+        // The applicant pipeline (Shoval, 2026-11-20); hr.view reads, hr.edit writes, in the controller.
+        Route::get('hr/applicants', [RecruitingController::class, 'index']);
+        Route::post('hr/applicants', [RecruitingController::class, 'store']);
+        Route::get('hr/applicants/{applicant}', [RecruitingController::class, 'show']);
+        Route::patch('hr/applicants/{applicant}', [RecruitingController::class, 'update']);
+        Route::delete('hr/applicants/{applicant}', [RecruitingController::class, 'destroy']);
+        Route::post('hr/applicants/{applicant}/interviews', [RecruitingController::class, 'storeInterview']);
+        Route::patch('hr/applicant-interviews/{interview}', [RecruitingController::class, 'updateInterview']);
+        Route::delete('hr/applicant-interviews/{interview}', [RecruitingController::class, 'destroyInterview']);
+        Route::get('hr/recruiting-spend', [RecruitingController::class, 'spend']);
+        Route::post('hr/recruiting-spend', [RecruitingController::class, 'storeSpend']);
+        Route::patch('hr/recruiting-spend/{spend}', [RecruitingController::class, 'updateSpend']);
+        Route::delete('hr/recruiting-spend/{spend}', [RecruitingController::class, 'destroySpend']);
+        Route::delete('hr/people/{user}/places/{assignment}', [HrPeopleController::class, 'removePlace']);
+        Route::delete('hr/people/{user}/avatar', [ProfileController::class, 'destroyAvatarFor']);
         // Their weekday schedule (design 2026-09-08 §10.3). Zone is the caller's view.
         Route::patch('hr/people/{user}/schedule', [HrPeopleController::class, 'updateSchedule']);
 
@@ -2146,11 +2538,16 @@ Route::prefix('v1')
         Route::middleware('permission:hr.invitations.view')->group(function () {
             Route::get('hr/invitations', [HrInvitationsController::class, 'index']);
             Route::post('hr/invitations', [HrInvitationsController::class, 'store']);
-        // Resend and revoke, one at a time. The owner was explicit that there is
-        // no bulk form of either, and there is no route here that could become
-        // one without somebody adding it deliberately.
+            // Resend and revoke, one at a time. The owner was explicit that there is
+            // no bulk form of either, and there is no route here that could become
+            // one without somebody adding it deliberately.
             Route::post('hr/invitations/{invitation}/resend', [HrInvitationsController::class, 'resend']);
             Route::delete('hr/invitations/{invitation}', [HrInvitationsController::class, 'destroy']);
+            // Shareable invite links (Jose, 2026-11-23).
+            Route::get('hr/invite-links', [HrInviteLinksController::class, 'index']);
+            Route::post('hr/invite-links', [HrInviteLinksController::class, 'store']);
+            Route::patch('hr/invite-links/{link}', [HrInviteLinksController::class, 'update']);
+            Route::delete('hr/invite-links/{link}', [HrInviteLinksController::class, 'destroy']);
         });
 
         // The Contracts tab — the template designer, and the schema every other
@@ -2330,6 +2727,45 @@ Route::prefix('v1')
             // same class — see BlockRenderer on why nothing renders twice.
             Route::get('newsletters/{newsletter}/preview', [NewslettersController::class, 'preview']);
             Route::post('newsletters/{newsletter}/send', [NewslettersController::class, 'send']);
+            Route::post('newsletters/{newsletter}/unschedule', [NewslettersController::class, 'unschedule']);
+            Route::post('newsletters/{newsletter}/duplicate', [NewslettersController::class, 'duplicate']);
+            // Checks before a send, and one test email to one typed address.
+            Route::get('newsletters/{newsletter}/preflight', [NewslettersController::class, 'preflight']);
+            Route::post('newsletters/{newsletter}/test', [NewslettersController::class, 'test'])
+                ->middleware('throttle:10,1');
+            // An SVG design becomes editable blocks plus one rasterised artwork image.
+            Route::post('newsletter/import/svg', [NewsletterImportController::class, 'svg']);
+            Route::post('newsletter/import/artwork', [NewsletterImportController::class, 'artwork']);
+            Route::post('newsletter/import/library/{item}', [NewsletterImportController::class, 'library']);
+            // P1c: HTML read for keep/convert without saving, and the kept original.
+            Route::post('newsletter/import/html', [NewsletterImportController::class, 'html']);
+            Route::get('newsletter/imports/{import}', [NewsletterImportController::class, 'original']);
+            Route::post('newsletters/{newsletter}/checkpoint', [NewslettersController::class, 'checkpoint']);
+            Route::post('newsletters/{newsletter}/editable-copy', [NewslettersController::class, 'editableCopy']);
+            // A picture uploaded from the composer's image picker (P0, 2026-11-17).
+            Route::post('newsletter/images', [NewsletterImportController::class, 'upload']);
+            // A starter's picture copied from the company's own website (SSRF-guarded).
+            Route::post('newsletter/images/copy', [NewsletterImportController::class, 'copy'])
+                ->middleware('throttle:30,1');
+            Route::get('newsletter/booking-link', [NewsletterImportController::class, 'bookingLink']);
+            // P1a: the picker's library list for newsletter-only roles, and a
+            // non-destructive crop (the original is kept).
+            Route::get('newsletter/images', [NewsletterImportController::class, 'images']);
+            Route::get('newsletter/images/{item}/file', [NewsletterImportController::class, 'imageFile']);
+            Route::post('newsletter/images/crop', [NewsletterImportController::class, 'crop']);
+            // P1a: durable revision history; a restore is a new revision.
+            Route::get('newsletters/{newsletter}/revisions', [NewslettersController::class, 'revisions']);
+            Route::get('newsletters/{newsletter}/revisions/{revision}', [NewslettersController::class, 'revision']);
+            Route::post('newsletters/{newsletter}/revisions/{revision}/restore', [NewslettersController::class, 'restore']);
+
+            // P1b: the company brand and saved sections (linked uses pin a version).
+            Route::get('newsletter/brand', [NewsletterBrandSectionsController::class, 'brand']);
+            Route::put('newsletter/brand', [NewsletterBrandSectionsController::class, 'saveBrand']);
+            Route::get('newsletter/sections', [NewsletterBrandSectionsController::class, 'sections']);
+            Route::post('newsletter/sections', [NewsletterBrandSectionsController::class, 'store']);
+            Route::get('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'section']);
+            Route::put('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'update']);
+            Route::delete('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'destroy']);
 
             Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
             Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);
@@ -2355,6 +2791,8 @@ Route::prefix('v1')
         // Managing a post after Publish: from the Dashboard's side panel or Compose.
         Route::middleware('permission:marketing.dashboard.view,marketing.compose.view')->group(function () {
             Route::patch('social/posts/{post}', [SocialPostsController::class, 'update']);
+            Route::post('social/posts/{post}/media', [SocialPostsController::class, 'media']);
+            Route::get('social/posts/{post}/media', [SocialPostsController::class, 'mediaFile']);
             Route::delete('social/posts/{post}', [SocialPostsController::class, 'cancel']);
             Route::post('social/posts/{post}/targets/{target}/dismiss', [SocialPostsController::class, 'dismiss']);
             Route::delete('social/posts/{post}/targets/{target}/remote', [SocialPostsController::class, 'deleteRemote']);
@@ -2377,11 +2815,17 @@ Route::prefix('v1')
             Route::post('marketing/qr-codes/{qrCode}/deactivate', [QrCodesController::class, 'deactivate']);
             Route::post('marketing/qr-codes/{qrCode}/reactivate', [QrCodesController::class, 'reactivate']);
             Route::get('marketing/qr-codes/{qrCode}/image', [QrCodesController::class, 'image']);
+            Route::get('marketing/qr-codes/{qrCode}/center-image', [QrCodesController::class, 'centerImage']);
+            Route::post('marketing/qr-codes/{qrCode}/center-image', [QrCodesController::class, 'uploadCenterImage']);
             Route::get('marketing/qr-codes/{qrCode}/stats', [QrCodesController::class, 'stats']);
         });
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
         Route::patch('social/connections/{connection}/business-location', [SocialConnectionsController::class, 'linkBusinessLocation']);
         Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
+        // Connect's choices: a Pinterest board, a Mailchimp audience (ConnectSetup).
+        Route::patch('social/connections/{connection}/choice', [SocialConnectionsController::class, 'choose']);
+        Route::patch('social/connections/{connection}/whatsapp-purpose', [SocialConnectionsController::class, 'whatsappPurpose']);
+        Route::get('social/connections/{connection}/whatsapp-health', [SocialConnectionsController::class, 'whatsappHealth']);
         Route::get('social/connections/{connection}/tiktok-creator', [SocialConnectionsController::class, 'tiktokCreator']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         // Comments on the Instagram account linked to a connected Page
@@ -2389,10 +2833,19 @@ Route::prefix('v1')
         Route::get('social/connections/{connection}/instagram-comments', [InstagramCommentsController::class, 'index']);
         Route::post('social/connections/{connection}/instagram-comments/{comment}/replies', [InstagramCommentsController::class, 'reply']);
         Route::post('social/connections/{connection}/instagram-comments/{comment}/hide', [InstagramCommentsController::class, 'hide']);
+        // Every comment on every connected account (Facebook, Instagram,
+        // YouTube, X) in one inbox; each row names the actions it supports.
+        Route::get('social/comments', [SocialCommentsController::class, 'index']);
+        Route::post('social/connections/{connection}/comments/{network}/{comment}/replies', [SocialCommentsController::class, 'reply']);
+        Route::post('social/connections/{connection}/comments/{network}/{comment}/hide', [SocialCommentsController::class, 'hide']);
+        Route::delete('social/connections/{connection}/comments/{network}/{comment}', [SocialCommentsController::class, 'destroy']);
         Route::delete('social/providers/{provider}/connections', [SocialConnectionsController::class, 'destroyProvider']);
         // What stops working if a connection is disconnected (the disconnect panel).
-        Route::get('integrations/{kind}/{id}/dependents', [\App\Http\Controllers\Api\IntegrationDependentsController::class, 'show'])
+        Route::get('integrations/{kind}/{id}/dependents', [IntegrationDependentsController::class, 'show'])
             ->where('kind', 'social|phone|workspace');
+        // Settings > Integrations in one payload: summary, apps, per-check results (no live provider calls).
+        Route::get('integrations/overview', [IntegrationsOverviewController::class, 'show']);
+        Route::post('integrations/{id}/recheck', [IntegrationsOverviewController::class, 'recheck']);
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])
             ->where('network', SocialProvider::oauthRoutePattern());
@@ -2428,6 +2881,41 @@ Route::prefix('v1')
         Route::get('staff-messages', [StaffMessagesController::class, 'index']);
         Route::get('staff-messages/unread', [StaffMessagesController::class, 'unread']);
         Route::post('staff-messages', [StaffMessagesController::class, 'store']);
+
+        // Chat: EzBizi's own WhatsApp between EzBizi accounts (Jose, 2026-11-25).
+        // The tab's key gates every route; inside, ChatController answers 404
+        // for any chat the caller is not a member of.
+        Route::middleware('permission:phone.chat.view')->group(function () {
+            Route::get('chat/pulse', [ChatController::class, 'pulse']);
+            Route::get('chat/contacts', [ChatController::class, 'contacts']);
+            Route::get('chat/starred', [ChatController::class, 'starred']);
+            Route::get('chat/search', [ChatController::class, 'search']);
+            Route::get('chat/chats', [ChatController::class, 'index']);
+            Route::post('chat/chats', [ChatController::class, 'store']);
+            Route::get('chat/chats/{chat}', [ChatController::class, 'show']);
+            Route::patch('chat/chats/{chat}', [ChatController::class, 'update']);
+            Route::patch('chat/chats/{chat}/settings', [ChatController::class, 'settings']);
+            Route::patch('chat/chats/{chat}/job', [ChatController::class, 'setJob']);
+            Route::post('chat/chats/{chat}/typing', [ChatController::class, 'typing']);
+            Route::get('chat/chats/{chat}/messages', [ChatController::class, 'messages']);
+            Route::post('chat/chats/{chat}/messages', [ChatController::class, 'send']);
+            Route::get('chat/chats/{chat}/media', [ChatController::class, 'media']);
+            Route::post('chat/chats/{chat}/members', [ChatController::class, 'addMembers']);
+            Route::patch('chat/chats/{chat}/members/{user}', [ChatController::class, 'updateMember']);
+            Route::delete('chat/chats/{chat}/members/{user}', [ChatController::class, 'removeMember']);
+            Route::patch('chat/messages/{chatMessage}', [ChatController::class, 'edit']);
+            Route::delete('chat/messages/{chatMessage}', [ChatController::class, 'destroy']);
+            Route::post('chat/messages/{chatMessage}/react', [ChatController::class, 'react']);
+            Route::post('chat/messages/{chatMessage}/star', [ChatController::class, 'star']);
+            Route::post('chat/messages/{chatMessage}/forward', [ChatController::class, 'forward']);
+            Route::get('chat/messages/{chatMessage}/info', [ChatController::class, 'info']);
+            Route::get('chat/calls', [ChatController::class, 'recentCalls']);
+            Route::get('chat/calls/ringing', [ChatController::class, 'ringing']);
+            Route::post('chat/chats/{chat}/calls', [ChatController::class, 'startCall']);
+            Route::post('chat/calls/{chatMessage}/join', [ChatController::class, 'joinCall']);
+            Route::post('chat/calls/{chatMessage}/decline', [ChatController::class, 'declineCall']);
+            Route::post('chat/calls/{chatMessage}/leave', [ChatController::class, 'leaveCall']);
+        });
 
         // Short numbers that reach one person. Twilio has no concept of an
         // extension; the digits are ours to resolve before we dial.
@@ -2566,7 +3054,7 @@ Route::prefix('v1')
         // ON a call is not — the people who answer the phone are usually
         // view-plus-a-line-grant, and they are who does the tagging.
         // Reports.
-        Route::post('phone/audio', [\App\Http\Controllers\Api\Phone\AudioController::class, 'store'])
+        Route::post('phone/audio', [AudioController::class, 'store'])
             ->middleware('permission:phone.settings.view');
         Route::get('phone/reports/run', [PhoneReportsController::class, 'run'])
             ->middleware('permission:phone.reports.view');
@@ -2606,6 +3094,7 @@ Route::prefix('v1')
         // Voice SDK token + desk presence. phone.view and a granted number on
         // that connection; no grant → fixed 403 sentence.
         Route::post('phone/tokens', [PhoneTokensController::class, 'store']);
+        Route::get('phone/registrations', [PhoneTokensController::class, 'index']);
         Route::get('phone/presence', [PhonePresenceController::class, 'index']);
         Route::put('phone/presence', [PhonePresenceController::class, 'update']);
 
@@ -2693,6 +3182,12 @@ Route::prefix('v1')
             ->middleware('permission:inspection.reports.view');
         // Before `{inspection_report}` would otherwise be happy to bind `pdf`,
         // the same way `catalogue` sits ahead of `{inspection_definition}`.
+        Route::get('inspections/reports/{inspection_report}/before-after', [BeforeAfterController::class, 'index'])
+            ->middleware('permission:inspection.reports.view');
+        Route::post('inspections/reports/{inspection_report}/before-after/{after}/approve', [BeforeAfterController::class, 'approve'])
+            ->middleware('permission:inspection.edit');
+        Route::delete('inspections/reports/{inspection_report}/before-after/{after}/approve', [BeforeAfterController::class, 'withdraw'])
+            ->middleware('permission:inspection.edit');
         Route::get('inspections/reports/{inspection_report}/pdf', [InspectionReportsController::class, 'pdf'])
             ->middleware('permission:inspection.reports.view');
         Route::get('inspections/reports/{inspection_report}', [InspectionReportsController::class, 'show'])
@@ -2807,6 +3302,7 @@ Route::prefix('v1')
         Route::middleware('permission:email.settings.view')->group(function () {
             Route::post('email/mailboxes', [MailboxesController::class, 'store']);
             Route::post('email/mailboxes/workspace-batch', [MailboxesController::class, 'storeWorkspaceBatch']);
+            Route::get('email/mailboxes/suggest-scope', [MailboxesController::class, 'suggestScope']);
 
             // The new-email notification, edited from the inbox's card. The
             // automation rule stays the source of truth: MailboxesController.
@@ -2886,6 +3382,13 @@ Route::prefix('v1')
             Route::put('email/workspaces/{connection}/signature-template', [GoogleWorkspaceManagementController::class, 'setTemplate']);
             Route::post('email/workspaces/{connection}/signatures/preview', [GoogleWorkspaceManagementController::class, 'preview']);
             Route::post('email/workspaces/{connection}/signatures/apply', [GoogleWorkspaceManagementController::class, 'apply']);
+            Route::put('email/workspaces/{connection}/signatures/assign', [GoogleWorkspaceManagementController::class, 'assign']);
+            Route::post('email/workspaces/{connection}/signature-templates', [GoogleWorkspaceManagementController::class, 'storeTemplate']);
+            Route::put('email/workspaces/{connection}/signature-templates/{template}', [GoogleWorkspaceManagementController::class, 'updateTemplate']);
+            Route::delete('email/workspaces/{connection}/signature-templates/{template}', [GoogleWorkspaceManagementController::class, 'destroyTemplate']);
+            Route::put('email/workspaces/{connection}/signature-default', [GoogleWorkspaceManagementController::class, 'setDefault']);
+            Route::put('email/workspaces/{connection}/people/{address}/fields', [GoogleWorkspaceManagementController::class, 'setFields']);
+            Route::post('email/workspaces/{connection}/people/{address}/photo', [GoogleWorkspaceManagementController::class, 'uploadPhoto']);
         });
 
         /*
@@ -3201,17 +3704,17 @@ Route::prefix('v1')
         );
 
         Route::middleware('permission:monitoring.map.view')->group(function () {
-        Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
-        Route::post('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'store']);
-        // BEFORE the {id} GET, deliberately: registered after it, "scope-options"
-        // would match {id} first and 404 as a plan that does not exist. Gated on
-        // monitoring.map.manage (the policy's `create`) and answered straight
-        // from ScopeReach::optionsFor, so the create panel offers exactly the
-        // levels `store`'s assertCovers will accept.
-        Route::get('monitoring/floor-plans/scope-options', [MonitoringFloorPlansController::class, 'scopeOptions']);
-        Route::get('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'show']);
-        Route::put('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'update']);
-        Route::delete('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'destroy']);
+            Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
+            Route::post('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'store']);
+            // BEFORE the {id} GET, deliberately: registered after it, "scope-options"
+            // would match {id} first and 404 as a plan that does not exist. Gated on
+            // monitoring.map.manage (the policy's `create`) and answered straight
+            // from ScopeReach::optionsFor, so the create panel offers exactly the
+            // levels `store`'s assertCovers will accept.
+            Route::get('monitoring/floor-plans/scope-options', [MonitoringFloorPlansController::class, 'scopeOptions']);
+            Route::get('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'show']);
+            Route::put('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'update']);
+            Route::delete('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'destroy']);
         });
 
         // The assign picker's own roster: who this editor may put on a tile.
@@ -3233,9 +3736,9 @@ Route::prefix('v1')
         // record, so there is nobody else to authorize against.
         Route::get('me/profile', [ProfileController::class, 'show']);
         // The signer's own saved drawn signature (2026-10-01).
-        Route::get('me/signature', [\App\Http\Controllers\Api\MySignatureController::class, 'show']);
-        Route::put('me/signature', [\App\Http\Controllers\Api\MySignatureController::class, 'update']);
-        Route::delete('me/signature', [\App\Http\Controllers\Api\MySignatureController::class, 'destroy']);
+        Route::get('me/signature', [MySignatureController::class, 'show']);
+        Route::put('me/signature', [MySignatureController::class, 'update']);
+        Route::delete('me/signature', [MySignatureController::class, 'destroy']);
         Route::patch('me', [ProfileController::class, 'update']);
         // Own schedule, only when the organization's self_schedule switch is on.
         Route::patch('me/schedule', [ProfileController::class, 'updateSchedule']);
@@ -3248,16 +3751,16 @@ Route::prefix('v1')
         Route::get('me/sessions', [ProfileController::class, 'sessions']);
 
         // API keys and the MCP endpoint: an AI acting as this person (EnforceApiKeyAccess).
-        Route::get('audit-events/{id}', [\App\Http\Controllers\Api\AuditEventsController::class, 'show'])
-            ->middleware('permission:audit.view')->whereUuid('id');
-        Route::get('audit-events', [\App\Http\Controllers\Api\AuditEventsController::class, 'index'])
-            ->middleware('permission:audit.view');
-        Route::get('me/api-keys', [\App\Http\Controllers\Api\ApiKeysController::class, 'index']);
-        Route::post('me/api-keys', [\App\Http\Controllers\Api\ApiKeysController::class, 'store']);
-        Route::delete('me/api-keys/{id}', [\App\Http\Controllers\Api\ApiKeysController::class, 'destroy'])->whereNumber('id');
-        Route::get('api-keys/activity', [\App\Http\Controllers\Api\ApiKeysController::class, 'activity']);
-        Route::post('api-keys/activity/{event}/revert', [\App\Http\Controllers\Api\ApiKeysController::class, 'revert']);
-        Route::post('mcp', [\App\Http\Controllers\Api\McpController::class, 'handle'])->middleware('throttle:120,1');
+        Route::get('audit-events/{id}', [AuditEventsController::class, 'show'])
+            ->middleware('permission:monitoring.activity.view')->whereUuid('id');
+        Route::get('audit-events', [AuditEventsController::class, 'index'])
+            ->middleware('permission:monitoring.activity.view');
+        Route::get('me/api-keys', [ApiKeysController::class, 'index']);
+        Route::post('me/api-keys', [ApiKeysController::class, 'store']);
+        Route::delete('me/api-keys/{id}', [ApiKeysController::class, 'destroy'])->whereNumber('id');
+        Route::get('api-keys/activity', [ApiKeysController::class, 'activity']);
+        Route::post('api-keys/activity/{event}/revert', [ApiKeysController::class, 'revert']);
+        Route::post('mcp', [McpController::class, 'handle'])->middleware('throttle:120,1');
 
         // ── Deleting your own account ────────────────────────────
         //
@@ -3283,7 +3786,7 @@ Route::prefix('v1')
 
         // Each tab's how-to video (UI queue 81): platform-wide, kept by staff,
         // the same for everybody signed in.
-        Route::get('help/videos', [\App\Http\Controllers\Api\HelpVideosController::class, 'index']);
+        Route::get('help/videos', [HelpVideosController::class, 'index']);
 
         // ── Your own second factor (§6) ──────────────────────────
         //
@@ -3312,18 +3815,37 @@ Route::prefix('v1')
         Route::get('notifications', [NotificationsController::class, 'index']);
         Route::post('notifications/devices', [NotificationsController::class, 'registerDevice']);
         Route::post('notifications/read-all', [NotificationsController::class, 'markAllRead']);
+        Route::get('notifications/kinds', [NotificationsController::class, 'kinds']);
         Route::post('notifications/{notification}/read', [NotificationsController::class, 'markRead']);
+        Route::post('notifications/{notification}/unread', [NotificationsController::class, 'markUnread']);
+        Route::delete('notifications/{notification}', [NotificationsController::class, 'destroy']);
+        Route::delete('notifications', [NotificationsController::class, 'destroyAll']);
 
         // Alerts: one person to chosen colleagues (Communication ▸ Alerts).
         // Gated in the controller on phone.alerts.view, the tab's own key.
-        Route::get('alerts/recipients', [\App\Http\Controllers\Api\AlertsController::class, 'recipients']);
-        Route::get('alerts', [\App\Http\Controllers\Api\AlertsController::class, 'index']);
-        Route::post('alerts', [\App\Http\Controllers\Api\AlertsController::class, 'send']);
+        Route::get('alerts/recipients', [AlertsController::class, 'recipients']);
+        Route::get('alerts', [AlertsController::class, 'index']);
+        Route::post('alerts', [AlertsController::class, 'send']);
+        // Questions (Jose 11-18): an alert that takes an answer. Being asked
+        // needs no tab; the controller checks the person was asked.
+        Route::get('alerts/questions', [AlertsController::class, 'questions']);
+        Route::get('alerts/{alert}/replies', [AlertsController::class, 'replies']);
+        Route::post('alerts/{alert}/reply', [AlertsController::class, 'reply']);
 
         // ── Settings (§6) ────────────────────────────────────────
+        // Settings › Lists (2026-11-04): a business's own lists, a row per call.
+        // Reading follows the Settings tab; each write checks its list's own
+        // edit permission in the controller.
+        Route::middleware('permission:organizations.settings.view')->group(function () {
+            Route::get('settings/lists', [BusinessListsController::class, 'index']);
+            Route::post('settings/lists/{list}/items', [BusinessListsController::class, 'store']);
+            Route::patch('settings/lists/{list}/items/{item}', [BusinessListsController::class, 'update']);
+            Route::delete('settings/lists/{list}/items/{item}', [BusinessListsController::class, 'destroy']);
+            Route::post('settings/lists/{list}/reset', [BusinessListsController::class, 'reset']);
+        });
         // Settings › Pending: what each place in view is missing (2026-10-26).
         // Gated on organizations.edit, which every fill-in needs at the least.
-        Route::get('settings/pending', [\App\Http\Controllers\Api\PendingSettingsController::class, 'index'])
+        Route::get('settings/pending', [PendingSettingsController::class, 'index'])
             ->middleware('permission:organizations.edit');
         Route::get('settings', [SettingsController::class, 'index']);
         Route::patch('settings/{key}', [SettingsController::class, 'update']);
@@ -3350,242 +3872,18 @@ Route::prefix('v1')
         Route::put('mail/sending-server', [SendingServersController::class, 'connect']);
         Route::delete('mail/sending-server', [SendingServersController::class, 'disconnect']);
 
+        // "Did you mean" for a composer with no lead behind it (Phone's texts).
+        Route::post('proofread', ProofreadController::class)->middleware('throttle:60,1');
+
+        // The release on its way, for the bar in What's been built (Jose 11-12).
+        Route::get('release/upcoming', [\App\Http\Controllers\Api\StaffReleaseStatusController::class, 'upcoming']);
+
+        // The app-wide live feed: ids changed since a cursor (ChangeFeed).
+        Route::get('changes', [\App\Http\Controllers\Api\ChangesController::class, 'index']);
+
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)
-        Route::get('me', function (Request $request) {
-            $user = $request->user();
-
-            // Resolved once and used twice, below: the client is told where it
-            // is standing AND what that place's settings say, and the two must
-            // describe the same place or the dates on screen belong to a scope
-            // the top bar is not naming.
-            $view = ViewScope::forUser($user);
-
-            // Asked twice below — for the keys and for the modules — and both
-            // answers have to come from the same reading of the platform flags.
-            $catalogue = app(PermissionCatalogue::class);
-
-            return response()->json([
-                'data' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role' => ['id' => $user->role?->id, 'name' => $user->role?->name],
-
-                    /*
-                     * WHAT this person may do, and WHICH modules exist for them
-                     * (§4). Both come from PermissionCatalogue, which derives
-                     * them from the module registry — so a module added next
-                     * year appears here without this file being touched.
-                     *
-                     * `permissions` is the exact set `User::hasPermission()`
-                     * would answer true for, key by key. Anything looser and the
-                     * client draws a control the server then refuses.
-                     *
-                     * For an Administrator it is the full catalogue, NOT a
-                     * wildcard: a client that special-cases a role name is the
-                     * same bug this endpoint's own server side had, where
-                     * identity was the English word "Administrator" and a rename
-                     * silently revoked everything.
-                     *
-                     * `modules` carries the two gates separately —
-                     * `available` is EzBizi's (§13 entitlement), `reachable` is
-                     * this organization's own decision about this role. A screen
-                     * can then say "your plan does not include this" rather than
-                     * quietly omitting a destination and leaving somebody
-                     * looking for a menu item that was described to them on the
-                     * phone.
-                     */
-                    'permissions' => $catalogue->heldBy($user),
-                    'modules' => $catalogue->modulesFor($user),
-
-                    // Whether there is a photo to fetch, so the top bar can ask
-                    // for one only when there is one. `/me/profile` already
-                    // carried this, but the top bar reads THIS payload — so
-                    // without it the bar either requests an avatar for everybody
-                    // who has none, or never requests one at all. It was the
-                    // latter, and the picture only ever appeared on the profile
-                    // screen that had just uploaded it.
-                    'has_avatar' => $user->avatar_path !== null,
-                    // What the profile still lacks, so the top bar can pulse
-                    // the picture until it is complete (Jose, 2026-09-30, from
-                    // A1 Tools). Keys, never values. User::PROFILE_FIELDS.
-                    'profile_missing' => $user->profileMissing(),
-                    // Carried here as well as on their own endpoint, so the app
-                    // can paint the right theme on the first frame instead of
-                    // flashing the wrong one while a second request lands.
-                    //
-                    // This used to be wrapped in
-                    // OrganizationCanvasController::cleanedInto, because the
-                    // structure canvas was a per-user preference and this was
-                    // one of the doors it left through. It is an organization
-                    // setting now — it rides on GET /companies with the tree it
-                    // describes, and it is cleaned there — and the old key is
-                    // stripped from every user by the migration that retired
-                    // it, so there is nothing here left to clean.
-                    'preferences' => array_merge(
-                        app(PreferenceRegistry::class)->defaults(),
-                        $user->preferences ?? [],
-                    ),
-                    // Whether this person is also platform staff (§4.2, revised).
-                    // The client renders the Development section from this, so it
-                    // cannot appear for somebody with no staff account behind them.
-                    'development' => (function () use ($user) {
-                        $staff = PlatformStaffLink::staffFor($user->getKey());
-
-                        return $staff === null ? null : [
-                            'tier' => $staff->tier,
-                            'staff_name' => $staff->name,
-                            'focused_at' => (string) config('ezbizi.hosts.staff'),
-                        ];
-                    })(),
-                    // The organization requires a second factor and this account
-                    // has none (§6). Carried here as well as on the login body
-                    // because a page refresh restores the session from a stored
-                    // token and never sees a login body — without it the app
-                    // would come back with every screen quietly answering 403
-                    // and nothing on screen saying why.
-                    'two_factor_enrolment_required' => app(TwoFactorPolicy::class)->mustEnrol($user),
-
-                    // The unfinished onboarding this person is the SUBJECT of:
-                    // the client draws "Your paperwork" from it (session.dart
-                    // onboardingId). Without it a new starter whose role has no
-                    // HR tab had no way to reach their own form.
-                    // `held`: everything else is closed until the paperwork
-                    // is approved (User::awaitingOnboardingApproval).
-                    'onboarding' => ($open = \App\Models\Onboarding::query()
-                        ->where('user_id', $user->id)
-                        ->whereIn('status', \App\Models\Onboarding::OPEN)
-                        ->latest()
-                        ->first(['id', 'status'])) === null ? null : [
-                            'id' => $open->id,
-                            'status' => $open->status,
-                            'held' => $user->awaitingOnboardingApproval(),
-                        ],
-
-                    // This address has not been confirmed, so RequireVerifiedEmail
-                    // refuses every write (TODO #22). Carried here for exactly the
-                    // reason two_factor_enrolment_required above is: a refresh
-                    // restores the session from a stored token and never sees a
-                    // login body, so without it the app returns with every save
-                    // answering 403 and nothing on screen saying why.
-                    //
-                    // A boolean rather than the timestamp, following has_avatar:
-                    // the client's question is whether to show the banner, and a
-                    // date would make it derive that itself in a second place.
-                    //
-                    // Staff are never gated - the middleware exempts anything that
-                    // is not a User - so this is false for them and the banner
-                    // cannot appear on a staff session that could not act on it.
-                    'email_confirmation_required' => $user->email_verified_at === null,
-
-                    // SECURITY exemption (Monitoring): the Lead Developer's own
-                    // device is never screen-captured, live-viewed or
-                    // remote-controlled. The desktop agent reads this to skip
-                    // constructing its capture services and to omit the
-                    // `screenshot` capability from its heartbeat — the server
-                    // strips it regardless, this just stops the agent declaring
-                    // it. Keyed on the shared email between this org user and an
-                    // active lead-developer staff account; see
-                    // ScreenMonitoringExemption.
-                    'screen_monitoring_exempt' => ScreenMonitoringExemption::isExempt($user),
-
-                    // Clock in chrome on the first frame (design §8). The top-bar
-                    // button reads this rather than a second round trip.
-                    'time_clock' => app(TimeClock::class)->payload($user),
-
-                    // What the change-password form should ASK for: the platform
-                    // floor, or this organization's own minimum where that is
-                    // higher (§6). The client used to state a constant it kept
-                    // in Dart, which was right until an administrator raised the
-                    // setting and then told everybody the wrong number.
-                    //
-                    // Signup and password-reset cannot be told this — neither has
-                    // a session, and reset has no organization until the token is
-                    // examined server-side — so those two screens still state the
-                    // platform floor and the server corrects them. See
-                    // client/lib/core/password_policy.dart.
-                    'password_min_length' => PasswordPolicy::minLengthFor(
-                        $user->organization,
-                    ),
-                    'organization' => [
-                        'id' => $user->organization->id,
-                        'name' => $user->organization->name,
-                        'address' => $user->organization->address,
-                        'address_line1' => $user->organization->address_line1,
-                        'address_line2' => $user->organization->address_line2,
-                        'city' => $user->organization->city,
-                        'state' => $user->organization->state,
-                        'postal_code' => $user->organization->postal_code,
-                        'franchise_label' => $user->organization->franchise_label,
-                        'is_read_only' => $user->organization->isReadOnly(),
-                        // Whether the organization view is offered: only to
-                        // somebody assigned at organization level (2026-10-16).
-                        'can_view' => $user->canActOnOrganization($user->organization),
-                    ],
-                    // Reach, so the client knows which franchises to offer —
-                    // rather than showing all and failing on save (§4).
-                    // The companies behind those franchises. §6 allows settings
-                    // at company level and the client had no way to select one,
-                    // so a whole tier of the cascade was configured through the
-                    // API or not at all.
-                    'companies' => $user->reachableFranchises()
-                        ->pluck('company')
-                        ->filter()
-                        ->unique('id')
-                        ->values()
-                        // The parent comes too. Without it the client can only
-                        // draw companies as one flat row, which renders a Sub
-                        // Company as a sibling of the company it belongs to —
-                        // and there is no way to tell from the screen that it
-                        // inherits from that company rather than from the
-                        // organization.
-                        ->map(fn ($c) => [
-                            'id' => $c->id,
-                            'name' => $c->name,
-                            'parent_company_id' => $c->parent_company_id,
-                            'has_logo' => $c->logo_path !== null,
-                            // Switched off: kept in reach, not offered by the
-                            // view switcher (Jose, 2026-10-15).
-                            'is_active' => (bool) $c->is_active,
-                        ])
-                        ->all(),
-
-                    // The RESOLVED scope, not the stored string. A preference
-                    // that has stopped being valid — a franchise removed, an
-                    // assignment narrowed — must not come back as the client's
-                    // idea of where it is.
-                    'scope' => $view->toArray(),
-
-                    // How this scope writes a date and a clock (§6).
-                    //
-                    // Here rather than on the settings endpoint because every
-                    // screen needs them and only one screen calls /settings.
-                    // /me is already fetched on launch and again on every scope
-                    // change — Session.setScope() refetches it, precisely
-                    // because `scope` above is resolved server-side — so the
-                    // formats arrive with the view they belong to and change
-                    // when it does, with nothing extra to keep in step.
-                    //
-                    // The client formats FROM these instead of from the
-                    // browser's locale. That is the whole point: an owner who
-                    // sets 24h must get 24h on a machine set to US English,
-                    // and until this existed there was no resolved setting on
-                    // the client at all for any screen to read.
-                    'display' => app(DisplaySettings::class)
-                        ->forScope($view->settingsScope()),
-
-                    ...app(UiCatalogue::class)->forUser($user),
-
-                    'franchises' => $user->reachableFranchises()->map(fn ($f) => [
-                        'id' => $f->id,
-                        'name' => $f->name,
-                        'company_id' => $f->company_id,
-                        'is_active' => $f->is_active,
-                    ])->values(),
-                ],
-            ]);
-        });
+        Route::get('me', [\App\Http\Controllers\Api\MeController::class, 'show']);
     });
 
 /*
@@ -3605,12 +3903,12 @@ Route::prefix('v1')
         // so the fast polls (input, files, live, lighting) used up the
         // heartbeat's allowance and offices read offline (2026-10-29).
         Route::post('monitoring/heartbeat', [MonitoringHeartbeatController::class, 'store'])
-            ->middleware('throttle:120,1,mon-heartbeat');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-heartbeat']);
 
         // A device's own periodic screen capture — same idle-less reasoning
         // as the heartbeat above (see ScreenshotsController's docblock).
         Route::post('monitoring/screenshots', [MonitoringScreenshotsController::class, 'store'])
-            ->middleware('throttle:60,1,mon-screenshots');
+            ->middleware(['retry-deadlock', 'throttle:60,1,mon-screenshots']);
 
         // Live View's agent half — "is anyone watching me" and "here is my
         // latest frame", polled/sent every ~1-2s for as long as the agent
@@ -3621,27 +3919,27 @@ Route::prefix('v1')
         // controller already assumes, the same margin ScreenshotsController
         // and HeartbeatController leave themselves.
         Route::get('monitoring/live-wanted', [MonitoringLiveViewController::class, 'liveWanted'])
-            ->middleware('throttle:120,1,mon-live-wanted');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-live-wanted']);
         Route::post('monitoring/live-frame', [MonitoringLiveViewController::class, 'liveFrame'])
-            ->middleware('throttle:120,1,mon-live-frame');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-live-frame']);
 
         // Remote Control's agent half — "what should I apply, and is
         // anyone still driving me" — same idle-less and throttle reasoning
         // as `live-wanted` just above. See RemoteControlController's
         // docblock.
         Route::get('monitoring/input-pending', [MonitoringRemoteControlController::class, 'inputPending'])
-            ->middleware('throttle:120,1,mon-input');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-input']);
 
         // Remote file access's agent half — "what should I read" and "here is
         // the answer" — same idle-less and throttle reasoning as
         // `input-pending` just above. See FilesController.
         Route::get('monitoring/file-requests', [MonitoringFilesController::class, 'pending'])
-            ->middleware('throttle:120,1,mon-files-pending');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-files-pending']);
         Route::post('monitoring/file-requests/{requestId}', [MonitoringFilesController::class, 'answer'])
-            ->middleware('throttle:120,1,mon-files-answer');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-files-answer']);
         // The PC's agent asking which lighting to show (LightingController).
         Route::get('monitoring/lighting', [MonitoringLightingController::class, 'pending'])
-            ->middleware('throttle:120,1,mon-lighting');
+            ->middleware(['retry-deadlock', 'throttle:120,1,mon-lighting']);
     });
 
 /*
@@ -3727,16 +4025,21 @@ Route::prefix('v1/staff')
         // plane, behind the `staff` middleware, not `tenant`.
         Route::get('suggestions', [StaffSuggestionsController::class, 'index']);
         Route::post('suggestions/{suggestion}/decide', [StaffSuggestionsController::class, 'decide']);
+        Route::post('suggestions/{suggestion}/progress', [StaffSuggestionsController::class, 'progress']);
         Route::get('suggestions/{suggestion}/files/{index}', [StaffSuggestionsController::class, 'file'])->whereNumber('index');
 
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
         Route::put('client-versions/{platform}', [StaffClientVersionsController::class, 'update']);
 
+        // The release in flight, stage by stage, from what release.sh and
+        // deploy.sh append on this box (the Development tab's Releases).
+        Route::get('release-status', [\App\Http\Controllers\Api\StaffReleaseStatusController::class, 'index']);
+
         // Which tab has which how-to video (UI queue 81). Platform-wide like the
         // client versions: a new video is a save, not a release.
-        Route::get('help-videos', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'index']);
-        Route::put('help-videos/{module}', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'update']);
-        Route::delete('help-videos/{module}', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'destroy']);
+        Route::get('help-videos', [StaffHelpVideosController::class, 'index']);
+        Route::put('help-videos/{module}', [StaffHelpVideosController::class, 'update']);
+        Route::delete('help-videos/{module}', [StaffHelpVideosController::class, 'destroy']);
 
         Route::get('impersonations', [StaffController::class, 'impersonations']);
         Route::post('impersonations', [StaffController::class, 'impersonate']);

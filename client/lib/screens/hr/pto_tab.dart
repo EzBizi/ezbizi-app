@@ -1,6 +1,8 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/deep_links.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -95,10 +97,21 @@ class _PtoTabState extends State<PtoTab> {
     _takeLink();
     DeepLinks.pending.addListener(_takeLink);
     _load();
+    // Days off recorded or a request decided elsewhere: read again quietly.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'people'},
+      (_) {
+        if (!_loading) return _load(quiet: true);
+      },
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_takeLink);
     _search.dispose();
     super.dispose();
@@ -361,8 +374,8 @@ class _PtoTabState extends State<PtoTab> {
             (_role == null || _roleKey(person) == _role) &&
             switch (_filter) {
               _Filter.everyone => true,
-              _Filter.canUse => person['eligible'] == true,
-              _Filter.notYet => person['eligible'] != true,
+              _Filter.canUse => _canUse(person),
+              _Filter.notYet => !_canUse(person),
             })
           person,
     ];
@@ -390,15 +403,11 @@ class _PtoTabState extends State<PtoTab> {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
-                child: TextField(
+                child: ListSearch(
                   key: const Key('pto-search'),
                   controller: _search,
+                  hint: 'Search people',
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    hintText: 'Search people',
-                    prefixIcon: Icon(Icons.search),
-                    isDense: true,
-                  ),
                 ),
               ),
               Padding(
@@ -484,7 +493,16 @@ class _PtoTabState extends State<PtoTab> {
         // fact, as it was before; with one, the Left on the right says it.
         subtitle: _hasBalance(person)
             ? null
-            : Text(_allowance(person), style: theme.textTheme.bodySmall),
+            // One line; the whole allowance on hover (UI/UX, 2026-11-02).
+            : Tooltip(
+                message: _allowance(person),
+                child: Text(
+                  _allowance(person),
+                  style: theme.textTheme.bodySmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
         trailing: _rowEnd(context, person),
         onTap: () => setState(() {
           // A half-picked set of days belongs to the person it was for.
@@ -504,8 +522,8 @@ class _PtoTabState extends State<PtoTab> {
   Widget? _rowEnd(BuildContext context, Map<String, dynamic> person) {
     final theme = Theme.of(context);
 
-    if (person['eligible'] != true) {
-      final from = person['eligible_from'];
+    if (!_canUse(person)) {
+      final from = _usableFrom(person);
 
       // Bounded, because a ListTile throws when its trailing widget is as
       // wide as the tile, and a long date format in a narrow list can be.
@@ -513,7 +531,7 @@ class _PtoTabState extends State<PtoTab> {
         constraints: const BoxConstraints(maxWidth: 150),
         child: from == null
             ? const StatusPill('Start date unknown')
-            : StatusPill('From ${_date(from)}', tone: Tone.caution),
+            : StatusPill('From ${_date(from)}'),
       );
     }
 
@@ -642,9 +660,14 @@ class _PtoTabState extends State<PtoTab> {
               ),
               subtitle: _hasBalance(person)
                   ? null
-                  : Text(
-                      _allowance(person),
-                      style: Theme.of(context).textTheme.bodySmall,
+                  : Tooltip(
+                      message: _allowance(person),
+                      child: Text(
+                        _allowance(person),
+                        style: Theme.of(context).textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
               trailing: _rowEnd(context, person),
               onTap: () =>
@@ -657,7 +680,24 @@ class _PtoTabState extends State<PtoTab> {
 
   // ── the panel both layouts share ─────────────────────────────────
 
+  /// The panel's own width decides too, not only the tab's: on the unfolded
+  /// Duo the tab is 640 wide but the panel beside the list ~290, and four
+  /// tiles in a row broke "Expired" and the reset dates mid-word.
   Widget _panel(
+    BuildContext context,
+    Map<String, dynamic> person, {
+    String? heading,
+    bool phone = false,
+  }) => LayoutBuilder(
+    builder: (context, box) => _panelAt(
+      context,
+      person,
+      heading: heading,
+      phone: phone || box.maxWidth < 480,
+    ),
+  );
+
+  Widget _panelAt(
     BuildContext context,
     Map<String, dynamic> person, {
     String? heading,
@@ -774,7 +814,7 @@ class _PtoTabState extends State<PtoTab> {
   Widget _standing(BuildContext context, Map<String, dynamic> person) {
     final theme = Theme.of(context);
     final started = person['started_on'];
-    final from = person['eligible_from'];
+    final from = _usableFrom(person);
     final role = _roleName(person);
     final quiet = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.outline,
@@ -785,7 +825,7 @@ class _PtoTabState extends State<PtoTab> {
       runSpacing: 6,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (person['eligible'] == true)
+        if (_canUse(person))
           const StatusPill('Can use now', tone: Tone.ok)
         else if (from == null)
           const StatusPill('Start date unknown')
@@ -1194,7 +1234,7 @@ class _PtoTabState extends State<PtoTab> {
               ),
               for (final e in earnings)
                 Positioned(
-                  key: Key('pto-earn-${PtoMaths.iso(e.on)}'),
+                  key: Key('pto-earn-${formatCalendarDay(e.on)}'),
                   left: (at(e.on) * w - dot / 2).clamp(0.0, w - dot),
                   top: top + track / 2 - dot / 2,
                   width: dot,
@@ -1476,7 +1516,7 @@ class _PtoTabState extends State<PtoTab> {
         // next one sits just above what already happened.
         for (final e in expected.reversed)
           Padding(
-            key: Key('pto-expected-${PtoMaths.iso(e.on)}'),
+            key: Key('pto-expected-${formatCalendarDay(e.on)}'),
             padding: const EdgeInsets.only(bottom: 12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1621,7 +1661,11 @@ class _PtoTabState extends State<PtoTab> {
                       if (event.kind == PtoEventKind.daysOff && canEdit)
                         IconButton(
                           key: Key('pto-remove-${event.run!.ids.first}'),
-                          tooltip: 'Remove these days',
+                          // Two taps, and not while removing: one tap used
+                          // to delete a whole run (full-code audit, 2026-11-27).
+                          tooltip: _armed == event.run!.ids.first
+                              ? 'Tap again to remove ${event.run!.ids.length} day${event.run!.ids.length == 1 ? '' : 's'}'
+                              : 'Remove these days',
                           visualDensity: VisualDensity.compact,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(
@@ -1629,8 +1673,16 @@ class _PtoTabState extends State<PtoTab> {
                             minHeight: 28,
                           ),
                           iconSize: 18,
-                          onPressed: () => _removeRun(person, event.run!),
-                          icon: const Icon(Icons.close),
+                          onPressed: _removing
+                              ? null
+                              : () => _armed == event.run!.ids.first
+                                    ? _removeRun(person, event.run!)
+                                    : setState(() => _armed = event.run!.ids.first),
+                          icon: Icon(
+                            _armed == event.run!.ids.first
+                                ? Icons.delete_forever
+                                : Icons.close,
+                          ),
                         ),
                     ],
                   ),
@@ -1652,9 +1704,16 @@ class _PtoTabState extends State<PtoTab> {
 
   String _orDash(num? value) => value == null ? '—' : _days(value);
 
+  String? _armed;
+  bool _removing = false;
+
   Future<void> _removeRun(Map<String, dynamic> person, PtoDayRun run) async {
     final pid = '${person['id']}';
-    setState(() => _removeError = null);
+    setState(() {
+      _removeError = null;
+      _armed = null;
+      _removing = true;
+    });
 
     Map<String, dynamic>? balance;
     for (final day in run.ids) {
@@ -1670,6 +1729,7 @@ class _PtoTabState extends State<PtoTab> {
     }
 
     if (balance != null) _merge(pid, balance, _daysKeys);
+    if (mounted) setState(() => _removing = false);
     await _load(quiet: true);
   }
 
@@ -1733,7 +1793,9 @@ class _PtoTabState extends State<PtoTab> {
     final waiting = _waitingPhrase();
     final noWait = (_policy['waiting'] as int? ?? 0) == 0;
     final unknown = person['started_on'] == null;
-    final eligible = person['eligible'] == true;
+    final eligible = _canUse(person);
+    final first = person['first_days'] as Map?;
+    final later = first != null && person['usable_from'] != person['eligible_from'];
 
     // Eligible is asked FIRST, because a policy with no waiting period makes
     // the unknown start date stop mattering: there is nothing to count from
@@ -1762,8 +1824,16 @@ class _PtoTabState extends State<PtoTab> {
             'be a guess. Start dates have only been kept since this was added, '
             'so people who were already here do not have one.',
       ),
+      // The first days arrive after the waiting period ends (Jose,
+      // 2026-11-23): the date that matters is when they have one to take.
+      (false, false) when later => (
+        _date(person['usable_from']),
+        'First days arrive ${_date(first['on'])} (+${first['days']}). Usable '
+            'from then; the $waiting waiting period ends '
+            '${_date(person['eligible_from'])}.',
+      ),
       (false, false) => (
-        _date(person['eligible_from']),
+        _date(_usableFrom(person)),
         // The SETTING's own words — "90 days" or "3 months", whichever was
         // chosen — never a phrase describing it. A hardcoded "three months"
         // would go stale the moment somebody changed the number, and would
@@ -1897,11 +1967,6 @@ class PtoEvent {
 }
 
 abstract final class PtoMaths {
-
-  static const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June', //
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
 
   static String month(DateTime at) => shortMonths[at.month - 1];
 
@@ -2159,10 +2224,6 @@ abstract final class PtoMaths {
     });
     return events;
   }
-
-  static String iso(DateTime at) =>
-      '${at.year}-${at.month.toString().padLeft(2, '0')}-'
-      '${at.day.toString().padLeft(2, '0')}';
 }
 
 // ── the recorder: a month calendar, a reason, Save ───────────────────
@@ -2227,7 +2288,7 @@ class _RecordDaysOffState extends State<_RecordDaysOff> {
       {
         'days': [
           for (final d in days)
-            {'date': PtoMaths.iso(d), 'portion': _picked[d] == 1 ? 1 : 0.5},
+            {'date': formatCalendarDay(d), 'portion': _picked[d] == 1 ? 1 : 0.5},
         ],
         if (reason.isNotEmpty) 'reason': reason,
       },
@@ -2499,7 +2560,7 @@ class _Calendar extends StatelessWidget {
                 : BorderSide.none,
           ),
           child: InkWell(
-            key: Key('pto-day-${PtoMaths.iso(d)}'),
+            key: Key('pto-day-${formatCalendarDay(d)}'),
             borderRadius: BorderRadius.circular(6),
             // Already recorded: shown, and not offered again.
             onTap: was ? null : () => onTap(d),
@@ -2551,7 +2612,7 @@ class _Calendar extends StatelessWidget {
               ),
               Expanded(
                 child: Text(
-                  '${PtoMaths.monthNames[month.month - 1]} ${month.year}',
+                  '${longMonths[month.month - 1]} ${month.year}',
                   key: const Key('pto-cal-month'),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleSmall,
@@ -2791,20 +2852,37 @@ class _PtoRequestsViewState extends State<PtoRequestsView> {
   void initState() {
     super.initState();
     _load();
+    // A request asked for or decided elsewhere; never under a decision
+    // being typed here.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'people'},
+      (_) {
+        if (!_loading && !_asking && _denying == null && _busy.isEmpty) {
+          return _load(quiet: true);
+        }
+      },
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     _denyReason.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     final query = <String, String>{
       'status': ?_status,
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
@@ -2813,7 +2891,7 @@ class _PtoRequestsViewState extends State<PtoRequestsView> {
         ? '/hr/pto/requests'
         : '/hr/pto/requests?${Uri(queryParameters: query).query}';
     final response = await widget.api.get(path);
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
     setState(() {
       _loading = false;
       if (!response.ok) {
@@ -2966,18 +3044,14 @@ class _PtoRequestsViewState extends State<PtoRequestsView> {
   }
 
   Widget _toolbar(BuildContext context) {
-    final search = TextField(
+    final search = ListSearch(
       key: const Key('pto-req-search'),
       controller: _search,
-      onSubmitted: (_) => _load(),
+      hint: 'Search people',
       onChanged: (v) {
-        if (v.isEmpty) _load();
-      },
-      decoration: const InputDecoration(
-        hintText: 'Search people',
-        prefixIcon: Icon(Icons.search),
-        isDense: true,
-      ),
+          if (v.isEmpty) _load();
+        },
+      onSubmitted: (_) => _load(),
     );
     final status = SearchPickerField<String>(
       key: const Key('pto-req-status'),
@@ -3018,10 +3092,12 @@ class _PtoRequestsViewState extends State<PtoRequestsView> {
     }
     return Row(
       children: [
-        Expanded(flex: 3, child: search),
+        // Fixed widths: stretched to 45 % each they read as two empty bars.
+        SizedBox(width: 280, child: search),
         const SizedBox(width: 12),
-        Expanded(flex: 2, child: status),
-        if (ask != null) ...[const SizedBox(width: 12), ask],
+        SizedBox(width: 200, child: status),
+        const Spacer(),
+        ?ask,
       ],
     );
   }
@@ -3447,7 +3523,7 @@ class _RequestFormState extends State<_RequestForm> {
     final response = await widget.api.post('/hr/pto/requests', {
       'days': [
         for (final d in days)
-          {'date': PtoMaths.iso(d), 'portion': _picked[d] == 1 ? 1 : 0.5},
+          {'date': formatCalendarDay(d), 'portion': _picked[d] == 1 ? 1 : 0.5},
       ],
       if (note.isNotEmpty) 'note': note,
     });
@@ -3684,3 +3760,12 @@ abstract final class PtoRequestMaths {
     return parts.join(' · ');
   }
 }
+
+/// Has a day they may take now: the server's `usable`, or `eligible` from a
+/// server that predates it (Jose, 2026-11-23).
+bool _canUse(Map<String, dynamic> person) =>
+    (person['usable'] ?? person['eligible']) == true;
+
+/// The first day they have one to take, else the waiting period's end.
+Object? _usableFrom(Map<String, dynamic> person) =>
+    person['usable_from'] ?? person['eligible_from'];

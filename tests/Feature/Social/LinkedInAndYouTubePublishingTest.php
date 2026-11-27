@@ -308,9 +308,10 @@ class LinkedInAndYouTubePublishingTest extends TestCase
 
         Http::assertNothingSent();
 
-        // The clock ran out; LinkedIn did not refuse anything. Not marked.
+        // Marked broken (2026-11-12): nothing can renew it, so the card must
+        // say so rather than stay green until a post fails.
         $saved = $this->inTenant($t['org'], fn () => SocialConnection::query()->find($row->getKey()));
-        $this->assertSame(SocialConnection::STATUS_CONNECTED, $saved->status);
+        $this->assertSame(SocialConnection::STATUS_BROKEN, $saved->status);
     }
 
     public function test_a_linkedin_token_inside_its_last_minutes_is_still_used_when_it_cannot_be_renewed(): void

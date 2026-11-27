@@ -3,20 +3,21 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/settings/activity_screen.dart';
-import 'package:ezbizi_client/screens/settings_shell.dart';
+import 'package:ezbizi_client/screens/monitoring/monitoring_screen.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Settings › Activity (2026-10-16).
+/// Monitoring › Activity (2026-10-16; moved from Settings 2026-11-25).
 void main() {
   // UI queue 110: a row opens to what changed, before and after; a shape
   // that is not before/after still shows, as name and value.
   testWidgets('a row opens what changed', (tester) async {
-    await _pump(tester, ['audit.view'], <Uri>[], shell: false);
+    await _pump(tester, ['monitoring.activity.view'], <Uri>[], shell: false);
 
     await tester.tap(find.byKey(const ValueKey('activity-row:e-1')));
     await tester.pumpAndSettle();
@@ -25,6 +26,70 @@ void main() {
     expect(find.text('new  →  follow_up'), findsOneWidget);
     expect(find.byKey(const ValueKey('value:tags')), findsOneWidget);
     expect(find.text('phone'), findsOneWidget);
+  });
+
+  // Eve Sarfaty's suggestion 01a20df7 (2026-11-24): the time clock logs the
+  // whole shift twice; it reads as labelled fields, local times, only what
+  // changed, '—' for nothing, and never JSON.
+  testWidgets('a whole-record before and after reads as changed fields', (
+    tester,
+  ) async {
+    const formats = DisplayFormats.platform;
+    final api = ApiClient(
+      client: MockClient(
+        (request) async => _json({
+          'data': {
+            'id': 'e-9',
+            'occurred_at': '2026-11-23T15:00:00Z',
+            'source': 'user',
+            'actor': 'Analorena Ventoso',
+            'action': 'time_clock.corrected',
+            'changes': {
+              'before': {
+                'clocked_in_at': '2026-11-23T13:00:00Z',
+                'clocked_out_at': null,
+                'note': 'same',
+              },
+              'after': {
+                'clocked_in_at': '2026-11-23T14:00:00Z',
+                'clocked_out_at': '2026-11-23T22:30:00Z',
+                'note': 'same',
+              },
+            },
+          },
+        }),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ActivityDetail(
+            api: api,
+            row: const {'id': 'e-9'},
+            sourceWord: null,
+            formats: formats,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    String at(String iso) => formatStamp(iso, '', formats: formats);
+    expect(find.text('Clocked in'), findsOneWidget);
+    expect(find.text('Clocked out'), findsOneWidget);
+    expect(
+      find.text(
+        '${at('2026-11-23T13:00:00Z')}  →  ${at('2026-11-23T14:00:00Z')}',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('—  →  ${at('2026-11-23T22:30:00Z')}'),
+      findsOneWidget,
+    );
+    expect(find.text('Note'), findsNothing);
+    expect(find.textContaining('{'), findsNothing);
+    expect(find.textContaining('_at'), findsNothing);
   });
 
   // UI queue 110: a sentence, never the server's code.
@@ -58,7 +123,7 @@ void main() {
     tester,
   ) async {
     final asked = <Uri>[];
-    await _pump(tester, ['audit.view'], asked, shell: false);
+    await _pump(tester, ['monitoring.activity.view'], asked, shell: false);
 
     // Wide: who in its own column, then what (UI queue 111).
     expect(find.text('Dana'), findsOneWidget);
@@ -81,7 +146,7 @@ void main() {
   // UI queue 111: module and search narrow the list on the server.
   testWidgets('module and search ask the server', (tester) async {
     final asked = <Uri>[];
-    await _pump(tester, ['audit.view'], asked, shell: false);
+    await _pump(tester, ['monitoring.activity.view'], asked, shell: false);
 
     _pick(tester, 'activity-module', 'lead');
     await tester.pumpAndSettle();
@@ -100,7 +165,7 @@ void main() {
   testWidgets('narrow, a row is a sentence and opens in a panel', (
     tester,
   ) async {
-    await _pump(tester, ['audit.view'], <Uri>[], shell: false);
+    await _pump(tester, ['monitoring.activity.view'], <Uri>[], shell: false);
     tester.view.physicalSize = const Size(600, 1000);
     await tester.pumpAndSettle();
 
@@ -116,7 +181,7 @@ void main() {
     tester.view.physicalSize = const Size(1400, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    await _pump(tester, ['audit.view'], <Uri>[], shell: false);
+    await _pump(tester, ['monitoring.activity.view'], <Uri>[], shell: false);
 
     expect(find.text('WHERE'), findsOneWidget);
     expect(find.text('MODULE'), findsOneWidget);
@@ -129,15 +194,22 @@ void main() {
     expect(find.byKey(const ValueKey('activity-close')), findsOneWidget);
   });
 
-  testWidgets('the tab is drawn only for audit.view', (tester) async {
-    await _pump(tester, ['organizations.settings.view'], [], shell: true);
+  testWidgets('the Monitoring tab is drawn only for monitoring.activity.view', (
+    tester,
+  ) async {
+    await _pump(tester, ['monitoring.general.view'], [], shell: true);
     expect(find.text('Activity'), findsNothing);
 
     await _pump(tester, [
-      'organizations.settings.view',
-      'audit.view',
+      'monitoring.general.view',
+      'monitoring.activity.view',
     ], [], shell: true);
     expect(find.text('Activity'), findsOneWidget);
+
+    // Activity alone opens Monitoring without monitoring.view: no PC Specs.
+    await _pump(tester, ['monitoring.activity.view'], [], shell: true);
+    expect(find.text('Activity'), findsOneWidget);
+    expect(find.text('PC Specs'), findsNothing);
   });
 }
 
@@ -230,7 +302,7 @@ Future<void> _pump(
       theme: EzBiziTheme.light(),
       home: Scaffold(
         body: shell
-            ? SettingsShell(api: api, session: session)
+            ? MonitoringScreen(api: api, session: session)
             : ActivityScreen(api: api, session: session),
       ),
     ),

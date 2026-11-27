@@ -14,6 +14,7 @@
 /// Panels, not dialogs — DEVELOPMENT-RULES' "No modal dialogs".
 library;
 
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -159,16 +160,9 @@ class _WorkHoursReportsTabState extends State<WorkHoursReportsTab> {
     // Standard field height, as tall as Leads search (Jose, 2026-10-27).
     final search = SizedBox(
       width: 240,
-      child: TextField(
+      child: ListSearch(
         key: const Key('work-hours-reports-search'),
-        textAlignVertical: TextAlignVertical.center,
-        decoration: const InputDecoration(
-          isDense: true,
-          prefixIconConstraints: BoxConstraints(minWidth: 36),
-          prefixIcon: Icon(Icons.search, size: 18),
-          hintText: 'Find a report',
-          border: OutlineInputBorder(),
-        ),
+        hint: 'Find a report',
         onChanged: (v) => setState(() => _query = v),
       ),
     );
@@ -705,19 +699,53 @@ class _ReportPreviewState extends State<_ReportPreview> {
                 'Nobody in this report clocked any time this week.',
                 style: theme.textTheme.bodyMedium,
               ),
-            for (final row in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    Expanded(child: Text('${row['name']}')),
-                    Text(
-                      '${row['hours']}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+            // Overtime first and in red, then full time, then part time,
+            // each A-Z (Eric Nelson Valdes, 2026-11-25).
+            for (final section
+                in (data['sections'] as List?) ??
+                    [
+                      // A server before sections: the rows, under no heading.
+                      {'key': '', 'label': '', 'rows': rows},
+                    ]) ...[
+              if ('${section['label']}'.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 4),
+                  child: Text(
+                    '${section['label']}',
+                    key: ValueKey('report-section-${section['key']}'),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: section['key'] == 'overtime' ? scheme.error : null,
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              for (final row in (section['rows'] as List? ?? const []))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${row['name']}',
+                          style: TextStyle(
+                            color: section['key'] == 'overtime'
+                                ? scheme.error
+                                : null,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${row['hours']}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: section['key'] == 'overtime'
+                              ? scheme.error
+                              : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
             if (rows.isNotEmpty) ...[
               const Divider(),
               Row(

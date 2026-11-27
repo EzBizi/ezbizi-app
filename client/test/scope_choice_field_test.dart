@@ -195,6 +195,18 @@ void main() {
     return chosen;
   }
 
+  testWidgets('a switched-off place already chosen stays, marked off', (
+    tester,
+  ) async {
+    await pumpField(tester, offered: places(), value: 'franchise:f-b3');
+
+    expect(
+      find.byKey(const ValueKey('scope-choice-franchise:f-b3')),
+      findsOneWidget,
+    );
+    expect(find.text('off'), findsOneWidget);
+  });
+
   testWidgets('the panel draws the groups with a divider between each', (
     tester,
   ) async {
@@ -206,10 +218,14 @@ void main() {
       findsNWidgets(3),
     );
     expect(find.text('Entire organization'), findsOneWidget);
-    expect(find.text('3 branches'), findsOneWidget);
-    expect(find.text('2 branches'), findsOneWidget);
+    // Ozark is switched off, so it is not offered (Jose, 2026-11-10).
+    expect(find.text('2 branches'), findsNWidgets(2));
     expect(find.text('1 branch'), findsOneWidget);
-    expect(find.text('off'), findsOneWidget);
+    expect(find.text('off'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('scope-choice-franchise:f-b3')),
+      findsNothing,
+    );
 
     // Top to bottom in the order the groups say.
     double top(String key) =>

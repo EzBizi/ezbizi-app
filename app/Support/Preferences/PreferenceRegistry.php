@@ -39,6 +39,9 @@ class PreferenceRegistry
      */
     public const DIVIDER = '--';
 
+    /** Prefix of a sidebar section heading in a saved order. */
+    public const HEADING = '#';
+
     /**
      * @return array<string, array{type: string, default: mixed, options?: array, label: string, help?: string}>
      */
@@ -67,8 +70,9 @@ class PreferenceRegistry
                  * would eventually find the pair in a state that means nothing.
                  */
                 'options' => ['system', 'light', 'dark', 'mixed_dark_nav', 'mixed_light_nav'],
-                'help' => '"Match my device" follows whatever your phone or computer is set to. '
-                    .'Mixed keeps the sidebar and the page in opposite themes.',
+                // 'system' stays valid for older apps; the app no longer offers
+                // it and saves the device's theme in its place (Jose 11-24).
+                'help' => 'Light or dark. Mixed keeps the sidebar and the page in opposite themes.',
             ],
 
             /*
@@ -132,11 +136,83 @@ class PreferenceRegistry
              * record that sits in no company (an organization-wide alert)
              * reaches everyone regardless. NotificationDispatcher reads it.
              */
+            /*
+             * Task Board's starred boards, in the order this person dragged
+             * them (design 200; Jose 2026-11-20, Monday's Favorites). Theirs
+             * alone; an id that names no board is simply not drawn.
+             */
+            'task_board.favorites' => [
+                'label' => 'Favorite boards',
+                'type' => 'ids',
+                'default' => [],
+            ],
+
+            /*
+             * Reports › Jobs: the sub-tab last opened (design 199).
+             */
+            'reports.jobs_tab' => [
+                'label' => 'Reports › Jobs tab',
+                'type' => 'enum',
+                'default' => 'overview',
+                'options' => ['overview', 'cancelled', 'pending', 'estimates'],
+            ],
+            'reports.office_tab' => [
+                'label' => 'Reports › Office tab',
+                'type' => 'enum',
+                'default' => 'tasks',
+                'options' => ['tasks', 'complaints', 'dispatch', 'accounting', 'recruiting'],
+            ],
+            'reports.techs_tab' => [
+                'label' => 'Reports › Technicians tab',
+                'type' => 'enum',
+                'default' => 'techs',
+                'options' => ['techs', 'tech_checks'],
+            ],
+
             'notifications.companies' => [
                 'label' => 'Notify me about',
                 'type' => 'ids',
                 'default' => [],
                 'help' => 'Only these companies, their sub companies and branches. Empty means all.',
+            ],
+
+            /*
+             * Modules this person does not want to be interrupted by (Jose,
+             * 2026-11-13). Their notifications still collect in the bell; they
+             * just do not pop up, push or email. Empty = every module alerts.
+             */
+            'notifications.muted_modules' => [
+                'label' => 'Muted modules',
+                'type' => 'order',
+                'default' => [],
+                'help' => 'These modules collect in the bell without alerting you.',
+            ],
+
+            /*
+             * Kinds of notification this person does not want at all (Jose,
+             * 2026-11-17: per-type toggles for Task Board). Unlike a muted
+             * module, a muted kind writes no bell row. Empty = all on.
+             */
+            // Monday parity (Jose, 2026-11-25): the Email column, opt-in per
+            // kind, and the "Received directly on your device" master switch.
+            'notifications.email_kinds' => [
+                'label' => 'Email me about',
+                'type' => 'kinds',
+                'default' => [],
+                'help' => 'Notification types also sent to you by email.',
+            ],
+            'notifications.push' => [
+                'label' => 'Phone notifications',
+                'type' => 'bool',
+                'default' => true,
+                'help' => 'Received directly on your device.',
+            ],
+
+            'notifications.muted_kinds' => [
+                'label' => 'Muted notification types',
+                'type' => 'kinds',
+                'default' => [],
+                'help' => 'Notification types you have switched off.',
             ],
 
             /*
@@ -159,6 +235,24 @@ class PreferenceRegistry
                 'min' => 180,
                 'max' => 420,
                 'help' => 'Drag the edge of the sidebar to change it.',
+            ],
+
+            /*
+             * Zoom on the desktop apps (Kimberly 01a213cf, approved by Jose
+             * 2026-11-25). A percentage of the whole window, text and layout
+             * together, the way a browser zooms. The web keeps the browser's
+             * own zoom and phones the system text size, so only the Windows
+             * and macOS apps read it. Set with Ctrl/Cmd + and -, Ctrl/Cmd 0,
+             * or Ctrl and the mouse wheel; bounded so a typed value cannot make
+             * the app unusable.
+             */
+            'appearance.zoom' => [
+                'label' => 'Zoom',
+                'type' => 'int',
+                'default' => 100,
+                'min' => 50,
+                'max' => 200,
+                'help' => 'Ctrl + and Ctrl - (Cmd on a Mac), Ctrl 0 to reset, or Ctrl and the mouse wheel. Desktop apps only.',
             ],
 
             /*
@@ -279,6 +373,15 @@ class PreferenceRegistry
                 'help' => 'Click the pin on the customer panel to change it.',
             ],
 
+            // Reports: every tab's table headings stay on screen while the
+            // rows scroll, or scroll away (Jose, 2026-11-16).
+            'reports.pin_headings' => [
+                'label' => 'Keep report table headings on screen',
+                'type' => 'bool',
+                'default' => true,
+                'help' => 'Click the pin beside the headings of any report table to change it.',
+            ],
+
             'web.widgets.list_width' => [
                 'label' => 'Website list width',
                 'type' => 'int',
@@ -308,6 +411,16 @@ class PreferenceRegistry
              * is his "default should be 30 - 70". The client still keeps both
              * panes above their pixel floors whatever share is stored.
              */
+            // Chat's list pane (Communication > Chat), in pixels.
+            'chat.list_width' => [
+                'label' => 'Chat list width',
+                'type' => 'int',
+                'default' => 400,
+                'min' => 300,
+                'max' => 640,
+                'help' => 'Drag the line beside the chat list to change it.',
+            ],
+
             'leads.list_percent' => [
                 'label' => 'Leads list width',
                 'type' => 'int',
@@ -326,6 +439,54 @@ class PreferenceRegistry
                 'help' => 'Drag the edge of a column heading to change it.',
             ],
 
+            // Any ListTable: a column dragged wider stays that wide for this
+            // person (monday port, desk 2026-11-09). "<list id>:<column>" => pixels.
+            'lists.column_widths' => [
+                'label' => 'List column widths',
+                'type' => 'widths',
+                'keys' => '/^[a-z0-9_.-]{1,60}:\d{1,2}$/',
+                'default' => [],
+                'help' => 'Drag the edge of a column heading to change it.',
+            ],
+
+            // Project Management's sort, "<column>:<asc|desc>" (Jose,
+            // 2026-11-10: "clicking the column orders it"). Empty is newest first.
+            'project_board.sort' => [
+                'label' => 'Project Management sort',
+                'type' => 'string',
+                'default' => '',
+                'help' => 'Click a column heading in Project Management to change it.',
+            ],
+
+            // Project Management > Inbox: which threads it opens on (Shoval,
+            // 2026-11-18: "should default to all").
+            'project_board.inbox_filter' => [
+                'label' => 'Project Management inbox filter',
+                'type' => 'enum',
+                'default' => 'all',
+                'options' => ['all', 'waiting', 'replied'],
+                'help' => 'Pick All, Waiting or Replied above the inbox.',
+            ],
+
+            // Project Management > Settings: the sub-tab open (Shoval,
+            // 2026-11-18: sub tabs "instead of all the settings in one place").
+            'project_board.settings_tab' => [
+                'label' => 'Project Management settings tab',
+                'type' => 'enum',
+                'default' => 'columns',
+                'options' => ['columns', 'stages', 'team', 'parts', 'texts'],
+                'help' => 'Pick a tab at the top of Project Management settings.',
+            ],
+
+            // One-time "New: …" tips this person dismissed with "Got it"
+            // (monday port, desk 2026-11-09). Slugs, e.g. list_toolbar.
+            'callouts.seen' => [
+                'label' => 'Dismissed tips',
+                'type' => 'keys',
+                'default' => [],
+                'help' => 'Tips you closed with "Got it" stay closed.',
+            ],
+
             'hr.records.list_width' => [
                 'label' => 'People list width',
                 'type' => 'int',
@@ -333,6 +494,15 @@ class PreferenceRegistry
                 'min' => 240,
                 'max' => 900,
                 'help' => 'Drag the line beside the list of people to change it.',
+            ],
+
+            // Jobs › Estimates as a list or a board (design 172, Jose 2026-11-03).
+            'jobs.estimates.view' => [
+                'label' => 'Estimates view',
+                'type' => 'enum',
+                'default' => 'list',
+                'options' => ['list', 'board'],
+                'help' => 'Switch with List | Board on the Estimates tab.',
             ],
 
             /*
@@ -415,18 +585,26 @@ class PreferenceRegistry
                 )),
             'order' => $this->cleanOrder($value),
             // ponytail: not checked against the companies table; an id that matches nothing simply never matches.
+            'kinds' => is_array($value)
+                ? array_values(array_unique(array_intersect($value, array_keys(\App\Support\Notifications\NotificationDispatcher::KINDS))))
+                : [],
             'ids' => is_array($value)
                 ? array_values(array_unique(array_filter($value, fn ($id) => is_string($id) && Str::isUuid($id))))
                 : [],
+            // ponytail: capped at 200 slugs; nobody dismisses that many tips.
+            'keys' => is_array($value)
+                ? array_slice(array_values(array_unique(array_filter($value, fn ($k) => is_string($k) && preg_match('/^[a-z0-9_.-]{1,60}$/', $k)))), 0, 200)
+                : [],
             'versions' => $this->cleanVersions($value),
-            'widths' => $this->cleanWidths($value),
+            'widths' => $this->cleanWidths($value, $definition['keys'] ?? '/^[0-9a-f-]{36}:[0-9a-f-]{36}$/'),
             default => (string) $value,
         };
     }
 
     /**
      * A sidebar order: module keys in the order somebody dragged them into,
-     * with [DIVIDER] wherever they put a rule.
+     * with [DIVIDER] wherever they put a rule and [HEADING]-prefixed section
+     * labels where their sections start.
      *
      * CORRECTED rather than refused, following `clampInt` below. The docblock
      * above is about nonsense the client cannot render; this is different. A
@@ -451,6 +629,7 @@ class PreferenceRegistry
         $known = array_keys($this->modules->all());
         $seen = [];
         $out = [];
+        $headings = 0;
 
         foreach ($value as $entry) {
             if (! is_string($entry)) {
@@ -458,6 +637,16 @@ class PreferenceRegistry
             }
             if ($entry === self::DIVIDER) {
                 $out[] = $entry;
+
+                continue;
+            }
+            // A section heading the person named (Jose 11-24): "#" + its label.
+            // Module keys are bare words, so this cannot collide with one.
+            if (str_starts_with($entry, self::HEADING)) {
+                $label = trim(mb_substr($entry, 1));
+                if ($label !== '' && mb_strlen($label) <= 40 && ++$headings <= 30) {
+                    $out[] = self::HEADING.$label;
+                }
 
                 continue;
             }
@@ -477,8 +666,8 @@ class PreferenceRegistry
      * version that is not a small whole number, is dropped, and what is left
      * is always readable.
      */
-    /** "<table uuid>:<field uuid>" => 60..800 pixels, at most 500 of them. */
-    private function cleanWidths(mixed $value): array
+    /** Key matching $keys ("<table uuid>:<field uuid>" by default) => 60..800 pixels, at most 500 of them. */
+    private function cleanWidths(mixed $value, string $keys): array
     {
         if (! is_array($value)) {
             return [];
@@ -486,7 +675,7 @@ class PreferenceRegistry
 
         $out = [];
         foreach ($value as $key => $width) {
-            if (is_string($key) && preg_match('/^[0-9a-f-]{36}:[0-9a-f-]{36}$/', $key) && is_numeric($width)) {
+            if (is_string($key) && preg_match($keys, $key) && is_numeric($width)) {
                 $out[$key] = max(60, min(800, (int) $width));
             }
         }

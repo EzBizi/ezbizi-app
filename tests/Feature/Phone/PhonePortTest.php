@@ -52,7 +52,7 @@ class PhonePortTest extends TestCase
             PhonePortRequest::query()->create([
                 'organization_id' => $t['org']->id,
                 'connection_id' => $connection->id,
-                'e164s' => ['+19544538775'],
+                'e164s' => ['+19545550101'],
                 'twilio_sid' => 'PO'.str_repeat('b', 32),
                 'status' => 'canceled',
             ]);

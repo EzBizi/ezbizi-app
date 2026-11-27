@@ -88,18 +88,8 @@ const _addressParts = {
   'country': 'country',
 };
 
-const _weekDays = [
-  'monday',
-  'tuesday',
-  'wednesday',
-  'thursday',
-  'friday',
-  'saturday',
-  'sunday',
-];
-
 String _dayName(int i) =>
-    _weekDays[i][0].toUpperCase() + _weekDays[i].substring(1);
+    weekdayKeys[i][0].toUpperCase() + weekdayKeys[i].substring(1);
 
 /// "14:00" as "2:00 PM".
 String _clock(String hhmm) {
@@ -114,7 +104,7 @@ String _clock(String hhmm) {
 /// `Monday to Friday 2:00 PM to 8:00 PM; Sunday 8:00 AM to 8:00 PM`.
 /// Consecutive days share a range; for the hours they must share the times too.
 (String days, String hours) scheduleText(Map<String, dynamic> week) {
-  Map? at(int i) => week[_weekDays[i]] as Map?;
+  Map? at(int i) => week[weekdayKeys[i]] as Map?;
 
   List<(int, int)> runs(bool Function(int a, int b) same) {
     final out = <(int, int)>[];
@@ -160,7 +150,7 @@ Map<String, dynamic>? scheduleFrom(String hours) {
     return '${h24.toString().padLeft(2, '0')}:$minute';
   }
 
-  final week = <String, dynamic>{for (final day in _weekDays) day: null};
+  final week = <String, dynamic>{for (final day in weekdayKeys) day: null};
   final group = RegExp(
     r'^([a-z]+)(?: to ([a-z]+))? (\d{1,2}):(\d{2}) ([AP]M) to (\d{1,2}):(\d{2}) ([AP]M)$',
     caseSensitive: false,
@@ -169,13 +159,13 @@ Map<String, dynamic>? scheduleFrom(String hours) {
   for (final part in hours.split(';')) {
     final m = group.firstMatch(part.trim());
     if (m == null) return null;
-    final from = _weekDays.indexOf(m[1]!.toLowerCase());
-    final to = m[2] == null ? from : _weekDays.indexOf(m[2]!.toLowerCase());
+    final from = weekdayKeys.indexOf(m[1]!.toLowerCase());
+    final to = m[2] == null ? from : weekdayKeys.indexOf(m[2]!.toLowerCase());
     final start = hhmm(m[3]!, m[4]!, m[5]!);
     final end = hhmm(m[6]!, m[7]!, m[8]!);
     if (from < 0 || to < from || start == null || end == null) return null;
     for (var i = from; i <= to; i++) {
-      week[_weekDays[i]] = {'start': start, 'end': end};
+      week[weekdayKeys[i]] = {'start': start, 'end': end};
     }
   }
 
@@ -1030,7 +1020,12 @@ class _OnboardingFormState extends State<OnboardingForm> {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                onPressed: widget.onBack,
+                // Unsaved answers are saved on the way out, not thrown away
+                // (full-code audit, 2026-11-27).
+                onPressed: () async {
+                  if (_pending.isNotEmpty) await _save();
+                  if (mounted && _pending.isEmpty) widget.onBack!();
+                },
                 icon: const Icon(Icons.arrow_back, size: 18),
                 label: Text(widget.backLabel),
               ),
@@ -1619,15 +1614,21 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final missing = _isMissing(question);
     final caution = StateColour.of(context).caution;
 
+    // The same tree answered or not: a key or a decoration that comes and
+    // goes with `missing` remounts the box under the cursor on the first
+    // keystroke, and typing stops (Merav, 2026-11-19: "when typing a number
+    // on the field it stops selecting the field").
     return Container(
-      key: missing ? Key('missing-${field.key}') : null,
+      key: ValueKey('question-${field.key}'),
       margin: const EdgeInsets.only(bottom: 22),
-      padding: missing ? const EdgeInsets.only(left: 10) : EdgeInsets.zero,
-      decoration: missing
-          ? BoxDecoration(
-              border: Border(left: BorderSide(color: caution, width: 3)),
-            )
-          : null,
+      padding: EdgeInsets.only(left: missing ? 10 : 0),
+      decoration: BoxDecoration(
+        border: Border(
+          left: missing
+              ? BorderSide(color: caution, width: 3)
+              : BorderSide.none,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1642,7 +1643,12 @@ class _OnboardingFormState extends State<OnboardingForm> {
                         style: theme.textTheme.titleSmall,
                       ),
                     ),
-                    if (missing) const Tag('Not filled in', warn: true),
+                    if (missing)
+                      Tag(
+                        'Not filled in',
+                        key: Key('missing-${field.key}'),
+                        warn: true,
+                      ),
                     // The one thing position cannot show: that the other side
                     // may have got there first, and that correcting them is
                     // expected.
@@ -1983,6 +1989,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
     return switch (field.type) {
       'checklist' => _checklist(question, enabled: enabled),
+      'rate_steps' => _rateSteps(question, enabled: enabled),
       'choice' when field.options.length <= 4 => Wrap(
         key: answerKey(field.key),
         spacing: 8,
@@ -2160,6 +2167,101 @@ class _OnboardingFormState extends State<OnboardingForm> {
     _setChecklistQuantity(question, item, 1);
   }
 
+  /// Hourly rate stages (Merav, 2026-11-17): rows of "after N days, $X/hr",
+  /// counted from the start date. Stored as JSON; the server sorts and checks.
+  Widget _rateSteps(OnboardingQuestion question, {required bool enabled}) {
+    final steps = _rateStepRows(question);
+    void save(List<Map<String, String>> rows) =>
+        _answer(question.key, rows.isEmpty ? '' : jsonEncode(rows));
+
+    return Column(
+      key: Key('rate-steps-${question.key}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (i, step) in steps.indexed)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                const Text('After '),
+                SizedBox(
+                  width: 80,
+                  child: TextFormField(
+                    // Re-keyed when a row goes, so the boxes show their own
+                    // row's numbers rather than the removed one's (audit).
+                    key: Key('rate-step-days-$i-$_rateGen'),
+                    initialValue: step['after_days'],
+                    enabled: enabled,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(isDense: true),
+                    onChanged: (v) =>
+                        save([...steps]..[i] = {...step, 'after_days': v}),
+                  ),
+                ),
+                const Text(' days: \$'),
+                SizedBox(
+                  width: 90,
+                  child: TextFormField(
+                    key: Key('rate-step-rate-$i-$_rateGen'),
+                    initialValue: step['rate'],
+                    enabled: enabled,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(isDense: true),
+                    onChanged: (v) =>
+                        save([...steps]..[i] = {...step, 'rate': v}),
+                  ),
+                ),
+                const Text(' /hr'),
+                IconButton(
+                  tooltip: 'Remove this stage',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: enabled
+                      ? () {
+                          _rateGen++;
+                          save([...steps]..removeAt(i));
+                        }
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        TextButton.icon(
+          key: Key('rate-step-add-${question.key}'),
+          onPressed: enabled
+              ? () => save([
+                  ...steps,
+                  {'after_days': '', 'rate': ''},
+                ])
+              : null,
+          icon: const Icon(Icons.add),
+          label: const Text('Add a rate stage'),
+        ),
+      ],
+    );
+  }
+
+  int _rateGen = 0;
+
+  List<Map<String, String>> _rateStepRows(OnboardingQuestion question) {
+    final raw = _pending[question.key] ?? question.value;
+    if (raw.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return [
+          for (final row in decoded.whereType<Map>())
+            {
+              'after_days': '${row['after_days'] ?? ''}',
+              'rate': '${row['rate'] ?? ''}',
+            },
+        ];
+      }
+    } catch (_) {}
+    return [];
+  }
+
   /// Only received items are stored; the document prints every listed item,
   /// the unreceived ones blank.
   Map<String, Map<String, String>> _checklistRows(OnboardingQuestion question) {
@@ -2194,10 +2296,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
       rows.remove(item);
     } else {
       final now = DateTime.now();
-      final today =
-          '${now.year.toString().padLeft(4, '0')}-'
-          '${now.month.toString().padLeft(2, '0')}-'
-          '${now.day.toString().padLeft(2, '0')}';
+      final today = formatCalendarDay(now);
       final received = rows[item]?['received'] ?? '';
       rows[item] = {
         'quantity': '$quantity',
@@ -3295,9 +3394,9 @@ class _SigningStepState extends State<_SigningStep> {
   }
 }
 
-/// "County for disputes": a search of the chosen state's counties
-/// (`GET /places/counties`, HR d834214e). What is typed is the answer and the
-/// list only suggests (Jose, 2026-10-05: Eve typed Cook, the search found
+/// "County for disputes": the chosen state's whole county list
+/// (`GET /places/counties`, the Census file; Merav, 2026-11-05), filtered as
+/// you type. What is typed is the answer and the list only suggests (Jose, 2026-10-05: Eve typed Cook, the search found
 /// nothing, and "she should be able to just save").
 class _CountySearch extends StatefulWidget {
   const _CountySearch({
@@ -3324,50 +3423,43 @@ class _CountySearch extends StatefulWidget {
 }
 
 class _CountySearchState extends State<_CountySearch> {
-  Timer? _debounce;
-  int _run = 0;
   bool _looking = false;
-  List<String> _found = [];
+  List<String> _all = [];
 
-  /// The text the last finished search was for, so "nothing found" is said
-  /// only about what is in the box.
-  String? _searched;
+  /// The state [_all] was loaded for.
+  String? _loadedFor;
 
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    super.dispose();
-  }
-
-  void _search(String text) {
-    _debounce?.cancel();
-    final query = text.trim();
+  Future<void> _load(String state) async {
+    _loadedFor = state;
+    setState(() => _looking = true);
+    final response = await widget.api.get('/places/counties', {'state': state});
+    if (!mounted || _loadedFor != state) return;
     setState(() {
-      if (query.isEmpty) _found = [];
-    });
-    if (query.isEmpty) return;
-    _debounce = Timer(const Duration(milliseconds: 300), () async {
-      final run = ++_run;
-      setState(() => _looking = true);
-      final response = await widget.api.get('/places/counties', {
-        'state': widget.state!,
-        'q': query,
-      });
-      if (!mounted || run != _run) return;
-      setState(() {
-        _looking = false;
-        _searched = query;
-        _found = response.ok && response.data is List
-            ? [for (final name in response.data as List) '$name']
-            : [];
-      });
+      _looking = false;
+      _all = response.ok && response.data is List
+          ? [for (final name in response.data as List) '$name']
+          : [];
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
+    if (state != _loadedFor) {
+      _all = [];
+      if (state != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _load(state));
+      }
+      _loadedFor = state;
+    }
     final typed = widget.controller.text.trim();
+    final picked = _all.any((n) => n.toLowerCase() == typed.toLowerCase());
+    final found = picked
+        ? const <String>[]
+        : [
+            for (final n in _all)
+              if (n.toLowerCase().contains(typed.toLowerCase())) n,
+          ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3379,7 +3471,7 @@ class _CountySearchState extends State<_CountySearch> {
             border: const OutlineInputBorder(),
             hintText: state == null
                 ? 'Choose the governing state first'
-                : 'Search the counties of $state',
+                : 'Pick or type a county of $state',
             prefixIcon: const Icon(Icons.search, size: 20),
             suffixIcon: _looking
                 ? const Padding(
@@ -3394,35 +3486,40 @@ class _CountySearchState extends State<_CountySearch> {
             helperText:
                 typed.isNotEmpty &&
                     !_looking &&
-                    _searched == typed &&
-                    _found.isEmpty
+                    _all.isNotEmpty &&
+                    found.isEmpty &&
+                    !picked
                 ? 'Not in the list. What you typed is saved as the county.'
                 : null,
           ),
           onChanged: (text) {
-            _search(text);
+            setState(() {});
             widget.onPicked(text.trim());
           },
         ),
-        if (_found.isNotEmpty) ...[
+        if (widget.enabled && found.isNotEmpty) ...[
           const SizedBox(height: 4),
           Material(
             elevation: 1,
             borderRadius: BorderRadius.circular(8),
-            child: Column(
-              children: [
-                for (final name in _found)
-                  ListTile(
-                    key: Key('county-$name'),
-                    dense: true,
-                    title: Text(name),
-                    onTap: () {
-                      widget.controller.text = name;
-                      setState(() => _found = []);
-                      widget.onPicked(name);
-                    },
-                  ),
-              ],
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 240),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final name in found)
+                    ListTile(
+                      key: Key('county-$name'),
+                      dense: true,
+                      title: Text(name),
+                      onTap: () {
+                        widget.controller.text = name;
+                        setState(() {});
+                        widget.onPicked(name);
+                      },
+                    ),
+                ],
+              ),
             ),
           ),
         ],

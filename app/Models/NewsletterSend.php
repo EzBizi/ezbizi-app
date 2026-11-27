@@ -19,6 +19,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class NewsletterSend extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A write here is its newsletter's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['newsletters', Newsletter::class, 'newsletter_id'];
+
     use HasUuids;
 
     /**

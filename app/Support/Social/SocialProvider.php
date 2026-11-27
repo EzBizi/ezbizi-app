@@ -119,6 +119,22 @@ enum SocialProvider: string
     // Review requests and published reviews, read with a shop id and password (A1 Leads takeover #43).
     case Ekomi = 'ekomi';
 
+    // The organization's monday.com account, read so the boards imported from
+    // Monday stay in step with the Task Board until Monday is retired (Jose,
+    // 2026-11-12). Read only. Connected through the "EzBizi" Monday app.
+    case Monday = 'monday';
+
+    // The tenant's QuickBooks Online company, read for expenses per market
+    // (Shoval, Monday board 2026-11-20: weekly expenses, closing rate and cost
+    // per market). Read only. realmId is the remote id.
+    case QuickBooks = 'quickbooks';
+
+    // The tenant's own bank and card accounts through Plaid (Jose, 2026-11-24:
+    // Plaid approved). Read only: transactions and balances into Financials ›
+    // Bank. One connection per Plaid Item (one bank login); item_id is the
+    // remote id. Connected through Plaid Hosted Link (PlaidOAuth).
+    case Plaid = 'plaid';
+
     public function label(): string
     {
         return match ($this) {
@@ -143,7 +159,33 @@ enum SocialProvider: string
             self::WhatsApp => 'WhatsApp',
             self::Telegram => 'Telegram',
             self::Ekomi => 'eKomi',
+            self::Monday => 'Monday',
+            self::QuickBooks => 'QuickBooks',
+            self::Plaid => 'Plaid',
         };
+    }
+
+    /**
+     * The provider whose sign-in brings this one in: one card, one connect,
+     * one disconnect per sign-in (Jose, 2026-11-05: "1 facebook connections
+     * grabs social and ads ... Same for disconnecting. And this goes for
+     * everything"). The Facebook connect already stores the ad accounts of
+     * its grant as facebook_ads rows.
+     */
+    public function signIn(): self
+    {
+        return match ($this) {
+            self::FacebookAds => self::FacebookPage,
+            // One Google sign-in: GoogleAdsOAuth::PRODUCTS.
+            self::GoogleBusinessProfile, self::YouTube => self::GoogleAds,
+            default => $this,
+        };
+    }
+
+    /** @return self[] every provider one sign-in brings, this one included */
+    public function family(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $p) => $p->signIn() === $this->signIn()));
     }
 
     /** Path segment in /social/{key}/start — the reserved callback name. */
@@ -176,6 +218,9 @@ enum SocialProvider: string
             self::WhatsApp => 'whatsapp',
             self::Telegram => 'telegram',
             self::Ekomi => 'ekomi',
+            self::Monday => 'monday',
+            self::QuickBooks => 'quickbooks',
+            self::Plaid => 'plaid',
         };
     }
 
@@ -249,7 +294,7 @@ enum SocialProvider: string
      */
     public static function dataSources(): array
     {
-        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::WorkizWeb, self::Airtable, self::FacebookAds, self::RingCentral, self::Ekomi];
+        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::WorkizWeb, self::Airtable, self::FacebookAds, self::RingCentral, self::Ekomi, self::Monday, self::QuickBooks, self::Plaid];
     }
 
     /**
@@ -417,6 +462,15 @@ enum SocialProvider: string
 
             self::Ekomi => 'reviews.edit',
 
+            // The Task Board is what it feeds; whoever may make boards may bring Monday's.
+            self::Monday => 'tasks.create_boards',
+
+            // Its expenses land in Financials; whoever edits Financials may bring the books.
+            self::QuickBooks => 'financials.edit',
+
+            // The same: bank feeds land in Financials › Bank.
+            self::Plaid => 'financials.edit',
+
             default => 'marketing.edit',
         };
     }
@@ -464,6 +518,9 @@ enum SocialProvider: string
             self::WhatsApp => 'connect a WhatsApp number',
             self::Telegram => 'connect a Telegram bot',
             self::Ekomi => 'connect an eKomi account',
+            self::Monday => 'connect Monday',
+            self::QuickBooks => 'connect QuickBooks',
+            self::Plaid => 'connect a bank account',
             default => 'connect a social account',
         };
     }
@@ -609,6 +666,24 @@ enum SocialProvider: string
             // Media Management is genuinely where they are used.
             self::Ekomi => sprintf('%s is connected to EzBizi. Its reviews arrive in Reviews.', $name),
 
+            self::Monday => sprintf(
+                '%s is connected to EzBizi. You can close this window — the boards brought over from '
+                .'Monday now take its changes on the Task Board.',
+                $name,
+            ),
+
+            self::QuickBooks => sprintf(
+                '%s is connected to EzBizi. You can close this window — its expenses are being read '
+                .'into Financials › Markets.',
+                $name,
+            ),
+
+            self::Plaid => sprintf(
+                '%s is connected to EzBizi. You can close this window — its accounts, balances and '
+                .'transactions are being read into Financials › Bank.',
+                $name,
+            ),
+
             default => $many
                 ? sprintf(
                     '%d %s Pages are connected to EzBizi. You can close this window and compose '
@@ -682,6 +757,41 @@ enum SocialProvider: string
             // A Business Profile post: words, with a photo or without (v4 localPosts).
             self::GoogleBusinessProfile => [SocialMediaKind::Text, SocialMediaKind::Image],
         };
+    }
+
+    /**
+     * The most characters this network's post text takes, or null where
+     * EzBizi's own 5000 is the tighter limit. One place for the composer
+     * check and the publishers: a post that is too long is refused, never
+     * cut mid-sentence (bug review 2026-11-09).
+     */
+    public function maxBodyLength(): ?int
+    {
+        return match ($this) {
+            self::X => 280,
+            self::Bluesky => 300,
+            self::Threads => 500,
+            // The Pin's description.
+            self::Pinterest => 800,
+            self::GoogleBusinessProfile => 1500,
+            self::InstagramProfessional, self::TikTok => 2200,
+            self::LinkedIn => 3000,
+            default => null,
+        };
+    }
+
+    /** Why this text is too long for this network, or null when it fits. */
+    public function refusesLength(string $body): ?string
+    {
+        $limit = $this->maxBodyLength();
+        $length = mb_strlen($body);
+
+        if ($limit === null || $length <= $limit) {
+            return null;
+        }
+
+        return sprintf('%s takes %d characters at most and this post is %d. Shorten it, or untick %s.',
+            $this->label(), $limit, $length, $this->label());
     }
 
     public function takes(SocialMediaKind $kind): bool

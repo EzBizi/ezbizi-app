@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_window.dart';
+import '../core/deep_links.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'phone/chat/chat_tab.dart';
 import 'phone/alerts_tab.dart';
 import 'phone/phone_tab.dart';
 import 'phone/records_tab.dart';
@@ -35,6 +38,29 @@ class _PhoneScreenState extends State<PhoneScreen> {
   /// its State when they glance at another one. Same Offstage stack as HR.
   final Set<String> _shown = {};
 
+  @override
+  void initState() {
+    super.initState();
+    _takeTab();
+    DeepLinks.pending.addListener(_tabArrived);
+  }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_tabArrived);
+    super.dispose();
+  }
+
+  /// A phone bottom-bar slot (design 208) naming one of these tabs.
+  void _takeTab() {
+    if (DeepLinks.pending.value case final l?
+        when l.module == 'phone' && l.type == 'tab') {
+      _tab = DeepLinks.take('phone')!.id;
+    }
+  }
+
+  void _tabArrived() => setState(_takeTab);
+
   /// Every tab, keyed as the registry declares them (`phone.<key>.view`).
   late final List<(String, String, IconData, Widget Function())> _declared = [
     // Phone, holding Dial, Messages and Voicemail. The module is
@@ -49,6 +75,14 @@ class _PhoneScreenState extends State<PhoneScreen> {
         session: widget.session,
         onOpenSettings: () => setState(() => _tab = 'settings'),
       ),
+    ),
+    (
+      // Jose, 2026-11-25: EzBizi's own WhatsApp between EzBizi accounts.
+      // Same order as the TabDefinition list in ModuleServiceProvider.
+      'chat',
+      'Chat',
+      Icons.forum_outlined,
+      () => ChatTab(api: widget.api, session: widget.session),
     ),
     (
       // Users, not Team. This tab assigns extensions and outbound lines to
@@ -130,6 +164,9 @@ class _PhoneScreenState extends State<PhoneScreen> {
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
             key: const ValueKey('tour-phone-tabs'),
+            windowPaths: [
+              for (final tab in tabs) AppWindow.pathFor('phone', tab: tab.$1),
+            ],
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: current,
             onSelected: (i) => setState(() => _tab = tabs[i].$1),

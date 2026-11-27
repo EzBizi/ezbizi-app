@@ -66,8 +66,10 @@ class StaffSession extends ChangeNotifier {
       return;
     }
 
+    // The staff token only: a customer session kept on this device is not
+    // this session's to end (TokenStore.dropStaff).
     if (!signedIn) {
-      TokenStore.clear();
+      TokenStore.dropStaff();
     }
 
     _restored = true;
@@ -99,7 +101,12 @@ class StaffSession extends ChangeNotifier {
     _identityGeneration++;
     _me = null;
     _api.setToken(null);
-    TokenStore.clear();
+    // Not TokenStore.clear(). This runs when the Development tab's staff token
+    // is refused (onUnauthorized above), and clear() also deleted the CUSTOMER
+    // token from disk while the customer session kept running on its
+    // in-memory copy: signed out at the next restart, which is an update.
+    // Signing out of everything goes through Session.signOut as well.
+    TokenStore.dropStaff();
     notifyListeners();
   }
 }

@@ -1,5 +1,7 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/loading_skeleton.dart';
 import '../widgets/report_grid.dart';
 import '../widgets/module_overview.dart';
 import '../core/theme.dart';
@@ -43,6 +45,12 @@ class ProfitLossScreen extends StatefulWidget {
   /// gallery rather than measured against a real nine-category week.
   static const double tableAbove = 700;
 
+  /// How long one read may take before the tab says so (a week has taken
+  /// over 15 s, so the limit sits well above that). Airtable can stall;
+  /// without a limit the skeleton stayed up for good (desktop review
+  /// 2026-11-13, Top 2: still grey after 15 s, twice).
+  static const timeout = Duration(seconds: 45);
+
   @override
   State<ProfitLossScreen> createState() => _ProfitLossScreenState();
 }
@@ -67,13 +75,27 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
     _loadSources();
   }
 
+  Future<ApiResponse> _get(String path, [Map<String, String>? query]) => widget
+      .api
+      .get(path, query)
+      .timeout(
+        ProfitLossScreen.timeout,
+        onTimeout: () => const ApiResponse(
+          statusCode: 0,
+          body: {
+            'message':
+                'Airtable took too long to answer. Try again in a moment.',
+          },
+        ),
+      );
+
   Future<void> _loadSources() async {
     setState(() {
       _loadingSources = true;
       _error = null;
     });
 
-    final response = await widget.api.get('/reports/profit-loss/sources');
+    final response = await _get('/reports/profit-loss/sources');
 
     if (!mounted) return;
 
@@ -112,7 +134,7 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
       sourceId ??= source['id'] as String;
       table ??= tables.first as String;
 
-      final probe = await widget.api.get('/reports/profit-loss', {
+      final probe = await _get('/reports/profit-loss', {
         'connection': source['id'] as String,
         'table': tables.first as String,
       });
@@ -149,7 +171,7 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
     final week = _week;
     if (week != null) query['week'] = week;
 
-    final response = await widget.api.get('/reports/profit-loss', query);
+    final response = await _get('/reports/profit-loss', query);
 
     if (!mounted) return;
 
@@ -183,14 +205,7 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loadingSources) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
+    if (_loadingSources) return const LoadingSkeleton();
 
     if (_sources != null && _sources!.isEmpty) {
       return _empty(
@@ -206,12 +221,22 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
       children: [
         _pickers(context),
         const SizedBox(height: 16),
-        if (_error != null) ErrorNote(_error!),
-        if (_error == null && _loadingWeek)
-          const Padding(
-            padding: EdgeInsets.all(32),
-            child: Center(child: CircularProgressIndicator()),
+        if (_error != null) ...[
+          ErrorNote(_error!),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              key: const ValueKey('pl-try-again'),
+              onPressed: _sources == null ? _loadSources : _loadWeek,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Try again'),
+            ),
           ),
+        ],
+        // Grey rows, not a spinner: the week takes over 15 s (deep dive).
+        if (_error == null && _loadingWeek)
+          const SizedBox(height: 360, child: LoadingSkeleton(rows: 5)),
         if (_error == null && !_loadingWeek && _figures != null)
           ..._week_(context),
         // A table with no weeks said so rather than drawing nothing - a
@@ -427,16 +452,9 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
           // Standard field height, as tall as Leads search (Jose, 2026-10-27).
           SizedBox(
             width: 240,
-            child: TextField(
+            child: ListSearch(
               key: const Key('profit-loss-search'),
-              textAlignVertical: TextAlignVertical.center,
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIconConstraints: BoxConstraints(minWidth: 36),
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a category',
-                border: OutlineInputBorder(),
-              ),
+              hint: 'Find a category',
               onChanged: (v) => setState(() => _query = v),
             ),
           ),

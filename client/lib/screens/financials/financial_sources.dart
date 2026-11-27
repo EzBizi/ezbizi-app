@@ -1,3 +1,5 @@
+import '../../core/timestamps.dart';
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -115,9 +117,9 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
 
   String _tableName(Map s) {
     final t = _tableOf(s);
-    return t == null
-        ? '${s['base_id']} / ${s['table_id']}'
-        : '${t['table_name']}';
+    // Never the raw Airtable ids ("appzD9I7… / tblhc4C…", phone audit
+    // 2026-11-04): a table the connection no longer lists says so.
+    return t == null ? 'A table Airtable no longer lists' : '${t['table_name']}';
   }
 
   /// All branches, then every branch in view and every branch a source
@@ -532,15 +534,11 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
       ],
       onChanged: (v) => setState(() => _branchFilter = v),
     );
-    final search = TextField(
+    final search = ListSearch(
       key: const ValueKey('sources-search'),
       controller: _search,
+      hint: 'Table or base',
       onChanged: (_) => setState(() {}),
-      decoration: const InputDecoration(
-        labelText: 'Table or base',
-        prefixIcon: Icon(Icons.search),
-        isDense: true,
-      ),
     );
     return Wrap(
       spacing: 12,
@@ -801,7 +799,8 @@ class _SourcePanelState extends State<_SourcePanel> {
       return setState(() => _error = 'Choose the part and the Airtable table.');
     }
     final parts = _table!.split('/');
-    final franchise = widget.me.franchisesInView
+    // Reach, not the view: a source already on a switched-off branch keeps it.
+    final franchise = widget.me.franchises
         .where((f) => f.id == _place)
         .firstOrNull;
     final body = {
@@ -1045,9 +1044,5 @@ class _SourcePanelState extends State<_SourcePanel> {
 String sourcesAgo(String iso, {DateTime? now}) {
   final at = DateTime.tryParse(iso)?.toLocal();
   if (at == null) return 'at an unknown time';
-  final minutes = (now ?? DateTime.now()).difference(at).inMinutes;
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return '$minutes min ago';
-  if (minutes < 60 * 24) return '${minutes ~/ 60} h ago';
-  return '${minutes ~/ (60 * 24)} d ago';
+  return formatAgo(at, now: now);
 }

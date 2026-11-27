@@ -7,6 +7,8 @@ use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\DeviceToken;
 use App\Models\FieldAlert;
+use App\Models\Job;
+use App\Models\JobPart;
 use App\Models\Lead;
 use App\Models\Mailbox;
 use App\Models\Notification;
@@ -14,12 +16,16 @@ use App\Models\Onboarding;
 use App\Models\PtoRequest;
 use App\Models\Review;
 use App\Models\Suggestion;
+use App\Models\Task;
+use App\Models\TaskUpdate;
 use App\Models\TimeClockCorrectionRequest;
 use App\Models\TimeClockDayApproval;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Notifications\PushSender;
+use App\Support\Suggestions\SuggestionAlerts;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -45,7 +51,7 @@ use Illuminate\Validation\Rule;
 class NotificationsController extends Controller
 {
     /** Verified to name a real module by NotificationsTest. */
-    private const AUTOMATIONS_MODULE = 'automations';
+    public const AUTOMATIONS_MODULE = 'automations';
 
     /**
      * Module key => the payload field it opens narrowed by. See [filterFor].
@@ -116,16 +122,32 @@ class NotificationsController extends Controller
         $senders = Alert::query()
             ->whereIn('id', $rows->where('subject_type', Alert::class)->pluck('subject_id'))
             ->with('sender:id,name')
-            ->get(['id', 'sender_id'])
+            ->get(['id', 'sender_id', 'sender_label', 'kind', 'context', 'choices', 'allow_text'])
             ->keyBy('id');
 
-        return $rows->map(fn (Notification $row) => [
-            'id' => $row->id,
-            'title' => $row->title,
-            'body' => $row->body,
-            'sender' => $senders->get($row->subject_id)?->sender?->name,
-            'created_at' => $row->created_at?->toIso8601String(),
-        ])->values()->all();
+        return $rows->map(function (Notification $row) use ($senders) {
+            // A suggestion's own pop-up (SuggestionAlerts): from EzBizi, opens
+            // the suggestion, and the live one offers to update the app.
+            $suggestion = $row->subject_type === Suggestion::class;
+
+            return [
+                'id' => $row->id,
+                'title' => $row->title,
+                'body' => $row->body,
+                'sender' => $suggestion ? 'EzBizi' : ($senders->get($row->subject_id)?->sender_label ?? $senders->get($row->subject_id)?->sender?->name),
+                'created_at' => $row->created_at?->toIso8601String(),
+                'suggestion_id' => $suggestion ? $row->subject_id : null,
+                'update' => $suggestion && $row->body === SuggestionAlerts::UPDATE_BODY,
+                // A question (Jose 11-18): the pop-up shows its context and offers
+                // its choices / reply box; answering is POST alerts/{alert_id}/reply.
+                'question' => ($q = $senders->get($row->subject_id))?->isQuestion() ? [
+                    'alert_id' => $q->id,
+                    'context' => $q->context,
+                    'choices' => $q->choices ?? [],
+                    'allow_text' => (bool) $q->allow_text,
+                ] : null,
+            ];
+        })->values()->all();
     }
 
     /** POST /api/v1/notifications/{notification}/read */
@@ -138,6 +160,40 @@ class NotificationsController extends Controller
         $notification->markRead();
 
         return response()->json(['data' => ['id' => $notification->id, 'read_at' => $notification->read_at]]);
+    }
+
+    /** GET /api/v1/notifications/kinds — the grouped list the settings screen draws. */
+    public function kinds(): JsonResponse
+    {
+        return response()->json(['data' => NotificationDispatcher::kindCatalogue()]);
+    }
+
+    /** POST /api/v1/notifications/{id}/unread — Monday parity (desk, 2026-11-24). */
+    public function markUnread(Request $request, Notification $notification): JsonResponse
+    {
+        abort_unless($notification->user_id === $request->user()->getKey(), 404);
+
+        $notification->forceFill(['read_at' => null])->save();
+
+        return response()->json(['data' => ['id' => $notification->id, 'read_at' => null]]);
+    }
+
+    /** DELETE /api/v1/notifications/{id} — one row, the person's own. */
+    public function destroy(Request $request, Notification $notification): JsonResponse
+    {
+        abort_unless($notification->user_id === $request->user()->getKey(), 404);
+
+        $notification->delete();
+
+        return response()->json(['data' => ['deleted' => 1]]);
+    }
+
+    /** DELETE /api/v1/notifications — every row of the person's own. */
+    public function destroyAll(Request $request): JsonResponse
+    {
+        $deleted = Notification::query()->where('user_id', $request->user()->getKey())->delete();
+
+        return response()->json(['data' => ['deleted' => $deleted]]);
     }
 
     /** POST /api/v1/notifications/read-all */
@@ -202,19 +258,33 @@ class NotificationsController extends Controller
              * in the Swift half and in the client returning early off Android.
              */
             'platform' => ['required', 'string', Rule::in(app(PushSender::class)->platforms())],
+            // EzChat, the chat companion, says so; an older EzBizi build says nothing.
+            'app' => ['nullable', 'string', Rule::in(DeviceToken::APPS)],
         ]);
 
         $user = $request->user();
 
-        $device = DeviceToken::withoutGlobalScopes()->where('token', $data['token'])->first()
-            ?? new DeviceToken(['token' => $data['token'], 'created_at' => now()]);
+        $claim = function () use ($data, $user): void {
+            $device = DeviceToken::withoutGlobalScopes()->where('token', $data['token'])->first()
+                ?? new DeviceToken(['token' => $data['token'], 'created_at' => now()]);
 
-        $device->forceFill([
-            'organization_id' => $user->organization_id,
-            'user_id' => $user->getKey(),
-            'platform' => $data['platform'],
-            'last_registered_at' => now(),
-        ])->save();
+            $device->forceFill([
+                'organization_id' => $user->organization_id,
+                'user_id' => $user->getKey(),
+                'platform' => $data['platform'],
+                'app' => $data['app'] ?? 'ezbizi',
+                'last_registered_at' => now(),
+            ])->save();
+        };
+
+        // Two registrations of one token can both miss the lookup and both
+        // insert; the loser hit the unique index as a 500 in production. The
+        // row exists by then, so a second pass finds it and takes it over.
+        try {
+            $claim();
+        } catch (UniqueConstraintViolationException) {
+            $claim();
+        }
 
         return response()->json(['data' => ['registered' => true]]);
     }
@@ -284,12 +354,30 @@ class NotificationsController extends Controller
                 'id' => $notification->subject_id,
             ],
             'meta' => $this->destination($notification, $events),
+            // The inbox's "Assigned to me" and "Mentioned" tabs (monday port,
+            // 2026-11-09): handed this person something, or @mentioned them.
+            'kind' => $this->kindOf($notification, $events),
             // Jose, 2026-10-22: the panel and the desktop toast lead with the
             // same "EzBizi - Company - Branch" as the push and the mail.
             'header' => $this->headerFor($notification),
             'read_at' => $notification->read_at?->toIso8601String(),
             'created_at' => $notification->created_at->toIso8601String(),
         ];
+    }
+
+    private function kindOf(Notification $notification, $events): ?string
+    {
+        if ($notification->source === 'mention' || $notification->kind === 'task.mentioned') {
+            return 'mentioned';
+        }
+        // A task bell carries its kind, not an automation event (desk 11-19: Jose's "Assigned to me" was empty).
+        if (in_array($notification->kind, ['task.assigned', 'task.subitem_assigned'], true)) {
+            return 'assigned';
+        }
+
+        $key = $notification->event_id === null ? null : $events->get($notification->event_id)?->event_key;
+
+        return $key !== null && preg_match('/\.(assigned|assign|assign_to_user|assignment_added)$/', $key) ? 'assigned' : null;
     }
 
     /**
@@ -307,9 +395,14 @@ class NotificationsController extends Controller
      *
      * @var array<class-string, string>
      */
-    private const SUBJECT_MODULES = [
+    public const SUBJECT_MODULES = [
         Suggestion::class => 'suggestions',
         Lead::class => 'leads',
+        Job::class => 'jobs',
+        // Its part on the Project Management board (Jose, 2026-11-17).
+        JobPart::class => 'project_board',
+        Task::class => 'tasks',
+        TaskUpdate::class => 'tasks',
         TimeClockCorrectionRequest::class => 'work_hours',
         TimeClockDayApproval::class => 'work_hours',
         PtoRequest::class => 'work_hours',
@@ -368,6 +461,30 @@ class NotificationsController extends Controller
                 'id' => (string) $notification->subject_id,
                 'date' => TimeClockDayApproval::query()->whereKey($notification->subject_id)->first()?->date?->toDateString(),
             ];
+        }
+
+        // A mention or reply is about one update: open its task, at that update
+        // (Jose, 2026-11-17: "clicking on the notification should lead you to
+        // the board").
+        if ($notification->subject_type === TaskUpdate::class) {
+            return [
+                'type' => 'task',
+                'id' => (string) TaskUpdate::query()->whereKey($notification->subject_id)->value('task_id'),
+                'update' => (string) $notification->subject_id,
+            ];
+        }
+
+        // A mention or reply bell about a task (Jennine 11-24): the update it
+        // came from, the newest on that task by then (for a mention, one
+        // naming this person), so the thread opens at it.
+        if ($notification->subject_type === Task::class && in_array($notification->kind, ['task.mentioned', 'task.reply', 'task.reply.mine', 'task.reply.thread', 'task.update.owner', 'task.update.subscribed', 'task.reaction'], true)) {
+            $by = TaskUpdate::query()->where('task_id', $notification->subject_id)
+                ->where('created_at', '<=', $notification->created_at->copy()->addMinute())->latest('created_at');
+            $update = $notification->kind === 'task.mentioned'
+                ? ((clone $by)->whereJsonContains('mentions', (string) $notification->user_id)->value('id') ?? $by->value('id'))
+                : $by->where('user_id', '!=', $notification->user_id)->value('id');
+
+            return ['type' => 'task', 'id' => (string) $notification->subject_id, 'update' => $update === null ? null : (string) $update];
         }
 
         return [

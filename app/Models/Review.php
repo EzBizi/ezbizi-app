@@ -26,6 +26,11 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Review extends Model implements HoldsPersonalData, StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'reviews';
+
     use HasUuids;
 
     /**
@@ -94,13 +99,23 @@ class Review extends Model implements HoldsPersonalData, StatesRetention
         return null;
     }
 
+    /** A Google review is one review whichever account names it (desk, 2026-11-20). */
+    protected static function booted(): void
+    {
+        static::saving(function (Review $r) {
+            if ($r->review_key === null && ($r->source ?? self::SOURCE_GOOGLE) === self::SOURCE_GOOGLE && str_contains((string) $r->remote_name, '/reviews/')) {
+                $r->review_key = substr((string) $r->remote_name, strrpos((string) $r->remote_name, '/') + 1);
+            }
+        });
+    }
+
     public const SOURCE_GOOGLE = 'google';
 
     public const SOURCE_EKOMI = 'ekomi';
 
     protected $fillable = [
         'organization_id', 'company_id', 'franchise_id', 'connection_id', 'source',
-        'remote_name', 'location_name', 'reviewer_name', 'reviewer_photo_url',
+        'remote_name', 'review_key', 'location_name', 'reviewer_name', 'reviewer_photo_url',
         'rating', 'comment', 'reviewed_at', 'edited_at', 'synced_at',
         'status', 'customer_id', 'customer_match', 'job_id', 'reported_at', 'report_reason',
     ];

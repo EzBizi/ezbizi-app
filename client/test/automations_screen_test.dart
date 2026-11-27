@@ -7,6 +7,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/automations_screen.dart';
 import 'package:ezbizi_client/widgets/scope_choice_field.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -194,6 +195,15 @@ void main() {
     // The fallback means disabled_at did not parse — a green test that showed
     // this would be asserting the failure path.
     expect(find.textContaining('At an unknown time'), findsNothing);
+
+    // is_active stays true after an auto-disable; the switch must not read on
+    // beside "Auto-disabled" (phone UI audit 2026-11-04).
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const ValueKey('tour-automations-live')))
+          .value,
+      isFalse,
+    );
   });
 
   // Jose, 2026-10-28: a rule a tab depends on is marked, and switching it
@@ -229,6 +239,46 @@ void main() {
     expect(find.text('Switch off a core rule?'), findsOneWidget);
     expect(
       find.text('While this rule is off: memberships stop renewing.'),
+      findsOneWidget,
+    );
+  });
+
+  // Jose 11-25: a Task Board rule wears a tag naming its board, and both
+  // switching it on and switching it off say which board changes first.
+  testWidgets('a Task Board rule names its board and asks before switching', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        list: const [
+          {
+            'id': 'a-1',
+            'name': 'Overdue nudge',
+            'description': null,
+            'trigger_key': 'task.overdue',
+            'is_active': false,
+            'is_live': false,
+            'disabled_at': null,
+            'disabled_reason': null,
+            'task_board': {
+              'boards': ['Leads'],
+              'every': false,
+              'label': 'Task Board · Leads',
+            },
+            'runs_count': 0,
+            'version': 1,
+          },
+        ],
+      ),
+    );
+
+    expect(find.text('Task Board · Leads'), findsOneWidget);
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(find.text('Turn on a Task Board rule?'), findsOneWidget);
+    expect(
+      find.textContaining('Turning this on changes how the Leads board works'),
       findsOneWidget,
     );
   });
@@ -689,7 +739,9 @@ void main() {
       expect(find.text('Test against a real event'), findsOneWidget);
       expect(
         find.textContaining('permission to change an automation'),
-        findsNWidgets(2),
+        findsNWidgets(
+          3,
+        ), // edit, test, and Run it now for real (audit 2026-11-27)
       );
       expect(
         find.textContaining('permission to delete an automation'),
@@ -1471,7 +1523,7 @@ void main() {
 
     await tester.enterText(
       find.descendant(
-        of: find.byType(AlertDialog),
+        of: find.byType(SidePanel),
         matching: find.byType(TextField),
       ),
       'owner reassigned',
@@ -1507,7 +1559,7 @@ void main() {
     }
 
     await choose();
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(SidePanel), findsNothing);
     await _tap(tester, find.text('Keep mine'));
     expect(find.widgetWithText(TextField, 'My own rule'), findsOneWidget);
 
@@ -2514,7 +2566,7 @@ void main() {
       await tester.pumpAndSettle();
       await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
 
-      await _type(tester, 'Send to', '+13057242199');
+      await _type(tester, 'Send to', '+13055550107');
       await _type(tester, 'Message', 'An email just arrived.');
       await _save(tester);
 
@@ -2522,7 +2574,7 @@ void main() {
         {
           'type': 'sms.send',
           'number_id': 'num-1',
-          'to': '+13057242199',
+          'to': '+13055550107',
           'body': 'An email just arrived.',
         },
       ]);
@@ -2563,7 +2615,7 @@ void main() {
       await _tap(tester, find.byType(SearchPickerField<String>).last);
       await tester.pumpAndSettle();
       await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
-      await _type(tester, 'Send to', '+13057242199');
+      await _type(tester, 'Send to', '+13055550107');
       await _type(tester, 'Message', 'An email just arrived.');
 
       // A switch, not a box to type "true" into.

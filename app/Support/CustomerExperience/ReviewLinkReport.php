@@ -23,7 +23,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class ReviewLinkReport
 {
-    public const COUNTS = ['sent', 'opened', 'happy', 'sad', 'submitted', 'google'];
+    public const COUNTS = ['sent', 'opened', 'happy', 'sad', 'submitted', 'google', 'reviewed', 'qr'];
+
+    /** How "reviewed" splits, and the stars behind it (Jose, 2026-11-09). */
+    public const REVIEWED = ['exact', 'likely', 'confirmed', 'possible', 'without_click', 'stars'];
 
     /** @return array<string, mixed> */
     public function build(User $user, CarbonInterface $from, CarbonInterface $to, array $franchiseIds): array
@@ -46,17 +49,72 @@ final class ReviewLinkReport
             ->whereIn('j.franchise_id', $franchiseIds)
             ->selectRaw('j.franchise_id, j.performed_by_user_id, x.kind, count(*) as n');
 
-        $rows = collect($this->grouped($sent))->concat($this->grouped($events));
+        // Reviewed: a matched Google review, counted by when its link was sent, minus any a person rejected.
+        $matches = DB::table('review_link_matches as m')
+            ->join('jobs as j', 'j.id', '=', 'm.job_id')
+            ->join('reviews as v', 'v.id', '=', 'm.review_id')
+            ->where('m.organization_id', $user->organization_id)
+            ->where('m.status', '!=', 'rejected')
+            ->whereBetween('m.sent_at', [$from, $to])
+            ->whereIn('j.franchise_id', $franchiseIds)
+            // Counted: exact and likely, plus a possible one a person confirmed (Jose, 2026-11-09).
+            // An unconfirmed possible is shown beside it, never in it.
+            ->selectRaw("j.franchise_id, j.performed_by_user_id, 'reviewed' as kind,
+                sum(m.confidence != 'possible' or m.status = 'confirmed') as n,
+                sum(m.confidence = 'exact') as exact, sum(m.confidence = 'likely') as likely,
+                sum(m.confidence = 'possible' and m.status = 'confirmed') as confirmed,
+                sum(m.confidence = 'possible' and m.status != 'confirmed') as possible,
+                sum((m.confidence != 'possible' or m.status = 'confirmed') and not m.clicked) as without_click,
+                sum(case when m.confidence != 'possible' or m.status = 'confirmed' then v.rating else 0 end) as stars");
+
+        // Review QR scans (Jose, 2026-11-23): the technician who made the code, at its branch.
+        $qr = DB::table('review_link_events as x')
+            ->join('review_codes as q', 'q.code', '=', 'x.review_code')
+            ->where('x.organization_id', $user->organization_id)
+            ->whereNotNull('x.review_code')
+            ->whereBetween('x.occurred_at', [$from, $to])
+            ->whereIn('q.franchise_id', $franchiseIds)
+            ->selectRaw("q.franchise_id as franchise_id, x.user_id as performed_by_user_id, x.kind, count(*) as n");
+        $qrOpens = DB::table('review_link_events as x')
+            ->join('review_codes as q', 'q.code', '=', 'x.review_code')
+            ->where('x.organization_id', $user->organization_id)->where('x.kind', 'opened')
+            ->whereBetween('x.occurred_at', [$from, $to])
+            ->whereIn('q.franchise_id', $franchiseIds)
+            ->selectRaw("q.franchise_id as franchise_id, x.user_id as performed_by_user_id, 'qr' as kind, count(*) as n");
+
+        $rows = collect($this->grouped($sent))->concat($this->grouped($events))->concat($this->grouped($matches))
+            ->concat($this->groupedBy($qr, 'q.franchise_id', 'x.user_id'))->concat($this->groupedBy($qrOpens, 'q.franchise_id', 'x.user_id'));
 
         $names = Franchise::query()->whereIn('id', $rows->pluck('franchise_id')->unique())->pluck('name', 'id');
         $people = User::query()->whereIn('id', $rows->pluck('performed_by_user_id')->filter()->unique())->pluck('name', 'id');
+        // Erased people fold into one "Former staff" row (Jose, 2026-11-24).
+        $gone = $people->filter(fn ($n) => User::isErasedName($n))->keys()->flip();
+        $people = $people->map(fn ($n) => User::isErasedName($n) ? 'Former staff' : $n);
+        $byPerson = $rows->map(function ($r) use ($gone) {
+            $r = clone $r;
+            if (isset($gone[$r->performed_by_user_id])) {
+                $r->performed_by_user_id = 'former';
+            }
+
+            return $r;
+        });
 
         return [
             'totals'        => $this->tally($rows),
+            'reviewed'      => $this->detail,
             'by_branch'     => $this->split($rows, 'franchise_id', fn ($id) => $names[$id] ?? null),
-            'by_person'     => $this->split($rows, 'performed_by_user_id', fn ($id) => $id === null ? null : ($people[$id] ?? null)),
+            'by_person'     => $this->split($byPerson, 'performed_by_user_id', fn ($id) => $id === null ? null : ($id === 'former' ? 'Former staff' : ($people[$id] ?? null))),
             'tracked_since' => ReviewLinkEvent::query()->min('occurred_at'),
         ];
+    }
+
+    /** The last tally's "reviewed" detail: confidence split and average stars. */
+    private array $detail = [];
+
+    /** @return list<object> */
+    private function groupedBy(Builder $query, string $franchise, string $person): array
+    {
+        return $query->groupBy($franchise, $person, 'kind')->get()->all();
     }
 
     /** @return list<object> */
@@ -69,9 +127,17 @@ final class ReviewLinkReport
     private function tally($rows): array
     {
         $out = array_fill_keys(self::COUNTS, 0);
+        $reviewed = array_fill_keys(self::REVIEWED, 0);
         foreach ($rows as $row) {
             $out[$row->kind] = ($out[$row->kind] ?? 0) + (int) $row->n;
+            if ($row->kind === 'reviewed') {
+                foreach (self::REVIEWED as $k) {
+                    $reviewed[$k] += (int) $row->{$k};
+                }
+            }
         }
+        $this->detail = ['by' => array_diff_key($reviewed, ['stars' => 0]),
+            'stars' => $out['reviewed'] > 0 ? round($reviewed['stars'] / $out['reviewed'], 2) : null];
 
         return $out;
     }
@@ -81,7 +147,7 @@ final class ReviewLinkReport
     {
         return $rows->groupBy(fn ($r) => (string) $r->{$key})
             ->map(fn ($group, $id) => ['id' => $id === '' ? null : $id, 'name' => $name($id === '' ? null : $id)]
-                + $this->tally($group))
+                + $this->tally($group) + ['reviewed_stars' => $this->detail['stars']])
             ->sortByDesc('sent')->values()->all();
     }
 }

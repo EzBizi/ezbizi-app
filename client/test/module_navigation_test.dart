@@ -243,7 +243,7 @@ void main() {
 
     var modules = [
       _module('customers', 'Customers'),
-      _module('jobs', 'Jobs'),
+      _module('leads', 'Leads'),
     ];
 
     final api = ApiClient(client: MockClient((request) async {
@@ -258,7 +258,7 @@ void main() {
     await tester.runAsync(() => session.adopt('tok'));
     await _pump(tester, api, session);
 
-    await tester.tap(_inSidebar('Jobs'));
+    await tester.tap(_inSidebar('Leads'));
     await tester.pumpAndSettle();
 
     expect(
@@ -269,14 +269,14 @@ void main() {
       reason: 'The tap has to have landed, or the rest of this proves nothing.',
     );
 
-    // Jobs goes away underneath them — and it was the last one, which is the
+    // Leads goes away underneath them — and it was the last one, which is the
     // case an index cannot survive at all.
     modules = [_module('customers', 'Customers')];
     await tester.runAsync(() => session.refresh());
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(_inSidebar('Jobs'), findsNothing);
+    expect(_inSidebar('Leads'), findsNothing);
     expect(_inSidebar('Customers'), findsOneWidget);
 
     // And landed on the one that is left, rather than on nothing.
@@ -286,6 +286,45 @@ void main() {
           .selectedIndex,
       0,
     );
+  });
+
+  testWidgets('access changed elsewhere reloads the open screen; an unchanged '
+      '/me does not', (tester) async {
+    _wide(tester);
+
+    var version = 'v1';
+    var screenFetches = 0;
+    final api = ApiClient(client: MockClient((request) async {
+      if (request.url.path.endsWith('/me')) {
+        return _json({
+          'data': {
+            ..._me([_module('customers', 'Customers')]),
+            'access_version': version,
+          },
+        });
+      }
+      screenFetches++;
+
+      return _json({'message': 'Nothing stubbed for this screen.'}, 500);
+    }));
+
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+    await _pump(tester, api, session);
+    final first = screenFetches;
+    expect(first, greaterThan(0), reason: 'The screen has to fetch at all.');
+
+    // The minute poll finds nothing new: the screen keeps its state.
+    await tester.runAsync(() => session.refresh());
+    await tester.pumpAndSettle();
+    expect(screenFetches, first);
+
+    // An inbox granted, a role edited: the page remounts and fetches again,
+    // with nobody leaving the tab.
+    version = 'v2';
+    await tester.runAsync(() => session.refresh());
+    await tester.pumpAndSettle();
+    expect(screenFetches, greaterThan(first));
   });
 
   /// Reach can be nothing at all. The shell has to render something, and the

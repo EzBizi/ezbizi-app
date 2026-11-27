@@ -5,8 +5,11 @@ namespace App\Support\Social;
 use App\Http\Controllers\Api\FinancialBillsController;
 use App\Http\Controllers\Api\FinancialResultsController;
 use App\Models\FinancialResult;
+use App\Models\Organization;
 use App\Models\User;
 use App\Support\Financials\ResultReader;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -21,7 +24,14 @@ final class WhatsAppResults
 {
     public const PERMISSION = 'financial_results.create';
 
-    public const CAPTION = '/\b(results?|resultados?|ace)\b/iu';
+    /** The caption words (ai_assistance.results_words) as one pattern. */
+    public static function caption(string $organizationId): string
+    {
+        $org = Organization::findOrFail($organizationId);
+        $words = (array) app(TenantContext::class)->run($org, fn () => app(SettingsResolver::class)->get('ai_assistance.results_words', $org));
+
+        return '/\b('.implode('|', array_map(fn ($w) => preg_quote((string) $w, '/'), $words ?: ['results'])).')\b/iu';
+    }
 
     private const TTL_MINUTES = 10;
 
@@ -49,7 +59,7 @@ final class WhatsAppResults
         }
 
         // The caption names the place; the keyword that routed it here is not part of the name.
-        $place = $this->places->place($user, trim((string) preg_replace(self::CAPTION, '', (string) $caption)));
+        $place = $this->places->place($user, trim((string) preg_replace(self::caption($user->organization_id), '', (string) $caption)));
         if (is_string($place)) {
             return $place;
         }

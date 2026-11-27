@@ -43,11 +43,13 @@ class AvailabilitySuggestion extends StatelessWidget {
     final suggested = (data['suggested'] as Map?)?.cast<String, dynamic>();
     if (earliest == null) return const SizedBox.shrink();
 
+    // A day the dispatcher picked (Jose, 2026-11-09): that day only, one card.
+    final picked = data['for_date'] != null;
     final radius = (data['radius_miles'] as num?) ?? 5;
     final days = (data['days'] as num?)?.toInt() ?? 14;
-    final same = suggested?['same_as_earliest'] == true;
+    final same = picked || suggested?['same_as_earliest'] == true;
     final origin = (data['origin'] as Map?)?.cast<String, dynamic>();
-    final shown = same || suggested == null ? earliest : suggested;
+    final shown = suggested == null || (same && !picked) ? earliest : suggested;
     final jobs = ((shown['jobs'] as List?) ?? const [])
         .whereType<Map>()
         .map((j) => j.cast<String, dynamic>())
@@ -58,17 +60,32 @@ class AvailabilitySuggestion extends StatelessWidget {
       color: theme.colorScheme.onSurfaceVariant,
     );
 
-    final earliestCard = _Card(
-      key: const Key('availability-earliest'),
-      kicker: same ? 'Earliest · and the best fit' : 'Earliest',
-      highlight: same,
-      date: longDate(earliest['date'] as String),
-      window: windowChip(_window(earliest)),
-      why: same
-          ? _nearby(earliest, radius)
-          : _nearestLine(earliest['nearest_miles']),
-      whyTone: same ? null : Tone.caution,
-    );
+    final earliestCard = picked
+        ? _Card(
+            key: const Key('availability-picked'),
+            kicker: suggested != null ? 'Your pick · best fit' : 'Your pick',
+            highlight: suggested != null,
+            date: longDate(shown['date'] as String),
+            window: windowChip(_window(shown)),
+            why: suggested != null
+                ? _nearby(suggested, radius)
+                : _nearestLine(earliest['nearest_miles']),
+            whyTone: suggested != null ? null : Tone.caution,
+            technicians: suggested != null
+                ? _names(suggested['technicians'])
+                : const [],
+          )
+        : _Card(
+            key: const Key('availability-earliest'),
+            kicker: same ? 'Earliest · and the best fit' : 'Earliest',
+            highlight: same,
+            date: longDate(earliest['date'] as String),
+            window: windowChip(_window(earliest)),
+            why: same
+                ? _nearby(earliest, radius)
+                : _nearestLine(earliest['nearest_miles']),
+            whyTone: same ? null : Tone.caution,
+          );
 
     final cards = <Widget>[
       earliestCard,
@@ -110,7 +127,16 @@ class AvailabilitySuggestion extends StatelessWidget {
                 ),
         ),
         const SizedBox(height: 8),
-        if (same)
+        if (picked && suggested == null)
+          Text(
+            'No booked job within ${_miles(radius)} of $zip that day, so any '
+            'open window works.',
+            key: const Key('availability-picked-nothing-near'),
+            style: muted,
+          )
+        else if (picked)
+          const SizedBox.shrink()
+        else if (same)
           Text(
             'Nothing later is nearer booked work, so the earliest window is '
             'the one to book.',

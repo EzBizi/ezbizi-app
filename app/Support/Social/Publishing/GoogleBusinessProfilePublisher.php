@@ -36,12 +36,13 @@ use RuntimeException;
  * ── The photo ────────────────────────────────────────────────────
  *
  * Google takes a picture only by URL (`media[].sourceUrl`), so it goes through
- * MediaHandoff like Instagram's. Not released after the call: when Google
- * fetches it is not documented, so the handoff lives its signed hour and the
- * sweep deletes it. ponytail: release on success if Google proves to fetch
- * during the create.
+ * MediaHandoff like Instagram's. Not released after a successful call: when
+ * Google fetches it is not documented, so the handoff lives its signed hour
+ * and the sweep deletes it. A refused call releases it at once, since Google
+ * will never fetch it. ponytail: release on success too if Google proves to
+ * fetch during the create.
  */
-final class GoogleBusinessProfilePublisher implements DeletesPosts, SocialPublisher
+final class GoogleBusinessProfilePublisher implements DeletesPosts, LinksToPosts, SocialPublisher
 {
     private const TIMEOUT = 30;
 
@@ -50,6 +51,27 @@ final class GoogleBusinessProfilePublisher implements DeletesPosts, SocialPublis
 
     /** The buttons a post may carry; CALL takes no URL. */
     public const ACTIONS = ['BOOK', 'ORDER', 'SHOP', 'LEARN_MORE', 'SIGN_UP', 'CALL'];
+
+    /**
+     * Google's photo rules for a post: JPG or PNG, 10 KB to 5 MB, at least
+     * 250 x 250. Null when the picture passes; else the sentence to show.
+     */
+    public static function refusesImage(string $bytes, string $extension): ?string
+    {
+        if (! in_array(strtolower($extension), ['jpg', 'jpeg', 'png'], true)) {
+            return 'Google Business Profile takes a JPG or PNG picture.';
+        }
+        $size = strlen($bytes);
+        if ($size < 10 * 1024 || $size > 5 * 1024 * 1024) {
+            return 'Google Business Profile takes a picture from 10 KB to 5 MB; this one is '.max(1, (int) round($size / 1024)).' KB.';
+        }
+        $dimensions = @getimagesizefromstring($bytes);
+        if ($dimensions === false || $dimensions[0] < 250 || $dimensions[1] < 250) {
+            return 'Google Business Profile takes a picture at least 250 x 250 pixels.';
+        }
+
+        return null;
+    }
 
     public function cannotSend(SocialMediaKind $kind): ?string
     {
@@ -85,12 +107,22 @@ final class GoogleBusinessProfilePublisher implements DeletesPosts, SocialPublis
             ]);
         }
 
+        $handoff = null;
         if ($post->kind() === SocialMediaKind::Image) {
-            $body['media'] = [['mediaFormat' => 'PHOTO', 'sourceUrl' => MediaHandoff::hold($post)->url]];
+            $handoff = MediaHandoff::hold($post);
+            $body['media'] = [['mediaFormat' => 'PHOTO', 'sourceUrl' => $handoff->url]];
         }
 
-        $created = $this->send($connection, fn ($http) => $http->post(
-            BusinessProfileOAuth::LEGACY_V4.'/'.$this->location($connection, $post).'/localPosts', $body));
+        try {
+            $created = $this->send($connection, fn ($http) => $http->post(
+                BusinessProfileOAuth::LEGACY_V4.'/'.$this->location($connection, $post).'/localPosts', $body));
+        } catch (\Throwable $e) {
+            // Refused: Google will never fetch it, so the photo stops being
+            // fetchable now. A post that went through keeps its handoff (above).
+            $handoff?->release();
+
+            throw $e;
+        }
 
         $name = (string) ($created->json('name') ?? '');
         if ($name === '') {
@@ -111,6 +143,14 @@ final class GoogleBusinessProfilePublisher implements DeletesPosts, SocialPublis
             BusinessProfileOAuth::LEGACY_V4.'/'.ltrim($location, '/').'/localPosts', ['pageSize' => $pageSize]));
 
         return array_values((array) $response->json('localPosts', []));
+    }
+
+    /** LinksToPosts: the post's own `searchUrl`, the page Google shows it on. */
+    public function permalink(SocialConnection $connection, string $remoteId): ?string
+    {
+        $url = $this->send($connection, fn ($http) => $http->get(BusinessProfileOAuth::LEGACY_V4.'/'.$remoteId))->json('searchUrl');
+
+        return is_string($url) && $url !== '' ? $url : null;
     }
 
     /** DeletesPosts: the composer's "Delete from Google". */

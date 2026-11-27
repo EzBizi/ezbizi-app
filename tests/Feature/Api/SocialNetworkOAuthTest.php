@@ -33,6 +33,9 @@ class SocialNetworkOAuthTest extends TestCase
     {
         parent::setUp();
 
+        // Connect now calls the provider to check it (ConnectSetup): nothing unfaked may leave.
+        Http::preventStrayRequests();
+
         config([
             'services.meta.client_id' => 'a-meta-app-id',
             'services.meta.client_secret' => 'a-meta-app-secret',
@@ -191,6 +194,43 @@ class SocialNetworkOAuthTest extends TestCase
         $this->assertSame(['facebook_ads:act_777', 'facebook_page:111'], $rows);
     }
 
+    public function test_an_ad_account_shared_with_the_business_connects_too(): void
+    {
+        // A-1 Chimney, 2026-11-05: the account was shared with the EzBizi
+        // business as a partner, so /me/adaccounts never listed it.
+        $t = $this->provisionTenant('A1-Group');
+
+        $url = $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/social/facebook/start')
+            ->assertOk()->json('data.authorization_url');
+
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+
+        Http::fake(function (Request $request) {
+            $url = $request->url();
+
+            return match (true) {
+                str_contains($url, 'oauth/access_token') => Http::response(['access_token' => 'a-user-token']),
+                str_contains($url, '/me/adaccounts') => Http::response(['data' => []]),
+                str_contains($url, '/me/businesses') => Http::response(['data' => [['id' => 'biz-1']]]),
+                str_contains($url, '/biz-1/client_ad_accounts') => Http::response(['data' => [['id' => 'act_932', 'name' => 'A1 Chimney', 'currency' => 'USD']]]),
+                str_contains($url, '/biz-1/owned_ad_accounts') => Http::response(['data' => [['id' => 'act_932', 'name' => 'A1 Chimney']]]),
+                str_contains($url, '/me/accounts') => Http::response(['data' => [['id' => '111', 'name' => 'A-1 Chimney', 'access_token' => 'page-token-111']]]),
+                str_contains($url, '/me?') || str_ends_with(parse_url($url, PHP_URL_PATH) ?: '', '/me') => Http::response(['id' => 'meta-user-abc']),
+                str_contains($url, '/subscribed_apps') => Http::response(['success' => true]),
+                default => Http::response(['data' => []]),
+            };
+        });
+
+        $this->get('/api/v1/social/facebook/callback?code=an-auth-code&state='.$query['state'])->assertOk();
+
+        $rows = $this->inTenant($t['org'], fn () => SocialConnection::query()->orderBy('provider')->get(['provider', 'remote_id'])
+            ->map(fn ($c) => $c->provider.':'.$c->remote_id)->all());
+
+        // Owned and shared both list it: connected once.
+        $this->assertSame(['facebook_ads:act_932', 'facebook_page:111'], $rows);
+    }
+
     public function test_pages_held_through_a_business_portfolio_are_offered_once_each(): void
     {
         $t = $this->provisionTenant('A1-Group');
@@ -261,6 +301,46 @@ class SocialNetworkOAuthTest extends TestCase
         );
         Http::assertSent(fn ($request) => $request->url() === 'https://graph.instagram.com/v21.0/me/subscribed_apps'
             && $request['subscribed_fields'] === 'messages');
+    }
+
+    /**
+     * The card shows the TikTok account's picture. TikTok's avatar URL is
+     * signed and expires, so a reconnect must replace it, and the list returns it.
+     */
+    public function test_a_tiktok_connect_stores_the_avatar_and_a_reconnect_replaces_it(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+
+        // Http::fake stacks rather than replaces, so one fake reads the avatar by reference.
+        $avatar = null;
+        Http::fake(function (Request $request) use (&$avatar) {
+            return match (true) {
+                str_contains($request->url(), '/oauth/token/') => Http::response([
+                    'access_token' => 'act.1', 'refresh_token' => 'rft.1', 'open_id' => 'open-1', 'expires_in' => 86400,
+                    'scope' => 'user.info.basic,video.publish',
+                ]),
+                str_contains($request->url(), '/user/info/') => Http::response(['data' => ['user' => [
+                    'open_id' => 'open-1', 'display_name' => 'A-1 Chimney', 'avatar_url' => $avatar,
+                ]]]),
+                default => Http::response(['data' => [], 'error' => ['code' => 'ok']]),
+            };
+        });
+
+        foreach (['https://p16.tiktokcdn.test/old.jpeg?x-expires=1', 'https://p16.tiktokcdn.test/new.jpeg?x-expires=2'] as $avatar) {
+            $url = $this->signedInAs($t['admin'])
+                ->postJson('/api/v1/social/tiktok/start')
+                ->assertOk()->json('data.authorization_url');
+
+            parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+
+            $this->get('/api/v1/social/tiktok/callback?code=an-auth-code&state='.$query['state'])->assertOk();
+
+            Http::assertSent(fn ($r) => str_contains($r->url(), '/user/info/') && str_contains($r->url(), 'avatar_url'));
+        }
+
+        $row = collect($this->signedInAs($t['admin'])->getJson('/api/v1/social/connections')->assertOk()->json('data'))
+            ->firstWhere('provider', 'tiktok');
+        $this->assertSame('https://p16.tiktokcdn.test/new.jpeg?x-expires=2', $row['avatar_url']);
     }
 
     public function test_youtube_asks_for_pkce_and_offline_access(): void

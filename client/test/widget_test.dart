@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/staff_session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
+import 'package:ezbizi_client/screens/login_screen.dart';
 import 'package:ezbizi_client/screens/signup_screen.dart';
 import 'package:ezbizi_client/screens/staff/modules_screen.dart';
 import 'package:ezbizi_client/screens/staff/staff_login_screen.dart';
@@ -65,9 +66,27 @@ void main() {
   // from the control plane, submittable half-filled, or silent about why the
   // server refused.
 
+  testWidgets(
+    'the sign-in screen does not offer Create an account (Jose 11-23)',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(const EzBiziApp());
+      await tester.pump();
+
+      expect(find.text('Sign in'), findsWidgets);
+      expect(find.text('New to EzBizi?'), findsNothing);
+      expect(find.text('Create an account'), findsNothing);
+    },
+  );
+
   testWidgets('the sign-in screen leads to signup, and back again', (
     tester,
   ) async {
+    LoginScreen.showCreateAccount = true;
+    addTearDown(() => LoginScreen.showCreateAccount = false);
     tester.view.physicalSize = const Size(1440, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -458,17 +477,17 @@ void main() {
     );
     await tester.pump();
 
-    // First load: nothing to preserve, so the spinner is the honest thing to
-    // draw. If this ever stops holding, the isEmpty target is pointed at
+    // First load: nothing to preserve, so the loading rows are the honest
+    // thing to draw (a skeleton since the mobile review of 2026-11-13, P2). If this ever stops holding, the isEmpty target is pointed at
     // something that is never empty and the screen shows a false empty state.
     expect(loads, 1);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byKey(const Key('loading-skeleton')), findsOneWidget);
     expect(find.text('Jobs'), findsNothing);
 
     gate.complete();
     await tester.pumpAndSettle();
 
-    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byKey(const Key('loading-skeleton')), findsNothing);
     expect(find.text('Jobs'), findsOneWidget);
 
     // Now the refresh, through the same _load() every write on this screen
@@ -479,7 +498,7 @@ void main() {
 
     expect(loads, 2, reason: 'The refresh did not actually re-request.');
     expect(
-      find.byType(CircularProgressIndicator),
+      find.byKey(const Key('loading-skeleton')),
       findsNothing,
       reason: 'A refresh blanked a screen that already had a row on it.',
     );
@@ -539,10 +558,21 @@ void main() {
                 width: 220,
                 destinations: [
                   for (final name in const [
-                    'Dashboard', 'Human Resources', 'Customers',
-                    'Jobs', 'Scheduling', 'Inspection', 'Marketing',
-                    'Web Management', 'Phone', 'Fleet Management', 'Inventory',
-                    'Services', 'Email', 'Automations', 'Monitoring',
+                    'Dashboard',
+                    'Human Resources',
+                    'Customers',
+                    'Jobs',
+                    'Scheduling',
+                    'Inspection',
+                    'Marketing',
+                    'Web Management',
+                    'Phone',
+                    'Fleet Management',
+                    'Inventory',
+                    'Services',
+                    'Email',
+                    'Automations',
+                    'Monitoring',
                   ])
                     Destination(name, Icons.circle_outlined, const SizedBox()),
                 ],
@@ -595,18 +625,105 @@ void main() {
       findsOneWidget,
       reason: 'Settings must stay pinned when the destinations scroll.',
     );
+
+    // 4. "More" has its own row: drawn over the list it covered a module
+    //    name (desktop review 2026-11-13, Top 6).
+    await tester.pump();
+    final more = find.byKey(const Key('sidebar-more-below'));
+    expect(more, findsOneWidget);
+    final moreBox = tester.getRect(more);
+    final list = tester.getRect(scroller.first);
+    expect(
+      moreBox.top,
+      greaterThanOrEqualTo(list.bottom - 0.5),
+      reason: 'More sits below the scrolling list, not on top of a row.',
+    );
   });
 
   /// The fifteen modules, in shell order.
   List<Destination> modules() => [
     for (final name in const [
-      'Dashboard', 'Human Resources', 'Customers',
-      'Jobs', 'Scheduling', 'Inspection', 'Marketing',
-      'Web Management', 'Phone', 'Fleet Management', 'Inventory',
-      'Services', 'Email', 'Automations', 'Monitoring',
+      'Dashboard',
+      'Human Resources',
+      'Customers',
+      'Jobs',
+      'Scheduling',
+      'Inspection',
+      'Marketing',
+      'Web Management',
+      'Phone',
+      'Fleet Management',
+      'Inventory',
+      'Services',
+      'Email',
+      'Automations',
+      'Monitoring',
     ])
       Destination(name, Icons.circle_outlined, const SizedBox()),
   ];
+
+  // Mobile, 11-24: with the whole tail (Settings, Suggestions, Development,
+  // Rearrange, version) a window under ~460px left the list negative room and
+  // the column overflowed by 54px. The tail now takes at most half and scrolls.
+  for (final height in [300.0, 420.0]) {
+    testWidgets('the full tail at ${height}px tall does not overflow', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(1200, height);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: Row(
+              children: [
+                NavigationSidebar(
+                  expanded: true,
+                  width: 220,
+                  destinations: modules(),
+                  pinned: [
+                    for (final name in const ['Settings', 'Suggestions'])
+                      Destination(
+                        name,
+                        Icons.circle_outlined,
+                        const SizedBox(),
+                      ),
+                  ],
+                  staffOnly: [
+                    Destination('Development', Icons.code, const SizedBox()),
+                  ],
+                  selectedIndex: 0,
+                  pinnedIndex: null,
+                  staffIndex: null,
+                  onSelected: (_) {},
+                  onPinnedSelected: (_) {},
+                  onStaffSelected: (_) {},
+                  onArranged: (_) {},
+                ),
+                const Expanded(child: SizedBox()),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      final tail = tester.getRect(find.byKey(const ValueKey('sidebar-tail')));
+      expect(tail.height, lessThanOrEqualTo(height / 2 + 0.5));
+      expect(
+        tester.getRect(find.byKey(const ValueKey('sidebar-list'))).height,
+        greaterThan(0),
+      );
+      // The tail scrolls to its last row rather than clipping it.
+      await tester.dragUntilVisible(
+        find.text('Rearrange'),
+        find.byKey(const ValueKey('sidebar-tail')),
+        const Offset(0, -40),
+      );
+      expect(find.text('Rearrange').hitTestable(), findsOneWidget);
+    });
+  }
 
   Widget sidebar({
     required bool expanded,
@@ -621,7 +738,11 @@ void main() {
             width: 220,
             destinations: modules(),
             pinned: [
-              Destination('Settings', Icons.settings_outlined, const SizedBox()),
+              Destination(
+                'Settings',
+                Icons.settings_outlined,
+                const SizedBox(),
+              ),
             ],
             staffOnly: const [],
             selectedIndex: 0,
@@ -670,6 +791,43 @@ void main() {
     );
   });
 
+  // Jose 11-24: "on the collapsed sidebar the more feels a bit weird, it
+  // should just show the arrow". It wrapped to "Mo / re" at 80px.
+  testWidgets('collapsed, More is the arrow alone, centred, named by tooltip', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 420);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(sidebar(expanded: false, onSelected: (_) {}));
+    await tester.pump();
+    await tester.pump();
+
+    final more = find.byKey(const Key('sidebar-more-below'));
+    expect(more, findsOneWidget);
+    expect(
+      find.descendant(of: more, matching: find.text('More')),
+      findsNothing,
+    );
+    expect(find.byTooltip('More'), findsOneWidget);
+    expect(
+      tester.getCenter(more).dx,
+      closeTo(NavigationSidebar.collapsedWidth / 2, 1),
+    );
+
+    await tester.pumpWidget(sidebar(expanded: true, onSelected: (_) {}));
+    await tester.pump();
+    await tester.pump();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('sidebar-more-below')),
+        matching: find.text('More'),
+      ),
+      findsOneWidget,
+      reason: 'Expanded keeps the word.',
+    );
+  });
+
   testWidgets('the collapsed rail has no search, and a filter that matches '
       'nothing explains itself', (tester) async {
     await tester.pumpWidget(sidebar(expanded: false, onSelected: (_) {}));
@@ -692,7 +850,8 @@ void main() {
     expect(
       find.text('Settings'),
       findsOneWidget,
-      reason: 'the tail never filters -- it is where you go when the list did '
+      reason:
+          'the tail never filters -- it is where you go when the list did '
           'not have what you wanted',
     );
   });

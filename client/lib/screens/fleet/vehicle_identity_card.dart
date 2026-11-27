@@ -1,3 +1,4 @@
+import '../../widgets/formatted_notes.dart';
 import '../../core/branch_options.dart';
 import 'package:flutter/material.dart';
 
@@ -49,7 +50,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
   final _tollPlan = TextEditingController();
   final _tollFlatRate = TextEditingController();
   final _odometerReadOn = TextEditingController();
-  final _notes = TextEditingController();
+  final _notes = FormattedNotesController();
   final _counterparty = TextEditingController();
   final _startedOn = TextEditingController();
 
@@ -108,8 +109,50 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
   @override
   void didUpdateWidget(covariant VehicleIdentityCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.vehicle != widget.vehicle) _fill(widget.vehicle);
+    // A live re-read (somebody else's edit) fills the fields only when
+    // nothing is typed here; a different vehicle always fills.
+    if (oldWidget.vehicle != widget.vehicle &&
+        (oldWidget.vehicle['id'] != widget.vehicle['id'] ||
+            (!_busy && _typed == _loadedForm))) {
+      _fill(widget.vehicle);
+    }
   }
+
+  /// What the form holds, to tell an edit in progress from a filled form.
+  String get _typed => [
+    for (final c in [
+      _year,
+      _make,
+      _model,
+      _trim,
+      _plate,
+      _plateState,
+      _vin,
+      _colour,
+      _odometer,
+      _nextServiceOn,
+      _nextServiceMiles,
+      _registrationExpiresOn,
+      _inspectionExpiresOn,
+      _tollDeviceNumber,
+      _tollPlan,
+      _tollFlatRate,
+      _odometerReadOn,
+      _counterparty,
+      _startedOn,
+    ])
+      c.text,
+    _notes.markup,
+    _bodyType,
+    _fuelType,
+    _status,
+    _companyId,
+    _franchiseId,
+    _kind,
+  ].join('\u0001');
+
+  /// [_typed] as last filled from the server.
+  String _loadedForm = '';
 
   @override
   void dispose() {
@@ -157,21 +200,23 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
     _nextServiceMiles.text = row['next_service_miles'] == null
         ? ''
         : '${row['next_service_miles']}';
-    _registrationExpiresOn.text = row['registration_expires_on'] as String? ?? '';
+    _registrationExpiresOn.text =
+        row['registration_expires_on'] as String? ?? '';
     _inspectionExpiresOn.text = row['inspection_expires_on'] as String? ?? '';
     _tollDeviceNumber.text = row['toll_device_number'] as String? ?? '';
     _tollPlan.text = row['toll_plan'] as String? ?? '';
     _tollFlatRate.text = row['toll_flat_rate_cents'] is int
         ? ((row['toll_flat_rate_cents'] as int) / 100).toStringAsFixed(2)
         : '';
-    _notes.text = row['notes'] as String? ?? '';
+    _notes.markup = row['notes'] as String?;
     _odometerReadOn.text = fleetDay(row['odometer_updated_at'] as String?);
     _odometerReadOnLoaded = _odometerReadOn.text;
 
     final id = row['id'] as String?;
     if (_foldedFor != id) {
       _foldedFor = id;
-      _tollsOpen = _tollDeviceNumber.text.isNotEmpty ||
+      _tollsOpen =
+          _tollDeviceNumber.text.isNotEmpty ||
           _tollPlan.text.isNotEmpty ||
           _tollFlatRate.text.isNotEmpty;
     }
@@ -184,6 +229,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
     _franchiseId = franchise?['id'] as String?;
     _kind = fleetMap(row['ownership'])?['kind'] as String?;
     if (_startedOn.text.isEmpty) _startedOn.text = fleetToday();
+    _loadedForm = _typed;
   }
 
   List<FranchiseSummary> get _places => _me.franchisesOf(_companyId);
@@ -215,7 +261,8 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
 
     if (buyingBack && _kind == null) {
       setState(
-        () => _error = 'A vehicle has to be owned or rented. Say which, then save.',
+        () => _error =
+            'A vehicle has to be owned or rented. Say which, then save.',
       );
       return;
     }
@@ -259,7 +306,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
         'odometer_updated_at': _odometerReadOn.text.trim().isEmpty
             ? null
             : _odometerReadOn.text.trim(),
-      'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+      'notes': _notes.text.trim().isEmpty ? null : _notes.markup.trim(),
       'status': _status,
       if (_showCompanyField) 'company_id': _companyId,
       'franchise_id': _companyId == null ? null : _franchiseId,
@@ -290,8 +337,12 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
       return;
     }
 
-    setState(() => _busy = false);
-    widget.onChanged(Map<String, dynamic>.from(response.data as Map));
+    final saved = Map<String, dynamic>.from(response.data as Map);
+    setState(() {
+      _busy = false;
+      _fill(saved);
+    });
+    widget.onChanged(saved);
   }
 
   Future<void> _delete() async {
@@ -333,10 +384,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
         _tolls(context, enabled),
         const SizedBox(height: 16),
         _notesGroup(enabled),
-        if (_error != null) ...[
-          const SizedBox(height: 14),
-          ErrorNote(_error!),
-        ],
+        if (_error != null) ...[const SizedBox(height: 14), ErrorNote(_error!)],
         if (_canEdit || _me.can('fleet_management.delete')) ...[
           const SizedBox(height: 16),
           _actions(enabled),
@@ -391,8 +439,15 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
       title: 'Identity',
       tags: [
         _filled([
-          _year.text, _make.text, _model.text, _trim.text, _colour.text,
-          _vin.text, _bodyType, _fuelType, _status,
+          _year.text,
+          _make.text,
+          _model.text,
+          _trim.text,
+          _colour.text,
+          _vin.text,
+          _bodyType,
+          _fuelType,
+          _status,
         ]),
       ],
       child: Column(
@@ -464,7 +519,10 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
                     value: fleetOrgValue,
                     label: _me.organization.name,
                   ),
-                for (final c in _me.companiesInView)
+                for (final c in _me.companiesKeeping(
+                  _me.companiesInView,
+                  _companyId,
+                ))
                   SearchOption(value: c.id, label: c.name),
               ],
               enabled
@@ -487,7 +545,11 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
                   value: fleetGeneralValue,
                   label: fleetGeneralLabel,
                 ),
-                for (final f in branchOptions(_places, _me.companies, activeOnly: false))
+                for (final f in branchOptions(
+                  _me.franchisesKeeping(_places, _franchiseId),
+                  _me.companies,
+                  activeOnly: false,
+                ))
                   SearchOption(value: f.id, label: f.label),
               ],
               enabled
@@ -554,7 +616,8 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
           const Tag('Plate number missing', warn: true)
         else
           _filled([
-            _plate.text, _registrationExpiresOn.text,
+            _plate.text,
+            _registrationExpiresOn.text,
             _inspectionExpiresOn.text,
           ]),
       ],
@@ -643,7 +706,9 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
       title: 'Odometer & service',
       tags: [
         _filled([
-          _odometer.text, _odometerReadOn.text, _nextServiceOn.text,
+          _odometer.text,
+          _odometerReadOn.text,
+          _nextServiceOn.text,
           _nextServiceMiles.text,
         ]),
       ],
@@ -741,13 +806,14 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
       title: 'Notes',
       // The card is already called Notes; repeating it inside the box says
       // nothing twice. The label names what the note is about instead.
-      child: fleetField(
-        _notes,
-        'Notes about this vehicle',
-        enabled: enabled,
-        minLines: 2,
-        maxLines: 4,
-      ),
+      // Bold, italic and underline (Jose, 2026-11-25); read-only shows them.
+      child: enabled
+          ? FormattedNotesField(
+              controller: _notes,
+              label: 'Notes about this vehicle',
+              minLines: 2,
+            )
+          : FormattedNotesText(_notes.markup),
     );
   }
 

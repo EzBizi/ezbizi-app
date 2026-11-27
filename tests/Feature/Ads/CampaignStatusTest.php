@@ -88,7 +88,7 @@ class CampaignStatusTest extends TestCase
         $row = $this->connected($t);
         $this->fakeGoogle([$this->ok()]);
 
-        $response = $this->signedInAs($this->userWithRole($t, 'Marketing', ['ads_performance.view', 'ads_performance.manage']))
+        $response = $this->signedInAs($this->userWithRole($t, 'Marketing', ['ads_performance.view', 'ads_manager.manage']))
             ->postJson(self::ENDPOINT, [
                 'connection_id' => $row->getKey(),
                 'campaign_ids' => ['22334455'],
@@ -136,7 +136,7 @@ class CampaignStatusTest extends TestCase
                 'status' => 'PAUSED',
             ])
             ->assertForbidden()
-            ->assertJsonFragment(['message' => 'Pausing or enabling campaigns needs the Manage Google Ads permission.']);
+            ->assertJsonFragment(['message' => 'Pausing or enabling campaigns needs the Ads › Manage permission.']);
 
         Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'campaigns:mutate'));
     }

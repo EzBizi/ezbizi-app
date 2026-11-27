@@ -46,7 +46,7 @@ class SettingRegistryTest extends TestCase
         }
 
         $this->assertSame(
-            ['Clock in and lock screen', 'Shift timing', 'Daily approval', 'Clock-in zone', 'Paid time off'],
+            ['Clock in and lock screen', 'Shift timing', 'Daily approval', 'Clock-in zone', 'Paid time off', 'Payroll'],
             array_values(array_unique($seen)),
         );
         $this->assertSame('Clock-in zone', $this->registry->get('time_clock.geofence_radius_m')->section);

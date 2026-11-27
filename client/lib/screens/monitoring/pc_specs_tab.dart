@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import 'device_display.dart';
@@ -91,10 +92,17 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
     super.initState();
     _load();
     _refresh = Timer.periodic(refreshEvery, (_) => _load());
+    // Between the timed reads: a machine's facts changing shows at once.
+    _live = LiveChanges.of(widget.api).subscribe({'monitoring_devices'}, (_) {
+      if (!_loading) return _load();
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _refresh?.cancel();
     super.dispose();
   }

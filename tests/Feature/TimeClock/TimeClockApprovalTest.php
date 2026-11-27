@@ -4,6 +4,7 @@ namespace Tests\Feature\TimeClock;
 
 use App\Models\AutomationEvent;
 use App\Models\Notification;
+use App\Models\PtoRequest;
 use App\Models\TimeClockDayApproval;
 use App\Models\TimeClockShift;
 use App\Models\User;
@@ -83,6 +84,43 @@ class TimeClockApprovalTest extends TestCase
 
         $this->signedInAs($gm)->postJson('/api/v1/hr/time-clock/approvals/all', ['date' => '2026-10-21'])->assertOk();
         $this->assertSame(0, TimeClockDayApproval::query()->withoutGlobalScopes()->where('user_id', $ana->id)->count());
+    }
+
+    /**
+     * Jose, 2026-11-09: a no-show read "Waiting" with an Approve button while
+     * the chips said Waiting 0. It is a no-show, excusable, or hours are added
+     * and those are approvable; approved PTO is not a no-show at all.
+     */
+    public function test_a_no_show_is_excused_or_given_hours_and_pto_is_not_one(): void
+    {
+        [$alpha, $gm, $ana, $ben] = $this->tenant();
+        $wednesday = ['days' => ['wednesday' => ['start' => '08:00', 'end' => '16:00']]];
+        foreach ([$ana, $ben] as $p) {
+            $this->inTenant($alpha['org'], fn () => $p->forceFill(['work_schedule' => $wednesday])->save());
+        }
+        $day = fn () => $this->signedInAs($gm)->getJson('/api/v1/hr/time-clock/approvals?date=2026-10-21')->assertOk()->json('data');
+
+        $row = collect($day()['rows'])->firstWhere('person.id', $ana->id);
+        $this->assertSame('no_show', $row['status']);
+        $before = $day()['counts']; // the tenant's owner falls back to business hours and is a no-show too
+        $this->assertSame(0, $before['waiting'], 'the chips agree with the rows');
+
+        $this->signedInAs($gm)->postJson('/api/v1/hr/time-clock/approvals/excuse', ['user_id' => $ana->id, 'date' => '2026-10-21'])->assertOk();
+        $this->signedInAs($gm)->postJson('/api/v1/hr/time-clock/approvals/hours', [
+            'user_id' => $ben->id, 'date' => '2026-10-21', 'reason' => 'Forgot to clock in.',
+            'clocked_in_at' => $row['scheduled_local']['start'], 'clocked_out_at' => $row['scheduled_local']['end'],
+        ])->assertOk();
+        $after = $day()['counts'];
+        $this->assertSame([1, $before['no_shows'] - 2, 1], [$after['waiting'], $after['no_shows'], $after['excused']]);
+
+        // Approved PTO that day: scheduled, no punch, and still no row.
+        $cy = $this->userWithRole($alpha, 'Tech C', ['time_clock.view'], 'cy@alpha.test');
+        $this->inTenant($alpha['org'], fn () => $cy->forceFill(['work_schedule' => $wednesday])->save());
+        $this->inTenant($alpha['org'], fn () => PtoRequest::query()->create([
+            'organization_id' => $alpha['org']->id, 'user_id' => $cy->id, 'status' => 'approved', 'total' => 1,
+            'days' => [['date' => '2026-10-21', 'portion' => 1]],
+        ]));
+        $this->assertNull(collect($day()['rows'])->firstWhere('person.id', $cy->id));
     }
 
     /** "for Technicians only" (2026-10-22): the roles setting narrows the list, and the approver is never in it. */

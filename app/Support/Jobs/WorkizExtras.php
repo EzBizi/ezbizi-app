@@ -85,6 +85,19 @@ final class WorkizExtras
         ];
     }
 
+    /**
+     * The job's Workiz files exactly as the panel's "From Workiz" lists them:
+     * attachments and file-type custom fields (an inspection-report PDF).
+     * Project Management counts these, so the two numbers agree (Jose,
+     * 2026-11-10).
+     *
+     * @return list<array{name: string, url: string}>
+     */
+    public static function files(array $payload): array
+    {
+        return self::fieldsAndFiles($payload, false)[1];
+    }
+
     /** @return array{0: list<array{name: string, value: string}>, 1: list<array{name: string, url: string}>} */
     private static function fieldsAndFiles(array $payload, bool $money): array
     {

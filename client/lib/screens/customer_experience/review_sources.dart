@@ -1,17 +1,21 @@
+import '../../core/timestamps.dart';
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../widgets/status_pill.dart';
-import '../business_profile/phone_check_view.dart' show checkedAgo;
 
 /// Where reviews were written (design 154 #13): Google, eKomi, Thumbtack,
 /// each with its connection, count and average, from GET /reviews/sources.
 /// The funnel below it is the Review links report this sits in.
 class ReviewSources extends StatefulWidget {
-  const ReviewSources({super.key, required this.api});
+  const ReviewSources({super.key, required this.api, this.onEkomi});
 
   final ApiClient api;
+
+  /// Opens the eKomi screen (UI queue 165); null draws the row plain.
+  final VoidCallback? onEkomi;
 
   @override
   State<ReviewSources> createState() => _ReviewSourcesState();
@@ -68,13 +72,9 @@ class _ReviewSourcesState extends State<ReviewSources> {
             Text('Sources', style: theme.textTheme.titleSmall),
             SizedBox(
               width: 220,
-              child: TextField(
+              child: ListSearch(
                 key: const ValueKey('cx-sources-search'),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Search sources',
-                  isDense: true,
-                ),
+                hint: 'Search sources',
                 onChanged: (v) => setState(() => _q = v),
               ),
             ),
@@ -93,9 +93,12 @@ class _ReviewSourcesState extends State<ReviewSources> {
 
   Widget _row(ThemeData theme, Map<String, dynamic> r) {
     final connected = r['connected'] == true;
+    // Thumbtack is connected for leads but shares no reviews.
+    final noReviews = r['reviews_available'] == false;
     final average = (r['average'] as num?)?.toDouble();
     final synced = DateTime.tryParse('${r['last_sync'] ?? ''}');
-    return Container(
+    final open = r['source'] == 'ekomi' && connected ? widget.onEkomi : null;
+    final row = Container(
       key: ValueKey('cx-source-${r['source']}'),
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
@@ -112,7 +115,9 @@ class _ReviewSourcesState extends State<ReviewSources> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: StatusPill(
-                connected ? 'Connected' : 'Not connected',
+                connected
+                    ? (noReviews ? 'Connected for leads' : 'Connected')
+                    : 'Not connected',
                 tone: connected ? Tone.ok : Tone.neutral,
               ),
             ),
@@ -120,7 +125,11 @@ class _ReviewSourcesState extends State<ReviewSources> {
           Expanded(
             flex: 2,
             child: Text(
-              connected ? '${r['count'] ?? 0} reviews' : '—',
+              noReviews
+                  ? 'Reviews not shared'
+                  : connected
+                  ? '${r['count'] ?? 0} reviews'
+                  : '—',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -135,14 +144,22 @@ class _ReviewSourcesState extends State<ReviewSources> {
           Expanded(
             flex: 3,
             child: Text(
-              synced == null ? '—' : 'Synced ${checkedAgo(synced)}',
+              synced == null ? '—' : 'Synced ${formatAgo(synced)}',
               key: ValueKey('cx-source-sync-${r['source']}'),
               textAlign: TextAlign.right,
               style: theme.textTheme.bodySmall,
             ),
           ),
+          if (open != null) const Icon(Icons.chevron_right, size: 18),
         ],
       ),
     );
+    return open == null
+        ? row
+        : InkWell(
+            key: const ValueKey('cx-source-open-ekomi'),
+            onTap: open,
+            child: row,
+          );
   }
 }

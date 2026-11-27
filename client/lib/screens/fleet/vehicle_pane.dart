@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
@@ -46,6 +47,42 @@ class VehiclePane extends StatefulWidget {
 class _VehiclePaneState extends State<VehiclePane> {
   late Map<String, dynamic> _vehicle = widget.vehicle;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Live: this vehicle assigned, serviced, insured or edited elsewhere
+    // re-reads in place; the identity form keeps what is being typed.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'vehicles'},
+      (batch) {
+        final id = _id;
+        if (id != null &&
+            (batch.reload || batch.changedOf('vehicles').contains(id))) {
+          return _refresh();
+        }
+      },
+      active: LiveChanges.visible(this),
+    );
+  }
+
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// The vehicle read again quietly; a failure keeps what is shown. The list
+  /// re-reads itself, so the parent is not told.
+  Future<void> _refresh() async {
+    final id = _id;
+    if (id == null) return;
+    final response = await widget.api.get('/vehicles/$id');
+    if (!mounted || !response.ok || _id != id) return;
+    setState(() => _vehicle = Map<String, dynamic>.from(response.data as Map));
+  }
 
   @override
   void didUpdateWidget(covariant VehiclePane oldWidget) {

@@ -1,9 +1,15 @@
+import '../core/deep_links.dart';
+import '../widgets/module_page_header.dart';
+import '../widgets/list_filters.dart';
+import '../widgets/list_search.dart';
+import '../widgets/mention_field.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/branch_options.dart';
 import '../core/job_money.dart';
 import '../core/job_status.dart';
+import '../core/live_changes.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -11,11 +17,13 @@ import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/book_job_panel.dart';
 import '../widgets/data_transfer.dart';
-import '../widgets/error_note.dart';
 import '../widgets/grouped_rows.dart';
+import '../widgets/load_more.dart';
 import '../widgets/refused.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'phone/call_tab.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
 import '../widgets/tag.dart';
@@ -24,6 +32,7 @@ import 'jobs/job_days.dart';
 import 'jobs/job_detail_panel.dart';
 import 'jobs/job_labels.dart';
 import 'jobs/job_where.dart';
+import '../core/soft_keyboard.dart';
 
 /// Jobs (plan §5.2).
 ///
@@ -55,6 +64,9 @@ class _JobsScreenState extends State<JobsScreen> {
   final _search = TextEditingController();
 
   bool _loading = true;
+
+  /// A first-page reload with rows already up (a filter changed).
+  bool _refreshing = false;
   String? _error;
   List<Map<String, dynamic>> _jobs = [];
   List<JobStatus> _statusChoices = const [];
@@ -73,8 +85,6 @@ class _JobsScreenState extends State<JobsScreen> {
 
   /// Jobs or Estimates (queue 32). Estimates are money: their own permission
   /// and the Financials toggle. With only Jobs there is no bar at all.
-  /// Project Management was a third tab until 2026-10-21; it is its own
-  /// module now (project_management_screen.dart).
   String _tab = 'jobs';
 
   /// A tab is built on its first open, so it fetches nothing before anyone
@@ -83,8 +93,19 @@ class _JobsScreenState extends State<JobsScreen> {
 
   List<String> get _tabs => [
     'jobs',
+    if (_canBook) 'book',
     if (_seesEstimates) 'estimates',
   ];
+
+  /// Jobs › Book (Jose, 2026-11-17, design 197): the booking flow as its own
+  /// tab, for whoever may add a job somewhere.
+  bool get _canBook {
+    final me = widget.session.me;
+    return me != null && me.can('jobs.create') && me.franchises.isNotEmpty;
+  }
+
+  /// Bumped by "Book another", so the page starts empty again.
+  int _bookRun = 0;
 
   bool get _seesEstimates =>
       _seesMoney && (widget.session.me?.can('estimates.view') ?? false);
@@ -156,10 +177,9 @@ class _JobsScreenState extends State<JobsScreen> {
   int _request = 0;
 
   /// From today on, before today, or every job.
-  ///
-  /// Upcoming first, because the list used to open on whatever was booked
-  /// furthest ahead: April 2027 above the ~560 jobs due that week (queue 24).
-  String _when = 'upcoming';
+  /// All by default (Jose, 2026-11-23): a search for a past client read as
+  /// "not found" behind Upcoming.
+  String _when = 'all';
 
   /// How many jobs each chip would show, from the server's first page. Empty
   /// from a server that does not count, and the chips then carry no numbers
@@ -179,16 +199,61 @@ class _JobsScreenState extends State<JobsScreen> {
   void initState() {
     super.initState();
     _load();
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      _liveJobs,
+      active: LiveChanges.visible(this),
+    );
+    // A link to one job (a notification, or /jobs/{id} typed in the bar).
+    DeepLinks.pending.addListener(_takeLink);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _takeLink());
   }
 
   @override
   void dispose() {
+    _live?.cancel();
+    DeepLinks.pending.removeListener(_takeLink);
     _search.dispose();
     _openDirty.dispose();
     super.dispose();
   }
 
-  Future<void> _load({int page = 1}) async {
+  // ── Live: syncs, webhooks and automations show without leaving ─────
+
+  LiveSubscription? _live;
+
+  /// Page one is read again quietly (rows stay up, so does the scroll). With
+  /// more pages loaded, the rows that changed are read one by one in place.
+  Future<void> _liveJobs(LiveBatch batch) async {
+    if (_tab != 'jobs' || _loading) return;
+    if (_page == 1 || batch.reload) {
+      if (_page == 1) await _load(quiet: true);
+      return;
+    }
+    final gone = batch.deletedOf('jobs');
+    final changed = [
+      for (final j in _jobs)
+        if (batch.changedOf('jobs').contains(j['id'])) '${j['id']}',
+    ];
+    final fresh = <String, Map<String, dynamic>>{};
+    for (final id in changed.take(20)) {
+      final res = await widget.api.get('/jobs/$id');
+      if (res.ok && res.data is Map) {
+        fresh[id] = Map<String, dynamic>.from(res.data as Map);
+      }
+    }
+    if (!mounted || (gone.isEmpty && fresh.isEmpty)) return;
+    setState(() {
+      _jobs = [
+        for (final j in _jobs)
+          if (!gone.contains(j['id'])) fresh[j['id']] ?? j,
+      ];
+    });
+  }
+
+  /// [quiet]: a live re-read. No dimming or bar (the Stack they need would
+  /// rebuild the list and lose its scroll), and a failure keeps the rows.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     // Appends only. Two appends at once duplicate rows, and an append landing
     // during a page-one refresh appends to a list that is being replaced. A
     // page-one load is never refused — it supersedes instead, via _request.
@@ -201,6 +266,7 @@ class _JobsScreenState extends State<JobsScreen> {
       // refetch after creating a job comes through here with rows on screen,
       // and they stay up until the new ones land.
       _loading = page == 1 && _jobs.isEmpty;
+      _refreshing = !quiet && page == 1 && _jobs.isNotEmpty;
       _fetching = true;
       _error = null;
       _pageError = null;
@@ -228,13 +294,16 @@ class _JobsScreenState extends State<JobsScreen> {
 
     setState(() {
       _loading = false;
+      _refreshing = false;
       _fetching = false;
 
       if (!response.ok) {
         // A first-page failure takes over the screen even when rows are still
         // in hand: they predate whatever the write did, and a refusal to
         // re-read them has to be said out loud rather than whispered.
-        if (page == 1) {
+        if (quiet) {
+          // A missed live tick: the next one tries again.
+        } else if (page == 1) {
           _error = response.message;
         } else {
           _pageError = response.message;
@@ -307,6 +376,7 @@ class _JobsScreenState extends State<JobsScreen> {
               for (final t in tabs)
                 switch (t) {
                   'estimates' => ('Estimates', Icons.request_quote_outlined),
+                  'book' => ('Book', Icons.event_available_outlined),
                   _ => ('Jobs', Icons.construction_outlined),
                 },
             ],
@@ -327,13 +397,42 @@ class _JobsScreenState extends State<JobsScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Offstage(offstage: _tab != 'jobs', child: _jobsTab(context)),
+              // Gated: offstage, the Jobs tab still handed "Add job" to the
+              // header, beside Estimates' own "New estimate" (UI pass
+              // 2026-11-17). Only the tab in front fills the slot.
+              Offstage(
+                offstage: _tab != 'jobs',
+                child: ModuleActionGate(
+                  active: _tab == 'jobs',
+                  child: _jobsTab(context),
+                ),
+              ),
+              if (_canBook)
+                Offstage(
+                  offstage: _tab != 'book',
+                  child: ModuleActionGate(
+                    active: _tab == 'book',
+                    child: _opened.contains('book')
+                        ? BookJobPanel(
+                            key: ValueKey('jobs-book-$_bookRun'),
+                            api: widget.api,
+                            session: widget.session,
+                            page: true,
+                            onBooked: (_) => _load(),
+                            onDone: () => setState(() => _bookRun++),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
               if (_seesEstimates)
                 Offstage(
                   offstage: _tab != 'estimates',
-                  child: _opened.contains('estimates')
-                      ? EstimatesTab(api: widget.api, session: widget.session)
-                      : const SizedBox.shrink(),
+                  child: ModuleActionGate(
+                    active: _tab == 'estimates',
+                    child: _opened.contains('estimates')
+                        ? EstimatesTab(api: widget.api, session: widget.session)
+                        : const SizedBox.shrink(),
+                  ),
                 ),
             ],
           ),
@@ -367,52 +466,23 @@ class _JobsScreenState extends State<JobsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              PanelHeader(
-                note: _note(me),
-                // A Wrap rather than a Row, for the reason customers_screen
-                // gives: two controls side by side overflow a narrow window.
-                action: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    // No `onImported`: jobs are export-only, so nothing this
-                    // widget does can change the list behind it.
-                    DataTransfer(
-                      api: widget.api,
-                      session: widget.session,
-                      resource: 'jobs',
-                    ),
-                    Refused(
-                      // §4 refuses in two places and they have different
-                      // remedies. The screen used to test only the second, so
-                      // somebody whose role lacks `jobs.create` was offered the
-                      // button and got a 403; and the sentence it did have named
-                      // "franchise" rather than whatever this organization calls
-                      // one (§8).
-                      reason: refused,
-                      child: FilledButton.icon(
-                        key: const ValueKey('tour-jobs-add'),
-                        onPressed: refused == null ? _create : null,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Add job'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Chips on a wide screen, where they fit on a line and double as
-              // the legend for the pills below. On a phone seven of them wrap to
-              // three lines of chrome, so the same choice is a picker there.
-              if (wide && _statusChoices.isNotEmpty) _statusChips(context),
-              if (_seesMoney) _moneyChips(context, wide: wide),
-              _filters(context, me, wide: wide),
+              // Option A of the Jobs filters gallery (Jose, 2026-11-13): money
+              // tiles that filter, one status row, one toolbar, the rest in a
+              // Filters panel, and what is on as removable chips.
+              // Design 195: a phone's count is the group line's.
+              if (!_phone(context)) PanelHeader(note: _note(me)),
+              // Typing a search on a phone, the results get the room.
               if (_seesMoney && _moneyTotals.isNotEmpty)
-                _moneyTotalsLine(context, wide: wide),
+                FoldWhileTyping(child: _moneyTiles(context, wide: wide)),
+              if (_statusChoices.isNotEmpty)
+                FoldWhileTyping(child: _statusChips(context)),
+              _toolbar(context, me, refused, wide: wide),
+              _activeChips(context, me),
             ],
           ),
           list: AsyncBody(
             loading: _loading,
+            refreshing: _refreshing,
             error: _error,
             onRetry: _load,
             child: _body(context, wide: wide),
@@ -476,7 +546,10 @@ class _JobsScreenState extends State<JobsScreen> {
         // — would offer the same word twice. The franchise row says it.
         if (!(a.name.toLowerCase() == f.name.toLowerCase() &&
             _areas.where((x) => x.franchiseId == f.id).length == 1))
-          SearchOption<String?>(value: 'a:${a.id}', label: '${f.name} · ${a.name}'),
+          SearchOption<String?>(
+            value: 'a:${a.id}',
+            label: '${f.name} · ${a.name}',
+          ),
     ],
   ];
 
@@ -484,156 +557,134 @@ class _JobsScreenState extends State<JobsScreen> {
     final counted = _statusCounts.isNotEmpty;
     final all = _statusCounts.values.fold(0, (a, b) => a + b);
 
+    // Mobile review 2026-11-13, P5: one filter strip, page gutter, 40 px
+    // pills and a fade where more lie past the edge.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
-      child: Wrap(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: FilterPills<String?>(
         key: const ValueKey('tour-jobs-status'),
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          _chip(
-            context,
-            value: null,
-            label: 'All',
+        selected: _status,
+        onSelected: (value) {
+          setState(() => _status = value);
+          _load();
+        },
+        items: [
+          FilterPill(
+            null,
+            'All',
             count: counted ? all : null,
+            key: const ValueKey('status-chip-all'),
           ),
           for (final s in _chipStatuses())
-            _chip(
-              context,
-              value: s.value,
-              label: s.label,
+            FilterPill(
+              s.value,
+              s.label,
               count: counted ? (_statusCounts[s.value] ?? 0) : null,
               tone: toneForJobStatus(s.value),
+              key: ValueKey('status-chip-${s.value}'),
             ),
         ],
       ),
     );
   }
 
-  /// The money states beside the status chips they narrow with, each with
-  /// its count (queue 31, Jose's 1 and 4). A desk wraps them; a phone swipes
-  /// them, as it swipes nothing else here, because six chips wrap to three
-  /// lines of chrome at 375.
-  Widget _moneyChips(BuildContext context, {required bool wide}) {
+  /// Billed, Paid, Due and Overdue over the jobs the other filters leave, per
+  /// currency and never added across them (queue 31). Each tile IS the money
+  /// filter: Billed clears it.
+  Widget _moneyTiles(BuildContext context, {required bool wide}) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
 
-    Widget chip(String? value, String label, {Tone? tone, int? count}) =>
-        ChoiceChip(
+    Widget tile(String label, String key, String? value, Tone? tone) {
+      final colours = tone == null ? null : ToneColours.of(context, tone);
+      final selected = _money == value;
+      final count = value == null ? null : _moneyCounts[value];
+      return Material(
+        color: colours?.fill ?? theme.colorScheme.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: selected
+              ? BorderSide(
+                  width: 2,
+                  color: colours?.ink ?? theme.colorScheme.primary,
+                )
+              : BorderSide.none,
+        ),
+        child: InkWell(
           key: ValueKey('money-chip-${value ?? 'any'}'),
-          avatar: tone == null ? null : ToneDot(tone),
-          showCheckmark: false,
-          selected: _money == value,
-          label: Text.rich(
-            TextSpan(
-              text: label,
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _set(() => _money = value),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (count != null)
-                  TextSpan(
-                    text: '  ${formatCount(count)}',
-                    style: TextStyle(
-                      color: muted,
-                      fontWeight: FontWeight.w500,
+                Text(
+                  count == null ? label : '$label · ${formatCount(count)}',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: colours?.ink ?? muted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                for (final MapEntry(key: currency, value: t)
+                    in _moneyTotals.entries)
+                  Text(
+                    wide
+                        ? formatMoney(
+                            t[key] ?? 0,
+                            currency: currency,
+                            cents: false,
+                          )
+                        : shortMinor(t[key] ?? 0, currency: currency),
+                    key: ValueKey(
+                      'money-total-${label.toLowerCase()}-$currency',
+                    ),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: colours?.ink,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
               ],
             ),
           ),
-          onSelected: (_) {
-            setState(() => _money = value);
-            _load();
-          },
-        );
-
-    final chips = [
-      Text(
-        'MONEY',
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: muted,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.6,
         ),
-      ),
-      chip(null, 'Any'),
-      for (final (value, label, tone) in moneyStates)
-        chip(value, label, tone: tone, count: _moneyCounts[value]),
+      );
+    }
+
+    final tiles = [
+      tile('Billed', 'total', null, null),
+      tile('Paid', 'paid', 'paid', Tone.ok),
+      tile('Due', 'due', 'due', Tone.caution),
+      tile('Overdue', 'overdue', 'overdue', Tone.bad),
     ];
 
     return Padding(
       key: const ValueKey('tour-jobs-money'),
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        10,
+      ),
       child: wide
-          ? Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: chips,
+          ? Row(
+              spacing: 8,
+              children: [for (final t in tiles) Expanded(child: t)],
             )
-          : SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final c in chips)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: c,
-                    ),
-                ],
-              ),
-            ),
-    );
-  }
-
-  /// Billed, paid, due and overdue over the jobs the other filters leave,
-  /// per currency and never added across them (queue 31).
-  Widget _moneyTotalsLine(BuildContext context, {required bool wide}) {
-    final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurfaceVariant;
-
-    Widget figure(String label, int minor, String currency, {Tone? tone}) =>
-        Text.rich(
-          TextSpan(
-            text: '$label ',
-            style: theme.textTheme.bodySmall?.copyWith(color: muted),
-            children: [
-              TextSpan(
-                text: wide
-                    ? formatMoney(minor, currency: currency, cents: false)
-                    : shortMinor(minor, currency: currency),
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: tone == null ? null : ToneColours.of(context, tone).ink,
-                ),
-              ),
-            ],
-          ),
-          key: ValueKey('money-total-${label.toLowerCase()}-$currency'),
-        );
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final MapEntry(key: currency, value: t) in _moneyTotals.entries)
-            Wrap(
-              spacing: 18,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
+          : Column(
+              spacing: 8,
               children: [
-                figure('Billed', t['total'] ?? 0, currency),
-                figure('Paid', t['paid'] ?? 0, currency, tone: Tone.ok),
-                figure('Due', t['due'] ?? 0, currency),
-                figure('Overdue', t['overdue'] ?? 0, currency, tone: Tone.bad),
-                if (wide)
-                  Text(
-                    'From Workiz · read only',
-                    style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                for (var i = 0; i < 4; i += 2)
+                  Row(
+                    spacing: 8,
+                    children: [
+                      Expanded(child: tiles[i]),
+                      Expanded(child: tiles[i + 1]),
+                    ],
                   ),
               ],
             ),
-        ],
-      ),
     );
   }
 
@@ -683,7 +734,11 @@ class _JobsScreenState extends State<JobsScreen> {
     };
     final mark = Padding(
       padding: const EdgeInsets.only(left: 6),
-      child: StatusPill(words, key: ValueKey('tile-money-${job['id']}'), tone: pill.$2),
+      child: StatusPill(
+        words,
+        key: ValueKey('tile-money-${job['id']}'),
+        tone: pill.$2,
+      ),
     );
 
     return isShared
@@ -694,171 +749,327 @@ class _JobsScreenState extends State<JobsScreen> {
         : mark;
   }
 
-  Widget _chip(
-    BuildContext context, {
-    required String? value,
-    required String label,
-    int? count,
-    Tone? tone,
+  Widget _toolbar(
+    BuildContext context,
+    Me me,
+    String? refused, {
+    required bool wide,
   }) {
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-
-    return ChoiceChip(
-      key: ValueKey('status-chip-${value ?? 'all'}'),
-      avatar: tone == null ? null : ToneDot(tone),
-      // Not drawn beside the dot but ON it — see TabBarLike.
-      showCheckmark: false,
-      selected: _status == value,
-      label: Text.rich(
-        TextSpan(
-          text: label,
-          children: [
-            if (count != null)
-              TextSpan(
-                text: '  ${formatCount(count)}',
-                style: TextStyle(color: muted, fontWeight: FontWeight.w500),
-              ),
-          ],
+    final n = _activeCount;
+    final add = ModuleAction(
+      child: Refused(
+        // Two refusals with different remedies; see _jobsTab.
+        reason: refused,
+        child: FilledButton.icon(
+          key: const ValueKey('tour-jobs-add'),
+          onPressed: refused == null ? _create : null,
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Add job'),
         ),
       ),
-      onSelected: (_) {
-        setState(() => _status = value);
-        _load();
-      },
     );
-  }
 
-  Widget _filters(BuildContext context, Me me, {required bool wide}) {
-    final franchises = me.franchisesInView;
+    // Design 195 (phone 4): search, Filters and ⋯ on one line. Upcoming /
+    // Past / All is in Filters and counts there; Export is in the ⋯.
+    if (_phone(context)) {
+      final count = n + (_when == 'all' ? 0 : 1);
+      return Padding(
+        padding: EdgeInsets.fromLTRB(Gutter.of(context), 0, 4, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Row(
+          children: [
+            Expanded(
+              child: ListSearch(
+                key: const ValueKey('tour-jobs-search'),
+                controller: _search,
+                hint: 'Job, customer, phone…',
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _load(),
+                onClear: () {
+                  _search.clear();
+                  _load();
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              key: const Key('jobs-filters'),
+              onPressed: () => _openFilters(me),
+              child: Text(count == 0 ? 'Filters' : 'Filters · $count'),
+            ),
+            DataTransfer(
+              api: widget.api,
+              session: widget.session,
+              resource: 'jobs',
+              menu: true,
+            ),
+          ],
+            ),
+            // In the shell this is lifted into the header and draws nothing.
+            add,
+          ],
+        ),
+      );
+    }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        10,
+      ),
       child: Wrap(
-        spacing: 12,
-        runSpacing: 12,
+        spacing: 8,
+        runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           SizedBox(
-            width: 320,
-            child: TextField(
+            width: wide ? 320 : double.infinity,
+            child: ListSearch(
               key: const ValueKey('tour-jobs-search'),
               controller: _search,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search),
-                hintText: 'Job number, title or customer',
-                suffixIcon: _search.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear),
-                        tooltip: 'Clear the search',
-                        onPressed: () {
-                          _search.clear();
-                          _load();
-                        },
-                      ),
-              ),
-              onSubmitted: (_) => _load(),
+              hint: 'Job number, title, customer, phone or address',
               onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _load(),
+              onClear: () {
+                _search.clear();
+                _load();
+              },
             ),
           ),
-          if (!wide && _statusChoices.isNotEmpty)
-            SizedBox(
-              // Two to a line at 375, not one each under the search box.
-              width: wide ? 220 : 160,
-              child: SearchPickerField<String?>(
-                value: _status,
-                label: 'Status',
-                options: [
-                  const SearchOption<String?>(value: null, label: 'Any status'),
-                  for (final s in _chipStatuses())
-                    SearchOption<String?>(value: s.value, label: s.label),
-                ],
-                onChanged: (value) {
-                  setState(() => _status = value);
-                  _load();
-                },
-              ),
-            ),
-          // One franchise with no areas is no choice, and a picker offering it
-          // is chrome.
-          if (franchises.length > 1 || _areas.isNotEmpty)
-            SizedBox(
-              // Two to a line at 375, not one each under the search box.
-              width: wide ? 260 : 160,
-              child: SearchPickerField<String?>(
-                key: const Key('jobs-where'),
-                value: _where,
-                label: 'Where',
-                options: _whereOptions(me),
-                onChanged: (value) {
-                  setState(() => _where = value);
-                  _load();
-                },
-              ),
-            ),
-          // The same control as status, for the same reason: it sits in
-          // this Wrap rather than opening over the form, and its choices
-          // are discovered from the rows already on screen rather than
-          // fetched, since every job already carries its role (Task 5).
-          if (_roles.isNotEmpty)
-            SizedBox(
-              // Two to a line at 375, not one each under the search box.
-              width: wide ? 220 : 160,
-              child: SearchPickerField<String?>(
-                value: _roleId,
-                label: 'Role',
-                options: [
-                  const SearchOption<String?>(value: null, label: 'Any role'),
-                  ..._roles.entries.map(
-                    (role) => SearchOption<String?>(
-                      value: role.key,
-                      label: role.value,
-                    ),
-                  ),
-                ],
-                onChanged: (value) {
-                  setState(() => _roleId = value);
-                  _load();
-                },
-              ),
-            ),
-          if (_labels.jobTypes.isNotEmpty || _types.isNotEmpty)
-            SizedBox(
-              width: wide ? 220 : 160,
-              child: SearchMultiPickerField<String>(
-                key: const Key('jobs-type-filter'),
-                values: _types,
-                label: 'Type',
-                hint: 'Any type',
-                options: [
-                  for (final t in {..._labels.jobTypes, ..._types})
-                    SearchOption(value: t, label: t),
-                ],
-                onChanged: (picked) {
-                  setState(() => _types = picked);
-                  _load();
-                },
-              ),
-            ),
-          if (_labels.tags.isNotEmpty || _tags.isNotEmpty)
-            SizedBox(
-              width: wide ? 220 : 160,
-              child: SearchMultiPickerField<String>(
-                key: const Key('jobs-tag-filter'),
-                values: _tags,
-                label: 'Tags',
-                hint: 'Any tag',
-                options: [
-                  for (final t in {..._labels.tags, ..._tags})
-                    SearchOption(value: t, label: t),
-                ],
-                onChanged: (picked) {
-                  setState(() => _tags = picked);
-                  _load();
-                },
-              ),
-            ),
           _window(wide: wide),
+          OutlinedButton.icon(
+            key: const Key('jobs-filters'),
+            onPressed: () => _openFilters(me),
+            icon: const Icon(Icons.tune, size: 18),
+            label: Text(n == 0 ? 'Filters' : 'Filters · $n'),
+          ),
+          // No `onImported`: jobs are export-only.
+          DataTransfer(
+            api: widget.api,
+            session: widget.session,
+            resource: 'jobs',
+          ),
+          // Desktop review 2026-11-13, D3: header right, as every module.
+          add,
+        ],
+      ),
+    );
+  }
+
+  static bool _phone(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 600;
+
+  /// The money states the tiles do not carry.
+  static const _panelMoney = {'unpaid', 'partial', 'credit'};
+
+  int get _activeCount =>
+      (_status == null ? 0 : 1) +
+      (_money == null ? 0 : 1) +
+      (_where == null ? 0 : 1) +
+      (_roleId == null ? 0 : 1) +
+      _types.length +
+      _tags.length;
+
+  void _set(VoidCallback change) {
+    setState(change);
+    _load();
+  }
+
+  /// Unpaid, Partly paid, Credit, Where, Role, Type and Tags, beside the list.
+  /// Each choice applies at once; the list behind is already the answer.
+  Future<void> _openFilters(Me me) => showSidePanel<void>(
+    context,
+    builder: (_) => StatefulBuilder(
+      builder: (context, setPanel) {
+        void apply(VoidCallback change) {
+          _set(change);
+          setPanel(() {});
+        }
+
+        final franchises = me.franchisesInView;
+        final theme = Theme.of(context);
+        Widget heading(String t) => Padding(
+          padding: const EdgeInsets.only(top: 16, bottom: 6),
+          child: Text(
+            t.toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.6,
+            ),
+          ),
+        );
+
+        return SidePanel(
+          title: 'Filters',
+          actions: [
+            TextButton(
+              onPressed: _activeCount == 0 ? null : () => apply(_clearAll),
+              child: const Text('Clear all'),
+            ),
+            FilledButton(
+              key: const Key('jobs-filters-done'),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Done'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_phone(this.context)) ...[
+                heading('When'),
+                FilterPills<String>(
+                  key: const Key('jobs-window'),
+                  padding: EdgeInsets.zero,
+                  selected: _when,
+                  onSelected: (value) => apply(() => _when = value),
+                  items: const [
+                    FilterPill('upcoming', 'Upcoming'),
+                    FilterPill('past', 'Past'),
+                    FilterPill('all', 'All'),
+                  ],
+                ),
+              ],
+              if (_seesMoney) ...[
+                heading('Money'),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final (value, label, tone) in moneyStates)
+                      if (_panelMoney.contains(value))
+                        ChoiceChip(
+                          key: ValueKey('money-chip-$value'),
+                          avatar: tone == null ? null : ToneDot(tone),
+                          showCheckmark: false,
+                          selected: _money == value,
+                          label: Text(
+                            _moneyCounts[value] == null
+                                ? label
+                                : '$label  ${formatCount(_moneyCounts[value]!)}',
+                          ),
+                          onSelected: (on) =>
+                              apply(() => _money = on ? value : null),
+                        ),
+                  ],
+                ),
+              ],
+              // One franchise with no areas is no choice.
+              if (franchises.length > 1 || _areas.isNotEmpty) ...[
+                heading('Where'),
+                SearchPickerField<String?>(
+                  key: const Key('jobs-where'),
+                  value: _where,
+                  label: 'Where',
+                  options: _whereOptions(me),
+                  onChanged: (value) => apply(() => _where = value),
+                ),
+              ],
+              if (_roles.isNotEmpty) ...[
+                heading('Role'),
+                SearchPickerField<String?>(
+                  value: _roleId,
+                  label: 'Role',
+                  options: [
+                    const SearchOption<String?>(value: null, label: 'Any role'),
+                    for (final role in _roles.entries)
+                      SearchOption<String?>(value: role.key, label: role.value),
+                  ],
+                  onChanged: (value) => apply(() => _roleId = value),
+                ),
+              ],
+              if (_labels.jobTypes.isNotEmpty || _types.isNotEmpty) ...[
+                heading('Type'),
+                SearchMultiPickerField<String>(
+                  key: const Key('jobs-type-filter'),
+                  values: _types,
+                  label: 'Type',
+                  hint: 'Any type',
+                  options: [
+                    for (final t in {..._labels.jobTypes, ..._types})
+                      SearchOption(value: t, label: t),
+                  ],
+                  onChanged: (picked) => apply(() => _types = picked),
+                ),
+              ],
+              if (_labels.tags.isNotEmpty || _tags.isNotEmpty) ...[
+                heading('Tags'),
+                SearchMultiPickerField<String>(
+                  key: const Key('jobs-tag-filter'),
+                  values: _tags,
+                  label: 'Tags',
+                  hint: 'Any tag',
+                  options: [
+                    for (final t in {..._labels.tags, ..._tags})
+                      SearchOption(value: t, label: t),
+                  ],
+                  onChanged: (picked) => apply(() => _tags = picked),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    ),
+  );
+
+  void _clearAll() {
+    _status = null;
+    _money = null;
+    _where = null;
+    _roleId = null;
+    _types = {};
+    _tags = {};
+  }
+
+  /// What is on, each removable, and Clear all.
+  Widget _activeChips(BuildContext context, Me me) {
+    String moneyLabel(String v) => v == 'due'
+        ? 'Due'
+        : moneyStates.where((m) => m.$1 == v).firstOrNull?.$2 ?? v;
+    final chips = <(String, VoidCallback)>[
+      if (_status != null)
+        (
+          'Status: ${_chipStatuses().where((s) => s.value == _status).firstOrNull?.label ?? _status}',
+          () => _status = null,
+        ),
+      if (_money != null) (moneyLabel(_money!), () => _money = null),
+      if (_where != null)
+        (
+          'Where: ${_whereOptions(me).where((o) => o.value == _where).firstOrNull?.label ?? _where}',
+          () => _where = null,
+        ),
+      if (_roleId != null)
+        ('Role: ${_roles[_roleId] ?? _roleId}', () => _roleId = null),
+      for (final t in _types)
+        ('Type: $t', () => _types = {..._types}..remove(t)),
+      for (final t in _tags) ('Tag: $t', () => _tags = {..._tags}..remove(t)),
+    ];
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      key: const Key('jobs-active-filters'),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        10,
+      ),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          for (final (label, remove) in chips)
+            InputChip(label: Text(label), onDeleted: () => _set(remove)),
+          TextButton(
+            onPressed: () => _set(_clearAll),
+            child: const Text('Clear all'),
+          ),
         ],
       ),
     );
@@ -873,30 +1084,25 @@ class _JobsScreenState extends State<JobsScreen> {
     final upcoming = _whenCounts['upcoming'];
     final past = _whenCounts['past'];
 
-    return SegmentedButton<String>(
+    return FilterPills<String>(
       key: const Key('jobs-window'),
-      showSelectedIcon: false,
-      segments: [
-        ButtonSegment(
-          value: 'upcoming',
-          label: Text(label('Upcoming', upcoming)),
-        ),
-        ButtonSegment(value: 'past', label: Text(label('Past', past))),
-        ButtonSegment(
-          value: 'all',
-          label: Text(
-            label(
-              'All',
-              upcoming == null || past == null ? null : upcoming + past,
-            ),
+      padding: EdgeInsets.zero,
+      selected: _when,
+      onSelected: (value) {
+        setState(() => _when = value);
+        _load();
+      },
+      items: [
+        FilterPill('upcoming', label('Upcoming', upcoming)),
+        FilterPill('past', label('Past', past)),
+        FilterPill(
+          'all',
+          label(
+            'All',
+            upcoming == null || past == null ? null : upcoming + past,
           ),
         ),
       ],
-      selected: {_when},
-      onSelectionChanged: (chosen) {
-        setState(() => _when = chosen.first);
-        _load();
-      },
     );
   }
 
@@ -932,70 +1138,37 @@ class _JobsScreenState extends State<JobsScreen> {
       );
     }
 
-    final scheme = Theme.of(context).colorScheme;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 4, 24, 24),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
+    return DockedListDetail(
+      list: GroupedList<Map<String, dynamic>>(
+        groups: groups,
+        idOf: _id,
+        tile: _tile,
+        onOpen: _dock,
+        selectedId: _openId,
+        footer: footer,
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 380,
-            child: GroupedList<Map<String, dynamic>>(
-              groups: groups,
-              idOf: _id,
-              tile: _tile,
-              onOpen: _dock,
-              selectedId: _openId,
-              footer: footer,
-            ),
-          ),
-          VerticalDivider(width: 1, color: scheme.outlineVariant),
-          Expanded(
-            child: JobDetailPanel(
-              // A new job is a new panel: its fields, its load, its dirt.
-              key: ValueKey('open-$_openId'),
-              api: widget.api,
-              session: widget.session,
-              id: _openId!,
-              labels: _labels,
-              onDone: _undock,
-              dirty: _openDirty,
-            ),
-          ),
-        ],
+      detail: JobDetailPanel(
+        // A new job is a new panel: its fields, its load, its dirt.
+        key: ValueKey('open-$_openId'),
+        api: widget.api,
+        session: widget.session,
+        id: _openId!,
+        labels: _labels,
+        onDone: _undock,
+        dirty: _openDirty,
       ),
     );
   }
 
   Widget _loadMore() => Padding(
     padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_pageError != null) ...[
-            ErrorNote(_pageError!),
-            const SizedBox(height: 8),
-          ],
-          TextButton(
-            onPressed: _fetching ? null : () => _load(page: _page + 1),
-            child: Text(
-              _fetching
-                  ? 'Loading…'
-                  : _pageError != null
-                  ? 'Try again'
-                  : 'Load more (${formatCount(_total - _jobs.length)} left)',
-            ),
-          ),
-        ],
-      ),
+    child: LoadMore(
+      shown: _jobs.length,
+      total: _total,
+      busy: _fetching,
+      error: _pageError,
+      onMore: () => _load(page: _page + 1),
+      groupDigits: true,
     ),
   );
 
@@ -1017,6 +1190,10 @@ class _JobsScreenState extends State<JobsScreen> {
               const SizedBox(width: 6),
               Flexible(child: JobTypeLabel(jobType(job)!)),
             ],
+            if (_unreadMark(job) case final mark?) ...[
+              const SizedBox(width: 10),
+              mark,
+            ],
           ],
         ),
       ),
@@ -1037,10 +1214,16 @@ class _JobsScreenState extends State<JobsScreen> {
             style: TextStyle(color: muted),
           ),
         ),
-      TableColumn('Title', flex: 3, cell: (_, job) => _titleCell(job)),
+      TableColumn(
+        'Title',
+        flex: 3,
+        minWidth: 200,
+        cell: (_, job) => _titleCell(job),
+      ),
       TableColumn(
         'Customer',
         flex: 3,
+        minWidth: 160,
         cell: (_, job) => Text('${_customer(job)['name'] ?? ''}'),
       ),
       // Which company, only when looking at the whole organization (Jose,
@@ -1049,6 +1232,7 @@ class _JobsScreenState extends State<JobsScreen> {
         TableColumn(
           'Company',
           flex: 2,
+          minWidth: 130,
           cell: (_, job) => Text(
             '${(job['company'] as Map?)?['name'] ?? '—'}',
             overflow: TextOverflow.ellipsis,
@@ -1058,8 +1242,20 @@ class _JobsScreenState extends State<JobsScreen> {
       TableColumn(
         'Where',
         flex: 3,
+        minWidth: 180,
         cell: (_, job) => WhereLabel(job, placeable: _placeable(job)),
       ),
+      // Who booked it (Trey Brannan, 2026-11-12), when a loaded job says.
+      if (_jobs.any((job) => job['booked_by'] != null))
+        TableColumn(
+          'Booked by',
+          flex: 2,
+          minWidth: 130,
+          cell: (_, job) => Text(
+            '${job['booked_by'] ?? '—'}',
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       // The time alone: the heading above already says which day.
       TableColumn('Time', width: 88, cell: (_, job) => Text(_time(job) ?? '—')),
       TableColumn(
@@ -1075,9 +1271,10 @@ class _JobsScreenState extends State<JobsScreen> {
         TableColumn(
           'Tags',
           flex: 3,
+          minWidth: 140,
           cell: (_, job) => Align(
             alignment: AlignmentDirectional.centerStart,
-            child: JobTagsSummary(jobTags(job)),
+            child: JobTagsSummary(jobTags(job), colours: jobTagColours(job)),
           ),
         ),
       // Only with the Financials toggle (Jose, 2026-09-29). Without it the
@@ -1087,7 +1284,9 @@ class _JobsScreenState extends State<JobsScreen> {
       // Only when a loaded job has some, as the Workiz column: two empty
       // columns were squeezing Title and Where (UI review, 2026-10-08).
       if (_seesMoney &&
-          _jobs.any((job) => job['money'] != null || job['amount'] != null)) ...[
+          _jobs.any(
+            (job) => job['money'] != null || job['amount'] != null,
+          )) ...[
         TableColumn(
           'Money',
           width: 120,
@@ -1132,6 +1331,24 @@ class _JobsScreenState extends State<JobsScreen> {
     );
   }
 
+  /// Notes somebody else wrote since this person last opened the job's notes
+  /// (monday port, 2026-11-09); null when there are none.
+  Widget? _unreadMark(Map<String, dynamic> job) {
+    if ((job['unread_notes'] as num? ?? 0) <= 0) return null;
+    return Tooltip(
+      message: 'New notes',
+      child: unreadNotesBadge(
+        Icon(
+          Icons.sticky_note_2_outlined,
+          size: 16,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        job['unread_notes'],
+        key: ValueKey('job-unread-${job['id']}'),
+      ),
+    );
+  }
+
   Widget _tile(BuildContext context, Map<String, dynamic> job) {
     final role = (job['assigned_role'] as Map?)?['name'] as String?;
 
@@ -1151,17 +1368,98 @@ class _JobsScreenState extends State<JobsScreen> {
         _statusLabel(job),
         tone: toneForJobStatus('${job['status'] ?? ''}'),
       ),
-      // Phone 4: the type, then the first tag and "+N".
-      footer: jobType(job) == null && jobTags(job).isEmpty
-          ? null
-          : Row(
+      // Phone 4: the type, then the first tag and "+N"; then Call and Go
+      // (design 207 J1, after Workiz).
+      footer: _withQuickActions(
+        context,
+        job,
+        jobType(job) == null &&
+                jobTags(job).isEmpty &&
+                _unreadMark(job) == null
+            ? null
+            : Row(
               children: [
+                if (_unreadMark(job) case final mark?) ...[
+                  mark,
+                  const SizedBox(width: 10),
+                ],
                 if (jobType(job) != null)
                   Flexible(child: JobTypeLabel(jobType(job)!)),
                 if (jobTags(job).isNotEmpty)
-                  Flexible(child: JobTagsSummary(jobTags(job), shown: 1)),
+                  Flexible(
+                    child: JobTagsSummary(
+                      jobTags(job),
+                      shown: 1,
+                      colours: jobTagColours(job),
+                    ),
+                  ),
               ],
             ),
+      ),
+    );
+  }
+
+  /// On a phone, Call (the app's own line, as the customer panel's Call) and
+  /// Go (directions) under the job. No Text: the app has no compose-by-number
+  /// yet, and the device's SMS would send from the technician's own number.
+  Widget? _withQuickActions(
+    BuildContext context,
+    Map<String, dynamic> job,
+    Widget? footer,
+  ) {
+    if (!_phone(context)) return footer;
+    final phone = _customer(job)['phone'] as String?;
+    final address = job['address'] as String?;
+    final canCall =
+        phone != null &&
+        phone.isNotEmpty &&
+        widget.session.me!.can('phone.phone.view');
+    final canGo = address != null && address.isNotEmpty;
+    if (!canCall && !canGo) return footer;
+    final actions = Row(
+      children: [
+        if (canCall)
+          Expanded(
+            child: OutlinedButton.icon(
+              key: ValueKey('job-call-${job['id']}'),
+              onPressed: () => showSidePanel<void>(
+                context,
+                builder: (_) => SidePanel(
+                  title: 'Call',
+                  subtitle: phone,
+                  scrollable: false,
+                  child: CallTab(
+                    api: widget.api,
+                    session: widget.session,
+                    initialNumber: phone,
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.call_outlined, size: 18),
+              label: const Text('Call'),
+            ),
+          ),
+        if (canCall && canGo) const SizedBox(width: 8),
+        if (canGo)
+          Expanded(
+            child: OutlinedButton.icon(
+              key: ValueKey('job-go-${job['id']}'),
+              onPressed: () => launchUrl(
+                Uri.https('www.google.com', '/maps/dir/', {
+                  'api': '1',
+                  'destination': address,
+                }),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(Icons.directions_outlined, size: 18),
+              label: const Text('Go'),
+            ),
+          ),
+      ],
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [?footer, if (footer != null) const SizedBox(height: 6), actions],
     );
   }
 
@@ -1190,6 +1488,19 @@ class _JobsScreenState extends State<JobsScreen> {
     return wall == null
         ? null
         : widget.session.me!.display.formatTime(wall.hour, wall.minute);
+  }
+
+  /// Opens the job a [DeepLink] names: beside the list when there is room
+  /// for it, over the list on a phone — the same two ways a tap opens one.
+  void _takeLink() {
+    if (!mounted || DeepLinks.pending.value?.module != 'jobs') return;
+    final link = DeepLinks.take('jobs')!;
+    final row = <String, dynamic>{'id': link.id};
+    if (MediaQuery.sizeOf(context).width >= _tableFrom) {
+      _dock(row);
+    } else {
+      _openOver(row);
+    }
   }
 
   /// Open beside the list. Refused while the open job has unsaved changes:

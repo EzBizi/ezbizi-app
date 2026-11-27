@@ -30,6 +30,10 @@ class InventorySale extends Model implements StatesRetention
     }
 
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'inventory_orders';
     use HasAttachments;
     use HasUuids;
 

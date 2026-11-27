@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Vehicle;
 use App\Support\Inventory\InventoryLocationKind;
 use App\Support\Inventory\InventoryLocationStatus;
+use App\Support\Inventory\InventorySummary;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
@@ -89,7 +90,7 @@ class InventoryLocationsController extends Controller
                     continue;
                 }
                 $priced = true;
-                $value += (int) round(((float) $balance->qty_on_hand) * (int) $cost);
+                $value += InventorySummary::shelfValue((string) $balance->qty_on_hand, (int) $cost);
             }
 
             $out[$locationId] = [

@@ -6,7 +6,7 @@ import 'voice_device.dart';
 /// Browser wrapper around `Twilio.Device` from @twilio/voice-sdk.
 VoiceDevice create() => TwilioVoiceDevice();
 
-class TwilioVoiceDevice implements VoiceDevice {
+class TwilioVoiceDevice implements VoiceDevice, SendsDigits {
   /// A browser hears the call down the socket it is already holding open,
   /// so there is nothing to push to.
   @override
@@ -197,6 +197,9 @@ class TwilioVoiceDevice implements VoiceDevice {
   }
 
   @override
+  void sendDigits(String digits) => _active?.sendDigits(digits.toJS);
+
+  @override
   void acceptIncoming() {
     final pending = _pending;
     if (pending == null) return;
@@ -340,5 +343,6 @@ extension type _JsCall._(JSObject _) implements JSObject {
   external void accept();
   external void reject();
   external void disconnect();
+  external void sendDigits(JSString digits);
   external JSObject get parameters;
 }

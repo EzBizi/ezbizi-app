@@ -44,6 +44,19 @@ class SocialProvidersApiTest extends TestCase
         $this->signedInAs($marketer)->getJson(self::ENDPOINT)->assertOk();
     }
 
+    /** Jose 11-27: the Monday tile shows while Monday is on, and goes when it is switched off. */
+    public function test_the_monday_tile_follows_the_monday_switch(): void
+    {
+        $t        = $this->provisionTenant('A1-Group');
+        $marketer = $this->userWithRole($t, 'Marketer', ['marketing.view']);
+        $values   = fn () => array_column($this->signedInAs($marketer)->getJson(self::ENDPOINT.'?include=data_sources')->assertOk()->json('data'), 'value');
+
+        config(['services.monday.enabled' => true]);
+        $this->assertContains('monday', $values());
+        config(['services.monday.enabled' => false]);
+        $this->assertNotContains('monday', $values());
+    }
+
     public function test_integrations_gets_the_data_sources_and_the_composer_does_not(): void
     {
         $t = $this->provisionTenant('A1-Group');
@@ -149,7 +162,7 @@ class SocialProvidersApiTest extends TestCase
         $row = $this->providerNamed($t, 'pinterest');
 
         $this->assertSame(
-            ['value', 'label', 'usable', 'unusable_because', 'connects_by', 'start_path', 'permission'],
+            ['value', 'label', 'usable', 'unusable_because', 'connects_by', 'start_path', 'permission', 'signed_in_with', 'products'],
             array_keys($row),
         );
         $this->assertSame('sign_in', $row['connects_by']);

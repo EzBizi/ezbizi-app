@@ -266,6 +266,37 @@ void main() {
     expect(calls, contains('DELETE /api/v1/email/mailboxes/mb-1/people/u-ana'));
   });
 
+  testWidgets('anybody on staff can be picked; the note says when the grant '
+      'is what lets them in (Jose 11-09)', (tester) async {
+    final calls = <String>[];
+    await _pump(tester, _handler(
+      mailboxes: [_row(id: 'mb-1', address: 'info@a-1chimney.com')],
+      people: const {
+        'people': [],
+        'roles': [],
+        'candidates': [
+          {
+            'id': 'u-lucas',
+            'name': 'Lucas Snyder',
+            'email': 'lucas@a1.test',
+            'note': 'Gets this inbox through this grant: it is outside their branch.',
+          },
+        ],
+      },
+      onRequest: (method, path, body) {
+        if (method == 'POST' && path.contains('/people')) {
+          calls.add('${body?['user_id']}');
+        }
+      },
+    ));
+    await _openSettings(tester);
+
+    await _tap(tester, find.text('Add a person'));
+    expect(find.textContaining('through this grant'), findsOneWidget);
+    await _tap(tester, find.text('Lucas Snyder'));
+    expect(calls, ['u-lucas']);
+  });
+
   // The control: somebody who may not manage the inbox is not shown the
   // section at all, and is not made to fetch it — the server would refuse.
   testWidgets('somebody who cannot manage an inbox is not shown who can open it', (
@@ -1065,6 +1096,108 @@ void main() {
     expect(find.text('Not available here'), findsNothing);
   });
 
+  testWidgets('adding an inbox asks who gets access, filled in from its '
+      'domain siblings (Jose 11-12)', (tester) async {
+    Map<String, dynamic>? posted;
+    await _pump(
+      tester,
+      _handler(
+        imapUsable: true,
+        onRequest: (method, path, body) {
+          if (method == 'POST' && path.endsWith('/email/mailboxes')) {
+            posted = body;
+          }
+        },
+      ),
+    );
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add an inbox'));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Mail service'),
+    );
+    await _tap(tester, find.text('IMAP').last);
+
+    final access = find.byKey(const ValueKey('email-add-access'));
+    expect(access, findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Address'),
+      'office@ct.a-1chimney.com',
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(of: access, matching: find.textContaining('Connecticut')),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'What to call it'),
+      'CT Office',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'imap.example.com').first,
+      'imap.example.com',
+    );
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add the address'));
+
+    expect(posted?['scope_type'], 'franchise');
+    expect(posted?['scope_id'], 'fr-1');
+  });
+
+  testWidgets('the card says Receive and Send, pass or fail, with the reason '
+      '(Jose 11-12)', (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: [
+          _row(
+            id: 'mb-1',
+            address: 'info@a-1chimney.com',
+            lastReachedAt: _agoIso(const Duration(minutes: 3)),
+            extra: {
+              'send_checked_at': _agoIso(const Duration(hours: 1)),
+              'send_problem': 'Connected without permission to send.',
+            },
+          ),
+        ],
+      ),
+    );
+
+    await _openSettings(tester);
+
+    expect(find.text('Receive ✓'), findsOneWidget);
+    expect(
+      find.text('Send ✗ Connected without permission to send.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a @gmail.com address fills the Gmail servers, so it is the '
+      'address and an app password (Jose, 11-05: like A1 Tools)', (tester) async {
+    await _pump(tester, _handler(imapUsable: true));
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add an inbox'));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Mail service'),
+    );
+    await _tap(tester, find.text('IMAP').last);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Address'),
+      'acesample@gmail.com',
+    );
+    await tester.pump();
+
+    expect(find.widgetWithText(TextFormField, 'imap.gmail.com'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'smtp.gmail.com'), findsOneWidget);
+  });
+
   // ── connecting by signing in ───────────────────────────────────
 
   /// The pair to "says what is missing instead of offering a button". Same
@@ -1484,7 +1617,7 @@ void main() {
             'data': {
               'state': 'refused',
               'message':
-                  'That sign-in was for jose.personal@gmail.com, but this '
+                  'That sign-in was for jane.sample@gmail.com, but this '
                   'inbox is info@a-1chimney.com, so nothing has been connected '
                   'and the permission has already been handed back to Google. '
                   'If you have more than one Google account, sign out of the '
@@ -1507,7 +1640,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(SidePanel),
-        matching: find.textContaining('jose.personal@gmail.com'),
+        matching: find.textContaining('jane.sample@gmail.com'),
       ),
       findsOneWidget,
       reason:
@@ -3280,6 +3413,15 @@ MockClientHandler _handler({
 
     if (path.endsWith('/connect')) {
       return _json({'data': rows.first});
+    }
+
+    if (path.endsWith('/email/mailboxes/suggest-scope')) {
+      // office@ct.* has a sibling filed under the Connecticut branch.
+      return _json({
+        'data': request.url.query.contains('%40ct.')
+            ? {'scope_type': 'franchise', 'scope_id': 'fr-1'}
+            : null,
+      });
     }
 
     if (path.endsWith('/email/mailboxes')) {

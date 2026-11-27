@@ -3,7 +3,7 @@ import '../../core/timestamps.dart';
 import 'financial_cells.dart';
 
 /// `$3,880.00` for 388000 cents, the way Financials writes money.
-String invoiceMoney(int cents) {
+String invoiceMoney(num cents) {
   final shown = formatCell(const {
     'type': 'currency',
     'options': {},
@@ -44,10 +44,6 @@ String invoiceDay(
   final at = iso is String ? DateTime.tryParse(iso) : null;
   return at == null ? fallback : formats.formatDate(at);
 }
-
-/// `2026-10-01` for a day, the spelling the API takes.
-String isoDay(DateTime d) =>
-    '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 /// The width under which Invoices draws its phone layout (option 4).
 const invoicesPhoneWidth = 600.0;

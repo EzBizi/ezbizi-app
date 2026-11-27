@@ -58,8 +58,23 @@ void main() {
       lessThan(tester.getTopLeft(find.text('Chimney sweep basics')).dy),
     );
     expect(find.text('lapsed 2026-03-12'), findsOneWidget);
-    expect(find.text('92% · runs out 2027-06-04'), findsOneWidget);
-    expect(find.text('completed 2026-08-01'), findsOneWidget);
+    // Design 190: score, completed and retake-by are their own columns.
+    for (final heading in [
+      'Course',
+      'Status',
+      'Score',
+      'Completed',
+      'Retake by',
+    ]) {
+      expect(find.text(heading), findsOneWidget);
+    }
+    expect(find.text('92%'), findsOneWidget);
+    expect(find.text('2027-06-04'), findsOneWidget);
+    expect(find.text('2026-08-01'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('2027-06-04')).dx,
+      tester.getTopLeft(find.text('lapsed 2026-03-12')).dx,
+    );
 
     // Never that word for a state: it is the dashboard's, for a different
     // table. The one place it appears is the footnote naming that panel.
@@ -214,80 +229,80 @@ Future<http.Response> _recordsHandler(http.Request request) async =>
     );
 
 const _records = [
-      {
-        'type': 'test',
-        'id': 't-1',
-        'title': 'Chimney sweep basics',
-        'assigned': true,
-        'score': 92,
-        'passed': true,
-        'expires_on': '2027-06-04',
-        'due_for_retaking': false,
-      },
-      {
-        'type': 'guide',
-        'id': 'g-1',
-        'title': 'Gas appliance awareness',
-        'assigned': true,
-        'last_screen': null,
-        'screen_count': 6,
-        'completed_at': null,
-      },
-      {
-        'type': 'test',
-        'id': 't-2',
-        'title': 'Ladder safety',
-        'assigned': true,
-        'score': 88,
-        'passed': true,
-        'expires_on': '2026-03-12',
-        'due_for_retaking': true,
-      },
-      {
-        'type': 'guide',
-        'id': 'g-2',
-        'title': 'Customer handling',
-        'assigned': true,
-        'last_screen': 3,
-        'screen_count': 9,
-        'completed_at': null,
-      },
-      {
-        'type': 'guide',
-        'id': 'g-3',
-        'title': 'Fire safety awareness',
-        'assigned': true,
-        'last_screen': 5,
-        'screen_count': 5,
-        'completed_at': '2026-08-01T14:00:00+00:00',
-      },
-      {
-        'type': 'test',
-        'id': 't-3',
-        'title': 'Fall arrest',
-        'assigned': true,
-        'score': null,
-        'passed': null,
-        'expires_on': null,
-        'due_for_retaking': false,
-      },
-      {
-        'type': 'guide',
-        'id': 'g-4',
-        'title': 'Flue liners',
-        'assigned': true,
-        'last_screen': 0,
-        'screen_count': 6,
-        'completed_at': null,
-      },
-      {
-        'type': 'test',
-        'id': 't-4',
-        'title': 'Flue sizing',
-        'assigned': true,
-        'score': 40,
-        'passed': false,
-        'expires_on': null,
-        'due_for_retaking': false,
-      },
+  {
+    'type': 'test',
+    'id': 't-1',
+    'title': 'Chimney sweep basics',
+    'assigned': true,
+    'score': 92,
+    'passed': true,
+    'expires_on': '2027-06-04',
+    'due_for_retaking': false,
+  },
+  {
+    'type': 'guide',
+    'id': 'g-1',
+    'title': 'Gas appliance awareness',
+    'assigned': true,
+    'last_screen': null,
+    'screen_count': 6,
+    'completed_at': null,
+  },
+  {
+    'type': 'test',
+    'id': 't-2',
+    'title': 'Ladder safety',
+    'assigned': true,
+    'score': 88,
+    'passed': true,
+    'expires_on': '2026-03-12',
+    'due_for_retaking': true,
+  },
+  {
+    'type': 'guide',
+    'id': 'g-2',
+    'title': 'Customer handling',
+    'assigned': true,
+    'last_screen': 3,
+    'screen_count': 9,
+    'completed_at': null,
+  },
+  {
+    'type': 'guide',
+    'id': 'g-3',
+    'title': 'Fire safety awareness',
+    'assigned': true,
+    'last_screen': 5,
+    'screen_count': 5,
+    'completed_at': '2026-08-01T14:00:00+00:00',
+  },
+  {
+    'type': 'test',
+    'id': 't-3',
+    'title': 'Fall arrest',
+    'assigned': true,
+    'score': null,
+    'passed': null,
+    'expires_on': null,
+    'due_for_retaking': false,
+  },
+  {
+    'type': 'guide',
+    'id': 'g-4',
+    'title': 'Flue liners',
+    'assigned': true,
+    'last_screen': 0,
+    'screen_count': 6,
+    'completed_at': null,
+  },
+  {
+    'type': 'test',
+    'id': 't-4',
+    'title': 'Flue sizing',
+    'assigned': true,
+    'score': 40,
+    'passed': false,
+    'expires_on': null,
+    'due_for_retaking': false,
+  },
 ];

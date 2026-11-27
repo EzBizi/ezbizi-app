@@ -12,7 +12,7 @@ bool triggerCarriesChanges(String? triggerKey) =>
     triggerKey != null &&
     (triggerKey.endsWith('_changed') || triggerKey.endsWith('updated'));
 
-const _changeOperators = {'changed', 'changed_to', 'changed_from'};
+const _changeOperators = {'changed', 'changed_to', 'changed_from', 'tag_added'};
 
 const _byType = <String, List<String>>{
   'text': [
@@ -22,9 +22,13 @@ const _byType = <String, List<String>>{
     'not_in',
     'contains',
     'not_contains',
+    'has_tag',
+    'not_has_tag',
+    'tag_added',
     'is_empty',
     'is_not_empty',
   ],
+  'list': ['has_tag', 'not_has_tag', 'tag_added', 'is_empty', 'is_not_empty'],
   'enum': ['eq', 'neq', 'in', 'not_in', 'is_empty', 'is_not_empty'],
   'id': ['eq', 'neq', 'in', 'not_in', 'is_empty', 'is_not_empty'],
   'number': ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'is_empty', 'is_not_empty'],
@@ -84,6 +88,9 @@ String operatorExample(
     'changed' => '$label changed, to anything',
     'changed_to' => '$label changed to $v',
     'changed_from' => '$label changed from $v to something else',
+    'has_tag' => '$label include “$v”',
+    'not_has_tag' => '$label do not include “$v”',
+    'tag_added' => '“$v” was added to $lower',
     _ => '$label $op $v',
   };
 }

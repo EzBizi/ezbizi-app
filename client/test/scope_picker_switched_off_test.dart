@@ -32,6 +32,30 @@ void main() {
     expect(session.me!.companies, hasLength(3));
   });
 
+  /// Jose, 2026-11-10: "switched off companies are switched off and thus
+  /// should not show up anywhere on the app". Every picker reads the view.
+  testWidgets('the view offers no switched-off company, sub or place', (
+    tester,
+  ) async {
+    final me = (await _pump(tester, canView: true)).me!;
+
+    expect(me.companiesInView.map((c) => c.id), ['on']);
+    expect(me.franchisesInView.map((f) => f.id), ['f1']);
+    // Names of records already filed there still resolve from reach.
+    expect(me.companies.map((c) => c.id), containsAll(['off', 'off-sub']));
+    expect(me.franchises, hasLength(4));
+    // A record already on a switched-off place keeps it in its own picker.
+    expect(me.franchisesKeeping(me.franchisesInView, 'f4').map((f) => f.id), [
+      'f1',
+      'f4',
+    ]);
+    expect(
+      me.companiesKeeping(me.companiesInView, 'off-sub').map((c) => c.id),
+      ['on', 'off-sub'],
+    );
+    expect(me.companiesKeeping(me.companiesInView, null), hasLength(1));
+  });
+
   /// Jose, 2026-10-16: "people who are assigned to a-1chimney are seeing
   /// Triplex Group on the picker, they shouldn't, access is only downwards".
   testWidgets(

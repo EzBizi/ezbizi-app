@@ -133,6 +133,12 @@ class MessageBody extends StatelessWidget {
     );
 
     if (span.link == null) return [TextSpan(text: span.text, style: style)];
+    // The site, not the whole address: tracking URLs ran to ten lines and
+    // buried the message (Jose, 11-04). The host is what tells a lookalike.
+    final host = Uri.tryParse(span.link!)?.host.replaceFirst(RegExp(r'^www\.'), '');
+    final site = host == null || host.isEmpty ? span.link! : host;
+    // A link around nothing (a spacer or a picture) has no words to explain.
+    if (span.text.trim().isEmpty) return const [];
 
     final scheme = Theme.of(context).colorScheme;
 
@@ -146,7 +152,7 @@ class MessageBody extends StatelessWidget {
         ),
       ),
       TextSpan(
-        text: ' ⟨${span.link}⟩',
+        text: ' ⟨$site⟩',
         style: TextStyle(
           fontSize: 13,
           color: Theme.of(context).textTheme.bodyMedium?.color,

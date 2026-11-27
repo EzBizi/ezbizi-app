@@ -12,10 +12,12 @@ use App\Models\HrNote;
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
 use App\Models\PayRate;
+use App\Models\PersonCertification;
 use App\Models\PtoUsed;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Auth\PasswordResets;
+use App\Services\Hr\OnboardingForm;
 use App\Support\Access\AdministratorFloor;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
@@ -136,30 +138,45 @@ class HrPeopleController extends Controller
                 'assignments.assignedFranchise:id,name'])
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->when($request->boolean('active_only'), fn ($q) => $q->where('is_active', true))
+            // Removed people only when asked for (removed=1); never mixed into the rest.
+            ->removed($request->boolean('removed'))
+            // The Active / Inactive chips (Jose, 2026-11-10: "it doesn't load the full list").
+            ->when(in_array($request->query('status'), ['active', 'inactive'], true),
+                fn ($q) => $q->where('is_active', $request->query('status') === 'active'))
             // One role (Jose, 2026-10-01: "on record i should be able to
             // filter by role too"). Here, not on the screen: the list pages.
             ->when($request->query('role_id'), fn ($q, $role) => $q->where('role_id', $role))
+            // The two gaps Eve fills by hand (Jose, 2026-11-03): no start date
+            // (no PTO balance), no contract (payroll type Unknown).
+            ->when($request->query('missing') === 'start_date', fn ($q) => $q->whereNotIn('id',
+                EmploymentEvent::query()->where('kind', EmploymentEvent::STARTED)->select('user_id')))
+            ->when($request->query('missing') === 'contract', fn ($q) => $q->whereNotIn('id',
+                Onboarding::query()->where('status', '!=', Onboarding::CANCELLED)->whereNotNull('user_id')->select('user_id')))
             // One company, with its sub-companies and their franchises, or one
             // franchise (Jose, 2026-10-01: "adding division by company too
             // aside from role"). Somebody placed only at organization level
             // matches neither.
-            ->when($request->query('company_id'), function ($q, $companyId) {
+            ->when($request->query('company_id'), function ($q, $companyId) use ($actor) {
                 $company = Company::query()->find($companyId);
                 $companies = $company?->subtreeCompanyIds() ?? [];
                 $franchises = Franchise::query()->whereIn('company_id', $companies)->pluck('id')->all();
-                $q->whereHas('assignments', fn ($a) => $a->whereIn('assigned_company_id', $companies)
-                    ->orWhereIn('assigned_franchise_id', $franchises));
+                // You are always in your own list, whatever place is picked
+                // (Jose, 2026-11-25); search and the other filters still apply.
+                $q->where(fn ($in) => $in->whereKey($actor->getKey())
+                    ->orWhereHas('assignments', fn ($a) => $a->whereIn('assigned_company_id', $companies)
+                        ->orWhereIn('assigned_franchise_id', $franchises)));
             })
-            ->when($request->query('franchise_id'), fn ($q, $franchiseId) => $q->whereHas(
-                'assignments', fn ($a) => $a->where('assigned_franchise_id', $franchiseId),
-            ))
+            ->when($request->query('franchise_id'), fn ($q, $franchiseId) => $q->where(fn ($in) => $in
+                ->whereKey($actor->getKey())
+                ->orWhereHas('assignments', fn ($a) => $a->where('assigned_franchise_id', $franchiseId))))
             ->when($request->query('search'), function ($q, $term) {
                 $q->where(function (Builder $inner) use ($term) {
                     $inner->where('name', 'like', "%{$term}%")
                         ->orWhere('email', 'like', "%{$term}%");
                 });
             })
-            ->orderBy('name')
+            // Active first, then inactive, each A-Z (Jose, 2026-11-09).
+            ->orderByDesc('is_active')->orderBy('name')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
         // Who on this page has a start date: one query for the page rather
@@ -353,7 +370,8 @@ class HrPeopleController extends Controller
             'assignments.assignedFranchise:id,name'])
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->when($request->query('role_id'), fn ($q, $role) => $q->where('role_id', $role))
-            ->orderBy('name')->get();
+            ->removed(false)
+            ->orderByDesc('is_active')->orderBy('name')->get();
         $ids = $people->map->getKey()->all();
 
         $rates = $seesPay ? PayRate::query()->whereIn('user_id', $ids)->where('effective_on', '<=', $today)
@@ -436,13 +454,14 @@ class HrPeopleController extends Controller
             fputcsv($out, ['Employee', 'Type', 'Company', 'Branch', 'Role', 'Contract', 'Start date', 'Termination date', 'W-4 signed']
                 + ($seesPay ? [9 => 'Salary', 10 => 'Per'] : []));
             foreach ($rows as $r) {
-                fputcsv($out, [
+                // Names are typed by employees: defused like every export (full-code audit, 2026-11-27).
+                fputcsv($out, array_map([\App\Support\Data\Exporter::class, 'cell'], [
                     $r['name'], $r['employment_type'] ?? '',
                     implode('; ', array_unique(array_filter(array_column($r['assigned'], 'company')))),
                     implode('; ', array_unique(array_filter(array_column($r['assigned'], 'branch')))),
                     $r['role']['name'] ?? '', $r['contract']['name'] ?? '', $r['started_on'] ?? '', $r['terminated_on'] ?? '',
                     $r['w2']['signed'] ? 'Yes' : 'No',
-                ] + ($seesPay ? [9 => $r['salary']['amount'] ?? '', 10 => $r['salary']['period'] ?? ''] : []));
+                ] + ($seesPay ? [9 => $r['salary']['amount'] ?? '', 10 => $r['salary']['period'] ?? ''] : [])));
             }
             rewind($out);
             $csv = stream_get_contents($out);
@@ -477,14 +496,16 @@ class HrPeopleController extends Controller
             'reason' => ['nullable', 'string', 'max:500'],
         ]);
         $dates = array_column($input['days'], 'date');
-        $taken = PtoUsed::query()->where('user_id', $user->getKey())->whereNull('set_to')
-            ->whereIn('used_on', $dates)->pluck('used_on')->map->toDateString()->all();
-        if ($taken !== []) {
-            return response()->json(['message' => 'Already recorded as a day off: '.implode(', ', $taken)
-                .'. Nothing was added.', 'errors' => ['days' => $taken]], 422);
-        }
 
-        DB::transaction(function () use ($user, $request, $input) {
+        // Checked under a lock on the person, so a double submit cannot add
+        // the same days twice (full-code audit, 2026-11-27).
+        $taken = DB::transaction(function () use ($user, $request, $input, $dates) {
+            User::query()->whereKey($user->getKey())->lockForUpdate()->first();
+            $taken = PtoUsed::query()->where('user_id', $user->getKey())->whereNull('set_to')
+                ->whereIn('used_on', $dates)->pluck('used_on')->map->toDateString()->all();
+            if ($taken !== []) {
+                return $taken;
+            }
             foreach ($input['days'] as $day) {
                 PtoUsed::create([
                     'organization_id' => $user->organization_id, 'user_id' => $user->getKey(),
@@ -496,7 +517,13 @@ class HrPeopleController extends Controller
             $after = app(PtoPolicy::class)->for($user);
             $this->events->emit('user.pto_used_changed', $user, ['person' => ['id' => $user->getKey(), 'name' => $user->name],
                 'total' => $after['total'], 'used' => $after['used'], 'left' => $after['left'], 'reason' => $input['reason'] ?? null]);
+
+            return [];
         });
+        if ($taken !== []) {
+            return response()->json(['message' => 'Already recorded as a day off: '.implode(', ', $taken)
+                .'. Nothing was added.', 'errors' => ['days' => $taken]], 422);
+        }
 
         return response()->json(['data' => collect(app(PtoPolicy::class)->for($user))
             ->only(['total', 'used', 'left', 'would_expire'])->all()], 201);
@@ -535,7 +562,15 @@ class HrPeopleController extends Controller
 
         $change = null;
         if ($to !== $from) {
-            DB::transaction(function () use ($user, $request, $input, $from, $to, $before, $policy, &$change) {
+            DB::transaction(function () use ($user, $request, $input, &$from, $to, &$before, $policy, &$change) {
+                // Re-read under a lock on the person: two saves must not both
+                // add the same difference (full-code audit, 2026-11-27).
+                User::query()->whereKey($user->getKey())->lockForUpdate()->first();
+                $before = $policy->for($user);
+                $from = (float) $before['used'];
+                if ($to === $from) {
+                    return;
+                }
                 $change = PtoUsed::create([
                     'organization_id' => $user->organization_id,
                     'user_id' => $user->getKey(),
@@ -645,13 +680,26 @@ class HrPeopleController extends Controller
 
         $actor = $request->user();
 
-        $input = $request->validate([
+        // The stored value or its label, any case ("Prefers not to answer" → prefer_not_to_answer).
+        if (is_string($request->input('gender'))) {
+            $typed = mb_strtolower(trim($request->input('gender')));
+            foreach ((array) app(SettingsResolver::class)->get('hr.gender_options', $user->organization) as $option) {
+                if ($typed === mb_strtolower((string) $option['label'])) {
+                    $typed = (string) $option['value'];
+                }
+            }
+            $request->merge(['gender' => $typed]);
+        }
+
+        $rules = [
             'role_id' => ['sometimes', 'required', 'uuid', Rule::exists('roles', 'id')
                 ->where('organization_id', $this->tenant->idOrFail())],
             'is_active' => ['sometimes', 'required', 'boolean'],
             // The lock-screen exemption (design 2026-09-08 §4). Same
             // authority as the rest of the row: hr.edit within reach.
             'lock_screen_exempt' => ['sometimes', 'required', 'boolean'],
+            // Full or part time (Eric, 2026-11-25); null goes back to "from the schedule".
+            'hours_type' => ['sometimes', 'nullable', Rule::in(['full_time', 'part_time'])],
 
             // Their personal details, 2026-09-24 (Jose: "able to see more
             // information as well as able to edit"). The SAME columns the person
@@ -674,7 +722,9 @@ class HrPeopleController extends Controller
             'state' => ['sometimes', 'nullable', 'string', 'max:64'],
             'postal_code' => ['sometimes', 'nullable', 'string', 'max:20'],
             'country' => ['sometimes', 'nullable', 'string', 'max:100'],
-            'gender' => ['sometimes', 'nullable', 'string', 'max:40'],
+            // A pick from `hr.gender_options` (Jose, 2026-11-06), any case.
+            'gender' => ['sometimes', 'nullable', 'string', Rule::in(array_column(
+                (array) app(SettingsResolver::class)->get('hr.gender_options', $user->organization), 'value'))],
             'date_of_birth' => ['sometimes', 'nullable', 'date', 'before:today'],
 
             // The day they started. Not a `users` column — it is the earliest
@@ -682,16 +732,54 @@ class HrPeopleController extends Controller
             // Until this, nothing could record a start date that had already
             // happened: both writers of that event stamp today.
             'started_on' => ['sometimes', 'required', 'date', 'after:1900-01-01'],
+            // Who they answer to (Jose, 2026-11-03); null clears it.
+            'reports_to_user_id' => ['sometimes', 'nullable', 'uuid',
+                Rule::exists('users', 'id')->where('organization_id', $user->organization_id)],
 
             // Where they work (Mia, 2026-10-02: "assigning andy to A1-Group
             // instead so she has full access"). The invitation's pair, and the
             // same reach rule: only a place the editor reaches themselves.
             'scope_type' => ['sometimes', 'required', Rule::in(ScopeReach::TYPES)],
             'scope_id' => ['required_with:scope_type', 'uuid'],
-        ]);
+        ];
+
+        // A key this endpoint does not know is refused, not dropped: a 200 over an
+        // unchanged record reads as success to a script (desk, 2026-11-23: "name").
+        // `email` stays the one deliberate exception: theirs, ignored here, the rest saved.
+        $unknown = array_diff(array_keys($request->all()), array_keys($rules), ['email']);
+        if ($unknown !== []) {
+            throw ValidationException::withMessages(['fields' => 'Not a field this record takes: '.implode(', ', $unknown)
+                .(in_array('name', $unknown, true) ? '. A name is first_name, middle_name and last_name.' : '.')]);
+        }
+
+        $input = $request->validate($rules);
+
+        // Switching someone off or changing their role needs a role you could
+        // give them yourself: a lower HR editor must not deactivate or demote
+        // an Administrator (full-code audit, 2026-11-27). Other edits keep the
+        // policy's rule; your own role stays yours to lower.
+        foreach (['is_active', 'role_id'] as $field) {
+            if (array_key_exists($field, $input) && ! $actor->is($user) && $user->role !== null
+                && ! $this->catalogue->mayAssignRole($actor, $user->role)) {
+                throw ValidationException::withMessages([$field => 'Only somebody who could give them their role '
+                    .'can switch them off or change their role. An administrator can.']);
+            }
+        }
 
         $startedOn = $input['started_on'] ?? null;
         unset($input['started_on']);
+
+        // Nobody answers to themselves, or to someone who answers to them.
+        if (! empty($input['reports_to_user_id'])) {
+            $seen = [$user->getKey()];
+            for ($at = $input['reports_to_user_id']; $at !== null; $at = User::query()->whereKey($at)->value('reports_to_user_id')) {
+                if (in_array($at, $seen, true)) {
+                    throw ValidationException::withMessages(['reports_to_user_id' => 'That would make a circle: they already answer, '
+                        .'through others, to this person.']);
+                }
+                $seen[] = $at;
+            }
+        }
 
         $place = isset($input['scope_type']) ? [$input['scope_type'], $input['scope_id']] : null;
         unset($input['scope_type'], $input['scope_id']);
@@ -913,7 +1001,8 @@ class HrPeopleController extends Controller
         $this->audit->log('data.record_read', $user);
 
         $user->load('role:id,name', 'assignments.assignedCompany:id,name',
-            'assignments.assignedFranchise:id,name');
+            'assignments.assignedFranchise:id,name,company_id',
+            'assignments.assignedFranchise.company:id,name');
 
         $pto = app(PtoPolicy::class);
         $answer = $pto->for($user);
@@ -924,8 +1013,23 @@ class HrPeopleController extends Controller
             'address' => $user->address,
             ...$user->addressParts(),
             'gender' => $user->gender,
+            // Null: the weekly report infers it from the schedule (30 h+ = full time).
+            'hours_type' => $user->hours_type,
+            'gender_options' => app(SettingsResolver::class)->get('hr.gender_options', $user->organization),
+            // How far ahead a certification is "expiring" (the HR overview's
+            // own setting), so the record's warn tag says the same thing.
+            'certification_warn_days' => (int) app(SettingsResolver::class)->get('hr.alerts.expiring_days', $user->organization),
             'date_of_birth' => $user->date_of_birth?->toDateString(),
             'started_on' => $answer['started_on'],
+            // Only whether it is on file; the photo itself is a reveal on the onboarding.
+            // What their unfinished onboarding still needs (Merav, 2026-11-19),
+            // as labels; empty when none is open or nothing is missing.
+            'onboarding_missing' => ($open = Onboarding::query()->where('user_id', $user->id)
+                ->where('status', Onboarding::IN_PROGRESS)->latest('started_at')->first()) === null
+                ? [] : array_values(app(OnboardingForm::class)->missing($open)),
+            'ssn_card' => OnboardingAnswer::query()->where('field_key', Onboarding::SSN_CARD)
+                ->whereHas('onboarding', fn ($q) => $q->where('user_id', $user->id))->get()
+                ->contains(fn (OnboardingAnswer $a) => ! in_array($a->getAttribute('value'), [null, '', 'N/A'], true)) ? 'on_file' : 'missing',
 
             // The four lists of 2026-09-29. Pay is null — not an empty list —
             // for somebody without `hr.pay.view`: "no rate recorded" and "you
@@ -935,6 +1039,9 @@ class HrPeopleController extends Controller
                 ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
             'notes' => HrNote::query()->with('author:id,name')->where('user_id', $user->id)
                 ->latest()->get()
+                ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
+            'certifications' => PersonCertification::query()->where('user_id', $user->id)
+                ->orderByRaw('expires_on is null')->orderBy('expires_on')->get()
                 ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
             'equipment' => HeldEquipment::query()->where('user_id', $user->id)
                 ->orderByRaw('returned_on is not null')->orderBy('name')->get()
@@ -947,13 +1054,21 @@ class HrPeopleController extends Controller
                     ->orderByDesc('effective_on')->get()
                     ->map(fn ($row) => HrPersonDetailsController::present($row))->all()
                 : null,
+            // Which of those applies today, and the next one dated ahead (a rate
+            // stage, Merav 2026-11-17), as ids into pay_rates.
+            'pay_rate_now' => $actor->hasPermission('hr.pay.view')
+                ? PayRate::rateOn($user->id, now()->toDateString())?->id : null,
+            'pay_rate_next' => $actor->hasPermission('hr.pay.view')
+                ? PayRate::query()->where('user_id', $user->id)->where('basis', 'hourly')
+                    ->whereDate('effective_on', '>', now()->toDateString())->orderBy('effective_on')->value('id')
+                : null,
 
             // Null rather than a zero allowance when the organization has not
             // set paid time off up: "not set up" and "none" read the same as a
             // number and are not the same thing.
             'pto' => $pto->enabledFor($user->organization)
                 ? collect($answer)->only([
-                    'allowance', 'allowance_period', 'eligible_from', 'eligible',
+                    'allowance', 'allowance_period', 'eligible_from', 'usable_from', 'first_days', 'usable', 'eligible',
                     'total', 'used', 'left', 'carried', 'expired', 'resets_on',
                 ])->all()
                 : null,
@@ -1135,6 +1250,10 @@ class HrPeopleController extends Controller
                     'allowance' => $answer['allowance'],
                     'started_on' => $answer['started_on'],
                     'eligible_from' => $answer['eligible_from'],
+                    // The first day they actually have a day to take (Jose, 2026-11-23).
+                    'usable_from' => $answer['usable_from'],
+                    'first_days' => $answer['first_days'],
+                    'usable' => $answer['usable'],
                     'eligible' => $answer['eligible'],
 
                     // Reserved and honest: nothing records a day off yet, so
@@ -1180,6 +1299,8 @@ class HrPeopleController extends Controller
          * is drawn with; HR's `edit` on Records keeps working as it did.
          */
         $actor = $request->user();
+        // Not your own, through this door either (Jose, 2026-11-25), unless you hold own_schedule.
+        abort_if($actor->is($user) && ! $actor->hasPermission('work_hours.own_schedule'), 403, 'Your manager sets your work schedule.');
         if ($actor->hasPermission('work_hours.manage')) {
             app(TimeClock::class)->assertReaches($actor, $user);
         } else {
@@ -1223,6 +1344,66 @@ class HrPeopleController extends Controller
         return $empty + ($started ? 0 : 1) + ($person->work_schedule === null ? 1 : 0);
     }
 
+    /**
+     * POST /api/v1/hr/people/{user}/places — one more place they work (Jose,
+     * 2026-11-06: "assign people to more than 1 company"). Adds beside the
+     * others; reach is already the union of every place (ScopeReach).
+     */
+    public function addPlace(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('update', $user);
+        $actor = $request->user();
+        $input = $request->validate([
+            'scope_type' => ['required', Rule::in(ScopeReach::TYPES)],
+            'scope_id' => ['required', 'uuid'],
+        ]);
+        $this->reach->assertCovers($actor, $input['scope_type'], $input['scope_id']);
+
+        $column = 'assigned_'.$input['scope_type'].'_id';
+        if (! $user->assignments()->where($column, $input['scope_id'])->exists()) {
+            Assignment::create([
+                'organization_id' => $user->organization_id,
+                'user_id' => $user->getKey(),
+                $column => $input['scope_id'],
+            ]);
+            $this->audit->log('user.assignment_added', $user, metadata: [
+                'type' => $input['scope_type'], 'id' => $input['scope_id'],
+            ], actor: $actor);
+        }
+
+        return $this->placesOf($user, $actor);
+    }
+
+    /** DELETE /api/v1/hr/people/{user}/places/{assignment} — never their last one. */
+    public function removePlace(Request $request, User $user, string $assignment): JsonResponse
+    {
+        $this->authorize('update', $user);
+        $actor = $request->user();
+        $row = $user->assignments()->whereKey($assignment)->firstOrFail();
+
+        if (! $this->reach->coversAssignment($actor, $row)) {
+            abort(403, 'That place is outside what you reach.');
+        }
+        if ($user->assignments()->count() === 1) {
+            throw ValidationException::withMessages(['assignment' => 'This is the only place they work. Add another first.']);
+        }
+
+        $row->delete();
+        $this->audit->log('user.assignment_removed', $user, metadata: [
+            'type' => $row->scopeType(), 'id' => $row->scopeId(),
+        ], actor: $actor);
+
+        return $this->placesOf($user, $actor);
+    }
+
+    private function placesOf(User $user, User $actor): JsonResponse
+    {
+        $user->load('role:id,name', 'assignments.assignedCompany:id,name',
+            'assignments.assignedFranchise.company:id,name');
+
+        return response()->json(['data' => $this->present($user, $actor)]);
+    }
+
     private function present(User $person, User $actor): array
     {
         return [
@@ -1231,11 +1412,15 @@ class HrPeopleController extends Controller
             'first_name' => $person->first_name,
             'last_name' => $person->last_name,
             'email' => $person->email,
+            'has_avatar' => $person->avatar_path !== null,
+            // Changes with every new picture, for the client's image cache.
+            'avatar_version' => $person->avatar_path === null ? null : substr(md5($person->avatar_path), 0, 12),
             'is_active' => $person->is_active,
             'role' => [
                 'id' => $person->role_id,
                 'name' => $person->role?->name,
             ],
+            'reports_to_user_id' => $person->reports_to_user_id,
             'assignments' => $person->assignments
                 ->filter(fn (Assignment $a) => $this->reach->coversAssignment($actor, $a))
                 ->map(fn (Assignment $a) => [
@@ -1247,6 +1432,8 @@ class HrPeopleController extends Controller
                         Assignment::SCOPE_COMPANY => $a->assignedCompany?->name,
                         Assignment::SCOPE_FRANCHISE => $a->assignedFranchise?->name,
                     },
+                    // The franchise's company, for a "company › franchise" chip.
+                    'company' => $a->assignedFranchise?->company?->name,
                 ])->values()->all(),
             'joined_at' => $person->created_at?->toIso8601String(),
             'work_schedule' => $person->work_schedule,

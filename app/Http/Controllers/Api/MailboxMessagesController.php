@@ -94,7 +94,7 @@ class MailboxMessagesController extends Controller
         ]);
 
         $reader = $this->readers->for($mailbox);
-        $limit  = (int) ($input['limit'] ?? 25);
+        $limit  = (int) ($input['limit'] ?? 50);
         $search = trim((string) ($input['search'] ?? ''));
         $cursor = $input['cursor'] ?? null;
         $label  = strtoupper((string) ($input['label'] ?? 'INBOX'));
@@ -1024,6 +1024,7 @@ class MailboxMessagesController extends Controller
 
     private function assertMayRead(User $user, Mailbox $mailbox, string $act): void
     {
+        abort_if($this->access->hidden($user, $mailbox), Response::HTTP_NOT_FOUND);
         $refusal = $this->access->readRefusal($user, $mailbox, $act);
 
         abort_if($refusal !== null, Response::HTTP_FORBIDDEN, $refusal);

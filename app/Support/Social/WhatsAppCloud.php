@@ -4,6 +4,7 @@ namespace App\Support\Social;
 
 use App\Models\SocialConnection;
 use App\Models\WhatsAppMessage;
+use App\Support\Reports\ReportSource;
 use App\Models\WhatsAppNumber;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -77,6 +78,26 @@ final class WhatsAppCloud
         return (string) config('services.meta.whatsapp_token');
     }
 
+    /**
+     * Blue ticks and "typing…" on an inbound message while the AI works (Jose,
+     * 2026-11-03: "theres no indicator that its working"). Meta shows it up to
+     * 25 s or until the reply; a failure is logged, never thrown.
+     */
+    public function typing(string $phoneNumberId, string $wamid): void
+    {
+        try {
+            Http::withToken(self::tokenFor($phoneNumberId))->timeout(5)
+                ->post(self::endpoint().'/'.$phoneNumberId.'/messages', [
+                    'messaging_product' => 'whatsapp',
+                    'status' => 'read',
+                    'message_id' => $wamid,
+                    'typing_indicator' => ['type' => 'text'],
+                ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
     public static function endpoint(): string
     {
         return 'https://graph.facebook.com/'
@@ -87,13 +108,26 @@ final class WhatsAppCloud
      * A template, for a message the business starts.
      *
      * @param  array<int, string>  $bodyParameters  fills {{1}}, {{2}} in order
+     * @param  array{id: string, filename: string}|null  $document  a DOCUMENT header's uploaded file
      */
     public function sendTemplate(
         WhatsAppMessage $row,
         string $template,
         string $language = 'en_US',
         array $bodyParameters = [],
+        ?array $document = null,
     ): WhatsAppMessage {
+        $components = [
+            ...($document === null ? [] : [['type' => 'header', 'parameters' => [['type' => 'document', 'document' => $document]]]]),
+            ...($bodyParameters === [] ? [] : [[
+                'type' => 'body',
+                'parameters' => array_map(
+                    fn (string $p) => ['type' => 'text', 'text' => $p],
+                    array_values($bodyParameters),
+                ),
+            ]]),
+        ];
+
         return $this->deliver($row, [
             'messaging_product' => 'whatsapp',
             'to' => $row->counterparty,
@@ -101,13 +135,7 @@ final class WhatsAppCloud
             'template' => [
                 'name' => $template,
                 'language' => ['code' => $language],
-                ...($bodyParameters === [] ? [] : ['components' => [[
-                    'type' => 'body',
-                    'parameters' => array_map(
-                        fn (string $p) => ['type' => 'text', 'text' => $p],
-                        array_values($bodyParameters),
-                    ),
-                ]]]),
+                ...($components === [] ? [] : ['components' => $components]),
             ],
         ]);
     }
@@ -142,6 +170,7 @@ final class WhatsAppCloud
      * @param  string|null  $from  which of our numbers to send from, when the
      *                             organization holds more than one. Required
      *                             in that case: see numberToSendFrom().
+     * @param  array{id: string, filename: string}|null  $document  a DOCUMENT header's uploaded file
      *
      * @throws RuntimeException when the tenant has no number, the recipient is
      *                          not a number we can be sure of, or Meta refuses
@@ -153,6 +182,7 @@ final class WhatsAppCloud
         string $language = 'en_US',
         ?string $from = null,
         ?string $idempotencyKey = null,
+        ?array $document = null,
     ): WhatsAppMessage {
         /*
          * A key already sent (or still owed) answers with that row and sends
@@ -175,7 +205,14 @@ final class WhatsAppCloud
             $row->forceFill(['idempotency_key' => $idempotencyKey])->save();
         }
 
-        return $this->sendTemplate($row, $template, $language, array_map('strval', $parameters));
+        // A report's text as it went, one value a line: the template's own
+        // words are only its values, and the history shows what was sent
+        // (Jose, 2026-11-25). The blank a padded slot carries is dropped.
+        if ($row->report !== null) {
+            $row->forceFill(['body' => implode("\n", array_filter(array_map('strval', $parameters), fn (string $v) => $v !== "\u{2800}"))])->save();
+        }
+
+        return $this->sendTemplate($row, $template, $language, array_map('strval', $parameters), $document);
     }
 
     /**
@@ -237,6 +274,8 @@ final class WhatsAppCloud
             // What the person was shown, so the history reads as a
             // conversation rather than as a list of message ids.
             'body' => $bodyForTheRecord,
+            // The report it belongs to, for Reports › Reports (ReportSource).
+            'report' => ReportSource::current(),
         ]);
 
         return $this->deliver($row, [
@@ -434,6 +473,7 @@ final class WhatsAppCloud
             'status' => WhatsAppMessage::STATUS_QUEUED,
             'kind' => 'template',
             'template_name' => $template,
+            'report' => ReportSource::current(),
         ]);
     }
 

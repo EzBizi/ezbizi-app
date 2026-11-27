@@ -5,7 +5,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/logo_badge.dart';
 import 'field_status.dart';
@@ -67,6 +69,11 @@ class _FieldMapTabState extends State<FieldMapTab> {
 
   /// Null until the first build: open on a wide screen, a chip on a phone.
   bool? _panelOpen;
+
+  /// How far down the open People/Jobs panel reaches on a phone, where it
+  /// lies over the map's top 60 %. A fitted point is kept below it (phone
+  /// audit 2026-11-04: a chosen job panned behind the panel).
+  double _phoneCover = 0;
   bool _wide = true;
   bool _legendOpen = false;
   bool _firstFit = true;
@@ -89,10 +96,22 @@ class _FieldMapTabState extends State<FieldMapTab> {
       _load();
       if (_personId != null && _isToday) _loadTrail(fit: false);
     });
+    // Between the 30 s reads: a technician's position or a job booked or
+    // moved today shows at the next tick of the feed.
+    _live = LiveChanges.of(widget.api).subscribe({'field', 'jobs'}, (_) async {
+      if (_loading) return;
+      await Future.wait([
+        _load(),
+        if (_personId != null && _isToday) _loadTrail(fit: false),
+      ]);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _refresh?.cancel();
     _attributionDebounce?.cancel();
     super.dispose();
@@ -106,8 +125,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
   }
 
   /// The map's day, as the server wants it.
-  String get _ymd =>
-      '${_day.year}-${_day.month.toString().padLeft(2, '0')}-${_day.day.toString().padLeft(2, '0')}';
+  String get _ymd => formatCalendarDay(_day);
 
   /// One day for the whole map (Jose, 2026-10-01): that day's jobs, and the
   /// route a person drove on it. Today is the default; the arrows step back
@@ -323,7 +341,8 @@ class _FieldMapTabState extends State<FieldMapTab> {
           (bounds.north - bounds.south).abs() < 0.0005 &&
           (bounds.east - bounds.west).abs() < 0.0005;
       if (tiny) {
-        _map.move(bounds.center, 16);
+        // Offset is from the centre: half the cover pushes it below.
+        _map.move(bounds.center, 16, offset: Offset(0, _phoneCover / 2));
       } else {
         _map.fitCamera(
           CameraFit.bounds(
@@ -331,7 +350,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
             // Clear of the floating list, the bar and the job card.
             padding: EdgeInsets.fromLTRB(
               _wide ? 300 : 48,
-              72,
+              72 + _phoneCover,
               _wide && _jobId != null ? 340 : 48,
               48,
             ),
@@ -378,6 +397,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
     final size = MediaQuery.sizeOf(context);
     final wide = _wide = size.width >= 600;
     final panelOpen = _panelOpen ?? wide;
+    _phoneCover = !wide && panelOpen ? size.height * 0.6 + 24 : 0;
     final person = _person(_personId);
     final job = _job;
 

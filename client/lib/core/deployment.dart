@@ -76,6 +76,15 @@ class Deployment {
   /// following the link has no other way in.
   static String? inviteToken() => tokenAt(Uri.base, '/invite');
 
+  /// The invite-link token in `/join?link=…` (Jose, 2026-11-23): one link many
+  /// people use to make their own accounts. See JoinLinkScreen.
+  static String? joinLink() {
+    final uri = Uri.base;
+    if (!uri.path.startsWith('/join')) return null;
+    final link = uri.queryParameters['link'];
+    return (link == null || link.isEmpty) ? null : link;
+  }
+
   /// The `token` query parameter, when [uri] points at [path].
   ///
   /// Takes the URI rather than reading `Uri.base` itself so a test can hand it

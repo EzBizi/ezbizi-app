@@ -9,6 +9,7 @@ import 'date_range_picker.dart';
 import 'error_note.dart';
 import 'side_panel.dart';
 import 'status_pill.dart';
+import '../core/soft_keyboard.dart';
 
 /// Your account › API keys (UI queue 62).
 ///
@@ -257,7 +258,7 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
         TextField(
           key: const Key('api-key-name'),
           controller: _name,
-          autofocus: true,
+          autofocus: autofocusOnOpen,
           maxLength: 60,
           decoration: const InputDecoration(
             labelText: 'What is it for?',
@@ -645,11 +646,9 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
     final at = DateTime.tryParse('${iso ?? ''}')?.toLocal();
     if (at == null) return 'Never used';
 
-    final ago = widget.now().difference(at);
-    if (ago.inMinutes < 1) return 'Used just now';
-    if (ago.inHours < 1) return 'Last used ${ago.inMinutes} min ago';
-    if (ago.inDays < 1) return 'Last used ${ago.inHours} h ago';
-    return 'Last used ${ago.inDays} d ago';
+    final now = widget.now();
+    if (now.difference(at).inMinutes < 1) return 'Used just now';
+    return 'Last used ${formatAgo(at, now: now)}';
   }
 
   String _madeOn(Object? iso) {

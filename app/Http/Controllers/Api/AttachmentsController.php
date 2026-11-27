@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Attachment;
 use App\Models\InventoryPurchaseOrder;
+use App\Models\TaskUpdate;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\Attachables;
 use App\Support\Files\AttachmentUploader;
 use App\Support\Files\FileStore;
 use App\Support\Files\UploadLimits;
+use App\Support\Tasks\SensitiveTasks;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -73,9 +75,26 @@ class AttachmentsController extends Controller
 
         $this->authorizeAttachment('view', $subject);
 
+        // A sensitive task's file list is its file names: unlocked only.
+        if ($subject instanceof TaskUpdate && $subject->task?->sensitive
+            && ! app(SensitiveTasks::class)->reveal($request, $subject->task, 'attachments')) {
+            throw SensitiveTasks::lockedResponse();
+        }
+
+        $files = $subject->attachments()->with('uploadedBy:id,name')->get();
+
+        // A job's list also carries its inspection reports' before and after
+        // photos (Inspection, 2026-11-03): the submit puts them on the report.
+        if ($subject instanceof \App\Models\Job) {
+            $files = $files->concat(Attachment::query()->with('uploadedBy:id,name')
+                ->where('attachable_type', 'inspection_reports')
+                ->whereIn('attachable_id', \App\Models\InspectionReport::query()->where('job_id', $subject->id)->select('id'))
+                ->whereIn('label', ['before', 'after'])
+                ->get());
+        }
+
         return response()->json([
-            'data' => $subject->attachments()->with('uploadedBy:id,name')->get()
-                ->map(fn (Attachment $a) => $a->present())->all(),
+            'data' => $files->map(fn (Attachment $a) => $a->present())->all(),
 
             // So the upload control can state the limit before somebody spends
             // four minutes uploading something that will be refused. The number
@@ -166,6 +185,12 @@ class AttachmentsController extends Controller
             ? $subject->attachmentDisclosesSensitive($attachment)
             : null;
 
+        // A sensitive task's file: only after an authenticator code, audited (SensitiveTasks).
+        if ($subject instanceof TaskUpdate && $subject->task?->sensitive
+            && ! app(SensitiveTasks::class)->reveal($request, $subject->task, 'attachment')) {
+            throw SensitiveTasks::lockedResponse();
+        }
+
         if ($discloses !== null) {
             $this->authorize('reveal', $subject);
 
@@ -176,11 +201,24 @@ class AttachmentsController extends Controller
             ]);
         }
 
+        if ($attachment->encrypted) {
+            $bytes = $attachment->bytes();
+            abort_if($bytes === null, 404);
+            $inline = $request->boolean('inline') && in_array($attachment->mime, self::INLINE_MIMES, true);
+
+            return response()->streamDownload(fn () => print ($bytes),
+                str_replace(["\r", "\n", '"', '\\'], '', basename($attachment->realName())) ?: 'download', [
+                    'Content-Type' => $attachment->mime,
+                    'X-Content-Type-Options' => 'nosniff',
+                    'Cache-Control' => 'private, no-store',
+                ], $inline ? 'inline' : 'attachment');
+        }
+
         return $this->files->serve(
             $attachment->path,
             $attachment->disk,
             $attachment->mime,
-            $attachment->original_name,
+            $attachment->realName(),
             // `attachment` unless `?inline=1` asks to open it in the app AND the
             // detected mime is a raster image or a PDF. The mime is detected
             // rather than claimed, which makes it honest, not safe — an honest

@@ -76,6 +76,16 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'hr_invitations';
+
+    /** Filed where the invitation assigns the person (ChangeFeed). */
+    public function changeFeedPlace(): array
+    {
+        return [$this->assigned_company_id, $this->assigned_franchise_id];
+    }
 
     // ── §9 data inventory ────────────────────────────────────────
 
@@ -205,7 +215,7 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
      */
     protected $fillable = [
         'organization_id', 'email', 'first_name', 'last_name',
-        'role_id', 'invited_by_user_id',
+        'role_id', 'invited_by_user_id', 'invite_link_id',
         'assigned_organization_id', 'assigned_company_id', 'assigned_franchise_id',
         'sent_at', 'held_at', 'expires_at', 'opened_at', 'accepted_at', 'revoked_at',
         'accepted_user_id',
@@ -445,14 +455,16 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
      */
     public function scopeInStatus(Builder $query, string $status): Builder
     {
+        // Held ones have not been sent, so they have not started expiring:
+        // the same rule as hasExpired() (full-code audit, 2026-11-27).
         $pending = fn (Builder $q) => $q->whereNull('accepted_at')->whereNull('revoked_at')
-            ->where('expires_at', '>', now());
+            ->where(fn (Builder $live) => $live->where('expires_at', '>', now())->orWhereNotNull('held_at'));
 
         return match ($status) {
             self::COMPLETED => $query->whereNotNull('accepted_at')->whereNull('revoked_at'),
             self::REVOKED => $query->whereNotNull('revoked_at'),
             self::ABANDONED => $query->whereNull('accepted_at')->whereNull('revoked_at')
-                ->where('expires_at', '<=', now()),
+                ->whereNull('held_at')->where('expires_at', '<=', now()),
             'opened' => $pending($query)->where(fn (Builder $q) => $q->whereNotNull('opened_at')
                 ->orWhereHas('onboarding')),
             self::SENT => $pending($query)->whereNull('opened_at')->whereDoesntHave('onboarding'),

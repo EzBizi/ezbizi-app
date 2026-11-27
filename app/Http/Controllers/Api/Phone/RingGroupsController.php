@@ -82,7 +82,7 @@ class RingGroupsController extends Controller
 
         $user = $request->user();
 
-        $people = User::query()
+        $people = \App\Support\Phone\PhoneScope::people(User::query(), $user)
             ->where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'name', 'role_id'])

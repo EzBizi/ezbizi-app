@@ -1,8 +1,10 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import 'dart:typed_data';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -10,6 +12,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/tag.dart';
+import 'report_body.dart';
 
 /// Generated Reports: search, a list of hits, the frozen report beside them.
 ///
@@ -37,6 +40,11 @@ class _ReportsTabState extends State<ReportsTab> {
   List<Map<String, dynamic>> _hits = const [];
   String? _empty;
   String? _selectedId;
+
+  /// A phone shows the list or one report, never both (UI pass 11-16: the
+  /// list and the whole first report were stacked in one scroll).
+  bool _reading = false;
+  bool _stacked = false;
   Map<String, dynamic>? _open;
   String? _busy;
 
@@ -67,7 +75,10 @@ class _ReportsTabState extends State<ReportsTab> {
 
     final bytes = response.bytes;
     if (bytes == null) {
-      setState(() => _error = response.message ?? 'The report could not be downloaded.');
+      setState(
+        () =>
+            _error = response.message ?? 'The report could not be downloaded.',
+      );
       return;
     }
 
@@ -83,12 +94,12 @@ class _ReportsTabState extends State<ReportsTab> {
     final answers = report['answers'];
     if (answers is! Map) return;
 
-    for (final screen in (report['screens'] as List? ?? const [])) {
+    for (final screen in reportItems(report['screens'])) {
       if (screen is! Map) continue;
-      for (final field in (screen['fields'] as List? ?? const [])) {
+      for (final field in reportItems(screen['fields'])) {
         if (field is! Map) continue;
         if (field['type'] != 'photo' && field['type'] != 'signature') continue;
-        for (final id in (answers['${field['key']}'] as List? ?? const [])) {
+        for (final id in reportItems(answers['${field['key']}'])) {
           final key = '$id';
           if (_photos.containsKey(key)) continue;
           final bytes = await widget.api.getBytes('/attachments/$key');
@@ -106,20 +117,46 @@ class _ReportsTabState extends State<ReportsTab> {
   void initState() {
     super.initState();
     _load();
+    // A report submitted or archived elsewhere: the list re-reads quietly;
+    // the open report is read again only when it is the one that changed.
+    _live = LiveChanges.of(widget.api).subscribe({'inspection_reports'}, (
+      batch,
+    ) {
+      if (_loading || _busy != null) return null;
+      final open = _selectedId;
+      return _load(
+        quiet: true,
+        reopen:
+            batch.reload ||
+            (open != null &&
+                batch.touched('inspection_reports').contains(open)),
+      );
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load({String? openId}) async {
+  /// [quiet]: a live re-read; a failure keeps the list on screen, and the
+  /// open report (and its photos) is read again only when [reopen].
+  Future<void> _load({
+    String? openId,
+    bool quiet = false,
+    bool reopen = true,
+  }) async {
     final request = ++_request;
-    setState(() {
-      _loading = _hits.isEmpty && _open == null;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = _hits.isEmpty && _open == null;
+        _error = null;
+      });
+    }
 
     final query = <String, String>{
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
@@ -127,6 +164,7 @@ class _ReportsTabState extends State<ReportsTab> {
     };
     final list = await widget.api.get('/inspections/reports', query);
     if (!mounted || request != _request) return;
+    if (quiet && !list.ok) return;
 
     if (!list.ok) {
       setState(() {
@@ -137,11 +175,14 @@ class _ReportsTabState extends State<ReportsTab> {
     }
 
     final hits = [
-      for (final row in (list.data as List? ?? const []))
+      for (final row in reportItems(list.data))
         if (row is Map) Map<String, dynamic>.from(row),
     ];
     final message = list.body['message'] as String?;
-    final keep = openId ?? _selectedId ?? (hits.isNotEmpty ? hits.first['id'] as String? : null);
+    final keep =
+        openId ??
+        _selectedId ??
+        (hits.isNotEmpty ? hits.first['id']?.toString() : null);
 
     setState(() {
       _loading = false;
@@ -149,13 +190,13 @@ class _ReportsTabState extends State<ReportsTab> {
       _empty = (message != null && message.isNotEmpty)
           ? message
           : (hits.isEmpty
-              ? 'Finished inspections show here. None have been submitted yet.'
-              : null);
+                ? 'Finished inspections show here. None have been submitted yet.'
+                : null);
       _selectedId = keep;
     });
 
     if (keep != null) {
-      await _openReport(keep);
+      if (reopen || _open?['id']?.toString() != keep) await _openReport(keep);
     } else {
       setState(() => _open = null);
     }
@@ -175,90 +216,6 @@ class _ReportsTabState extends State<ReportsTab> {
       _photos.clear();
     });
     await _loadPhotos(report);
-  }
-
-  /// One answer, shown the way its type was answered.
-  ///
-  /// The list used to be `Text('$value')` for everything, which printed a photo
-  /// answer as a row of uuids and a date as whatever string was saved. The
-  /// report is the artefact somebody reads months later; it should not be the
-  /// rawest possible view of the column.
-  Widget _answer(Map<String, dynamic> field, dynamic value) {
-    final type = '${field['type'] ?? 'text'}';
-
-    // A signature is stored as a picture — the same one-element id list a
-    // photo uses — so it renders the same way. Text would print a uuid.
-    if (type == 'photo' || type == 'signature') {
-      return _photoRow(value, signature: type == 'signature');
-    }
-
-    final text = value == null ? '' : '$value';
-
-    if (text.trim().isEmpty) {
-      return Text(
-        // Not blank. "Nothing to report" and "nobody looked" are different
-        // findings, and the second one is why the field was on the form.
-        'Not answered',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontStyle: FontStyle.italic,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-      );
-    }
-
-    if (type == 'date') {
-      return Text(formatStamp(text, text, formats: _formats));
-    }
-
-    return Text(text);
-  }
-
-  /// The photographs on one answer, read-only.
-  ///
-  /// No remove control: a submitted report is frozen, and the server refuses a
-  /// delete against one. A button that always failed would be a lie on screen.
-  Widget _photoRow(dynamic value, {bool signature = false}) {
-    final ids = [for (final id in (value as List? ?? const [])) '$id'];
-
-    if (ids.isEmpty) {
-      return Text(
-        signature ? 'Not signed' : 'No photograph',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontStyle: FontStyle.italic,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-      );
-    }
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        for (final id in ids)
-          SizedBox(
-            width: signature ? 220 : 96,
-            height: signature ? 90 : 96,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: _photos[id] == null
-                  ? ColoredBox(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      child: const Center(
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    )
-                  // contain, not cover, for a signature: cropping somebody's
-                  // name to fill a square is not a rendering choice to make.
-                  : Image.memory(_photos[id]!,
-                      fit: signature ? BoxFit.contain : BoxFit.cover),
-            ),
-          ),
-      ],
-    );
   }
 
   Future<void> _archive(bool hide) async {
@@ -296,14 +253,10 @@ class _ReportsTabState extends State<ReportsTab> {
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
+                  child: ListSearch(
                     key: const ValueKey('tour-inspection-reports-search'),
                     controller: _search,
-                    decoration: const InputDecoration(
-                      hintText: 'Client name or job number',
-                      prefixIcon: Icon(Icons.search),
-                    ),
-                    textInputAction: TextInputAction.search,
+                    hint: 'Client name or job number',
                     onSubmitted: (_) => _load(),
                   ),
                 ),
@@ -325,13 +278,24 @@ class _ReportsTabState extends State<ReportsTab> {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final stacked = constraints.maxWidth < ReportsTab.stackBelow;
+                _stacked = stacked;
                 final list = _listPane();
                 final doc = _documentPane();
+                if (stacked && !_reading) return list;
                 if (stacked) {
-                  return ListView(
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(height: 240, child: list),
-                      SizedBox(height: 520, child: doc),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+                        child: TextButton.icon(
+                          key: const Key('inspection-reports-back'),
+                          onPressed: () => setState(() => _reading = false),
+                          icon: const Icon(Icons.arrow_back, size: 18),
+                          label: const Text('All reports'),
+                        ),
+                      ),
+                      Expanded(child: doc),
                     ],
                   );
                 }
@@ -366,16 +330,23 @@ class _ReportsTabState extends State<ReportsTab> {
               itemBuilder: (context, index) {
                 final row = _hits[index];
                 return ListTile(
-                  selected: row['id'] == _selectedId,
+                  // A phone's list opens nothing yet, so nothing is lit.
+                  selected: '${row['id']}' == _selectedId && !_stacked,
                   title: Text('${row['definition_name'] ?? ''}'),
                   subtitle: Text(
                     [
-                      if (row['customer_name'] != null) '${row['customer_name']}',
+                      if (row['customer_name'] != null)
+                        '${row['customer_name']}',
                       if (row['job_number'] != null) '${row['job_number']}',
                     ].join(' · '),
                   ),
-                  trailing: row['archived'] == true ? const Tag('Archived') : null,
-                  onTap: () => _openReport('${row['id']}'),
+                  trailing: row['archived'] == true
+                      ? const Tag('Archived')
+                      : null,
+                  onTap: () {
+                    setState(() => _reading = true);
+                    _openReport('${row['id']}');
+                  },
                 );
               },
             ),
@@ -398,7 +369,7 @@ class _ReportsTabState extends State<ReportsTab> {
         ? Map<String, dynamic>.from(report['answers'] as Map)
         : const <String, dynamic>{};
     final screens = [
-      for (final s in (report['screens'] as List? ?? const []))
+      for (final s in reportItems(report['screens']))
         if (s is Map) Map<String, dynamic>.from(s),
     ];
     final stamp = formatStamp(
@@ -439,25 +410,15 @@ class _ReportsTabState extends State<ReportsTab> {
               const SizedBox(height: 12),
             ]
           else
-            for (final screen in screens) ...[
-              Text(
-                '${screen['name'] ?? ''}',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const SizedBox(height: 8),
-              for (final field in [
-                for (final f in (screen['fields'] as List? ?? const []))
-                  if (f is Map) Map<String, dynamic>.from(f),
-              ]) ...[
-                Text(
-                  '${field['label'] ?? field['key']}',
-                  style: Theme.of(context).textTheme.labelMedium,
-                ),
-                const SizedBox(height: 4),
-                _answer(field, answers['${field['key']}']),
-                const SizedBox(height: 12),
-              ],
-            ],
+            InspectionReportBody(
+              screens: screens,
+              answers: answers,
+              findings: report['findings'] is Map
+                  ? Map<String, dynamic>.from(report['findings'] as Map)
+                  : const {},
+              photos: _photos,
+              formats: _formats,
+            ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,

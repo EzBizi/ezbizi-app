@@ -86,6 +86,36 @@ class CallTranscripts
         return trim($process->getOutput());
     }
 
+    /**
+     * The same Whisper, with times: [{start_s, end_s, text}] relative to the
+     * audio, [] for silence (Field's safety-recording chunks, 2026-11-03). The
+     * bytes live only in a temp file for the run.
+     *
+     * @return list<array{start_s: float, end_s: float, text: string}>
+     *
+     * @throws RuntimeException with a sentence, when it cannot be done
+     */
+    public function whisperSegments(string $audio, int $timeout = 120): array
+    {
+        $file = tempnam(sys_get_temp_dir(), 'field-');
+        file_put_contents($file, $audio);
+
+        try {
+            $process = \Illuminate\Support\Facades\Process::timeout($timeout)
+                ->run([(string) config('services.whisper.python'), (string) config('services.whisper.script'), $file, '--json']);
+        } finally {
+            @unlink($file);
+        }
+
+        $segments = $process->successful() ? json_decode(trim($process->output()), true) : null;
+
+        if (! is_array($segments)) {
+            throw new RuntimeException('Whisper could not transcribe the recording.');
+        }
+
+        return $segments;
+    }
+
     /** @throws RuntimeException */
     private function recording(LeadConversation $row, SocialConnection $connection): string
     {

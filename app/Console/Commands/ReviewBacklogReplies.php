@@ -1,0 +1,127 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\BusinessLocation;
+use App\Models\Organization;
+use App\Models\Review;
+use App\Models\ReviewReply;
+use App\Services\Reviews\BusinessProfileReviews;
+use App\Support\Audit\AuditLogger;
+use App\Support\Reviews\ReviewReplyWriter;
+use App\Support\Tenancy\TenantContext;
+use Illuminate\Console\Command;
+use Throwable;
+
+/**
+ * Answers the Google reviews nobody has answered, a few a day so the listings
+ * do not post hundreds of replies at once (Jose, 2026-11-02: "answer all the
+ * unanswered ones, maybe do 50 per day ... each reply must be different").
+ *
+ * 4 and 5 stars only; 3 stars or less get a draft and wait for a dispatcher.
+ * Only on listings with automatic replies on, never over a person's draft or a
+ * published reply, and never a reply word-for-word the same as one already sent.
+ */
+class ReviewBacklogReplies extends Command
+{
+    protected $signature = 'ezbizi:review-backlog {--limit=50 : replies per organization per run}';
+
+    protected $description = 'Publish AI replies to unanswered Google reviews, newest first, a few per run';
+
+    public function handle(TenantContext $tenant, BusinessProfileReviews $google): int
+    {
+        $limit = (int) $this->option('limit');
+
+        Organization::query()->each(fn (Organization $org) => $tenant->run($org, function () use ($limit, $google, $org) {
+            $listings = BusinessLocation::query()->where('auto_reply', true)->pluck('remote_name')
+                ->map(fn ($n) => preg_match('~(locations/[^/]+)$~', (string) $n, $m) ? $m[1] : null)->filter()->all();
+            if ($listings === []) {
+                return;
+            }
+            $said = ReviewReply::query()->where('status', ReviewReply::STATUS_PUBLISHED)->pluck('body')
+                ->map(fn ($b) => self::norm($b))->flip()->all();
+
+            // A review whose profile is disconnected cannot be answered: mark its draft once and skip it,
+            // one summary line instead of an error per review (desk, 2026-11-09: 25 errors a day).
+            $connected = fn ($q) => $q->whereHas('connection', fn ($c) => $c->where('status', \App\Models\SocialConnection::STATUS_CONNECTED));
+            $blocked = ReviewReply::query()->where('drafted_by', ReviewReply::BY_AUTOMATION)->where('status', '!=', ReviewReply::STATUS_PUBLISHED)
+                ->whereHas('review', fn ($r) => $r->whereDoesntHave('connection', fn ($c) => $c->where('status', \App\Models\SocialConnection::STATUS_CONNECTED)))
+                ->where(fn ($q) => $q->whereNull('failure_reason')->orWhere('failure_reason', '!=', self::BLOCKED))
+                ->update(['status' => ReviewReply::STATUS_FAILED, 'failure_reason' => self::BLOCKED]);
+            $skipped = Review::query()->where('source', Review::SOURCE_GOOGLE)->where('rating', '>=', 4)
+                ->whereDoesntHave('connection', fn ($c) => $c->where('status', \App\Models\SocialConnection::STATUS_CONNECTED))
+                ->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED))->count();
+            if ($skipped > 0) {
+                $this->line("{$org->name}: {$skipped} reviews skipped, their listing is not on a connected Google profile ({$blocked} drafts marked)");
+            }
+
+            $done = 0;
+            Review::query()->where('source', Review::SOURCE_GOOGLE)->where('rating', '>=', 4)->where($connected)->whereNull('removed_at')
+                ->whereDoesntHave('reply', fn ($q) => $q->where('failure_reason', 'like', '%unclaimed%'))
+                ->where(fn ($q) => collect($listings)->each(fn ($l) => $q->orWhere('location_name', 'like', '%'.addcslashes($l, '%_'))))
+                ->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED)
+                    ->orWhere('drafted_by', '!=', ReviewReply::BY_AUTOMATION))
+                ->orderByDesc('reviewed_at')->limit($limit * 2)->get()
+                ->each(function (Review $review) use (&$done, &$said, $limit, $google) {
+                    if ($done >= $limit) {
+                        return false;
+                    }
+                    try {
+                        $body = ReviewReplyWriter::write($review);
+                        if (isset($said[self::norm($body)])) {
+                            $body = ReviewReplyWriter::write($review);
+                        }
+                        if (isset($said[self::norm($body)])) {
+                            return; // ponytail: two identical drafts in a row, leave it for tomorrow's run
+                        }
+                        $reply = $review->reply()->first() ?? new ReviewReply(['organization_id' => $review->organization_id, 'review_id' => $review->getKey()]);
+                        $reply->fill(['body' => $body, 'drafted_by' => ReviewReply::BY_AUTOMATION, 'status' => ReviewReply::STATUS_DRAFT])->save();
+                        $google->publish($reply);
+                        $reply->forceFill(['status' => ReviewReply::STATUS_PUBLISHED, 'published_at' => now(), 'failure_reason' => null])->save();
+                        app(AuditLogger::class)->log('review.reply_published', $review, metadata: ['length' => strlen($body), 'by' => 'backlog']);
+                        $said[self::norm($body)] = true;
+                        $done++;
+                    } catch (Throwable $e) {
+                        // Expected refusals are recorded, not reported (health sweep 11-26: 22 removed, 6 unclaimed a day).
+                        if (str_contains($e->getMessage(), 'HTTP 404') && $google->reviewIsGone($review)) {
+                            $review->forceFill(['removed_at' => $review->removed_at ?? now()])->save();
+                            $this->line("Review {$review->id}: removed from Google, skipped");
+
+                            return;
+                        }
+                        if (str_contains($e->getMessage(), 'unclaimed')) {
+                            $review->reply()->update(['status' => ReviewReply::STATUS_FAILED, 'failure_reason' => 'Google: this listing is unclaimed; claim it before replying.']);
+                            $this->line("Review {$review->id}: listing unclaimed, skipped");
+
+                            return;
+                        }
+                        report($e);
+                        $this->error("Review {$review->id}: {$e->getMessage()}");
+                    }
+                });
+            // 3 stars or less stay with the dispatchers: AI only leaves a draft for them to read (Jose, 2026-11-02).
+            $drafted = 0;
+            Review::query()->where('source', Review::SOURCE_GOOGLE)->where('rating', '<=', 3)->whereNull('removed_at')->whereDoesntHave('reply')
+                ->orderByDesc('reviewed_at')->limit($limit)->get()
+                ->each(function (Review $review) use (&$drafted) {
+                    try {
+                        ReviewReply::create(['organization_id' => $review->organization_id, 'review_id' => $review->getKey(),
+                            'body' => ReviewReplyWriter::write($review), 'drafted_by' => ReviewReply::BY_DRAFTING_JOB, 'status' => ReviewReply::STATUS_DRAFT]);
+                        $drafted++;
+                    } catch (Throwable $e) {
+                        report($e);
+                    }
+                });
+            $this->line("{$org->name}: {$done} replies published, {$drafted} low-star drafts left for dispatchers");
+        }));
+
+        return self::SUCCESS;
+    }
+
+    public const BLOCKED = 'Blocked: this listing is not on a Google profile connected in Integrations';
+
+    private static function norm(?string $body): string
+    {
+        return strtolower(preg_replace('/\W+/u', '', (string) $body));
+    }
+}

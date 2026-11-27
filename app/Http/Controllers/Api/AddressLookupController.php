@@ -33,7 +33,7 @@ class AddressLookupController extends Controller
         try {
             $response = Http::timeout(4)
                 ->withHeaders([
-                    'User-Agent' => 'EzBizi/address-lookup (https://ezbizi.com; development@ezbizi.com)',
+                    'User-Agent' => 'EzBizi/address-lookup (https://ezbizi.com; '.config('ezbizi.contact_email').')',
                 ])
                 ->get('https://photon.komoot.io/api/', [
                     'q'     => $query,

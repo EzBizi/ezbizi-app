@@ -8,7 +8,11 @@ use App\Models\ServiceAreaDailyLimit;
 use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaScheduledSlot;
 use App\Models\ServiceAreaSlot;
+use App\Models\Franchise;
 use App\Models\WebBooking;
+use App\Support\Settings\SettingRegistry;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
@@ -35,11 +39,11 @@ use Illuminate\Support\Facades\DB;
  * to yet still fills the slot (A1 once counted only accepted jobs and hid 63 of
  * Connecticut's 68 commitments).
  *
- * Statuses in FREE_STATUSES hold no seat. Every other status DOES, including
+ * Statuses in scheduling.free_statuses hold no seat. Every other status DOES, including
  * one nobody has classified: an unknown status constrains booking rather than
  * freeing it, which errs toward protecting the schedule.
  *
- * Jobs tagged with an EXCLUDED_TAGS tag hold no seat. A-1's New Jersey read
+ * Jobs tagged with a scheduling.excluded_tags tag hold no seat. A-1's New Jersey read
  * 31 of 30 on a Monday because three were DEPOSIT RECEIVED jobs, which a
  * different crew does. Tags are typed by hand, so both spellings are live and
  * matching is trimmed and case-folded.
@@ -90,19 +94,32 @@ use Illuminate\Support\Facades\DB;
  * No window offers more than the franchise has left, so at the limit the day
  * is full in every one of its areas. It never raises an area's own numbers.
  *
- * ponytail: FREE_STATUSES and EXCLUDED_TAGS are constants, not settings. They
- * hold A-1's vocabulary; the day another organization's words differ, they
- * move into SettingRegistry as org-scoped lists — POPULATED by default, not
- * empty, because an empty "which statuses are free" would make every
- * cancelled job hold a seat (see the lessons spec).
+ * The free statuses and excluded tags are org settings (scheduling.free_statuses,
+ * scheduling.excluded_tags, 2026-11-04), POPULATED by default: an empty list
+ * would make every cancelled job hold a seat (see the lessons spec).
  */
 final class Openings
 {
-    /** Lower-cased, trimmed. */
-    public const FREE_STATUSES = ['canceled', 'cancelled', 'done', 'done pending approval'];
+    /** @return list<string> lower-cased, trimmed: settings scheduling.free_statuses (2026-11-04) */
+    public static function freeStatuses(): array
+    {
+        return self::listSetting('scheduling.free_statuses');
+    }
 
-    /** Lower-cased, trimmed. */
-    public const EXCLUDED_TAGS = ['deposit received', 'deposit recieved'];
+    /** @return list<string> lower-cased, trimmed: settings scheduling.excluded_tags */
+    public static function excludedTags(): array
+    {
+        return self::listSetting('scheduling.excluded_tags');
+    }
+
+    /** @return list<string> */
+    private static function listSetting(string $key): array
+    {
+        $org = app(TenantContext::class)->get();
+        $rows = $org === null ? app(SettingRegistry::class)->getOrFail($key)->default : app(SettingsResolver::class)->get($key, $org);
+
+        return array_values(array_map(fn ($r) => mb_strtolower(trim((string) (is_array($r) ? ($r['value'] ?? '') : $r))), (array) $rows));
+    }
 
     /** How far forward the search walks before saying it found nothing. */
     public const HORIZON_DAYS = 365;
@@ -170,6 +187,7 @@ final class Openings
             ? []
             : $this->franchiseBooked($area, $from, $from->addDays($days));
 
+        $latest = self::latestWindows($area);
         $out = [];
 
         for ($i = 0; $i < $days; $i++) {
@@ -229,6 +247,18 @@ final class Openings
             // limit — is handed to the windows EARLIEST FIRST, so no two
             // windows advertise the same last spot. A1 distributes its day
             // headroom the same way.
+            // A window starting after the day's latest is never offered (Jose,
+            // 2026-11-17: Fridays end at 12-3 PM). It stays listed, so what is
+            // booked in it still shows; it only offers nothing.
+            $cut = $latest[$date->dayOfWeek] ?? null;
+            foreach ($windows as &$window) {
+                $window['late'] = $cut !== null && $window['start_time'] > $cut;
+                if ($window['late']) {
+                    $window['remaining'] = 0;
+                }
+            }
+            unset($window);
+
             $dayCap = array_sum(array_column($windows, 'capacity'));
             if (isset($areaLimits[$date->dayOfWeek])) {
                 $dayCap = min($dayCap, (int) $areaLimits[$date->dayOfWeek]);
@@ -340,8 +370,8 @@ final class Openings
      * (Scheduling › Overbooking, opened on a row). A member reads its lead's.
      *
      * @return Collection<int, object> kind (job|workiz|booking), job_id,
-     *         customer_id, remote_id, lead_id, scheduled_for, status, payload,
-     *         address, city, postal_code, contact_name, phone, email, end_time
+     *                                 customer_id, remote_id, lead_id, scheduled_for, status, payload,
+     *                                 address, city, postal_code, contact_name, phone, email, end_time
      */
     public function jobsOn(ServiceArea $area, CarbonImmutable $date): Collection
     {
@@ -482,11 +512,15 @@ final class Openings
     /** The jobs that hold a seat: not a free status, not an excluded tag. */
     private function seats(Collection $jobs): Collection
     {
-        return $jobs->reject(fn ($job) => in_array(mb_strtolower(trim((string) $job->status)), self::FREE_STATUSES, true)
-            || $this->excluded($job->payload));
+        $free = self::freeStatuses();
+        $tags = self::excludedTags();
+
+        return $jobs->reject(fn ($job) => in_array(mb_strtolower(trim((string) $job->status)), $free, true)
+            || $this->excluded($job->payload, $tags));
     }
 
-    private function excluded(mixed $payload): bool
+    /** @param  list<string>  $excluded */
+    private function excluded(mixed $payload, array $excluded): bool
     {
         $data = is_string($payload) ? json_decode($payload, true) : (array) $payload;
         $tags = $data['Tags'] ?? [];
@@ -496,7 +530,7 @@ final class Openings
         }
 
         foreach ($tags as $tag) {
-            if (in_array(mb_strtolower(trim((string) $tag)), self::EXCLUDED_TAGS, true)) {
+            if (in_array(mb_strtolower(trim((string) $tag)), $excluded, true)) {
                 return true;
             }
         }
@@ -515,7 +549,7 @@ final class Openings
         try {
             return CarbonImmutable::now($timezone)->startOfDay()->addDay();
         } catch (\Throwable) {
-            return CarbonImmutable::now('America/New_York')->startOfDay()->addDay();
+            return CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of())->startOfDay()->addDay();
         }
     }
 
@@ -537,6 +571,21 @@ final class Openings
     }
 
     /** Whether anybody has stated any capacity for this area at all. */
+    /**
+     * Weekday => latest window start ("HH:MM"): the area's own, else the
+     * scheduling.latest_window setting for its branch.
+     *
+     * @return array<int, string>
+     */
+    public static function latestWindows(ServiceArea $area): array
+    {
+        $map = $area->latest_windows
+            ?? (($f = Franchise::find($area->franchise_id)) ? app(SettingsResolver::class)->get('scheduling.latest_window', $f) : []);
+
+        return collect((array) $map)->filter(fn ($t) => is_string($t) && preg_match('/^\d\d:\d\d$/', $t))
+            ->mapWithKeys(fn ($t, $d) => [(int) $d => $t])->all();
+    }
+
     public static function hasCapacity(ServiceArea $area): bool
     {
         if ($area->shares_with_id !== null) {

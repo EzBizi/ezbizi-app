@@ -75,14 +75,14 @@ class ReplyOverdueTest extends TestCase
         $byPhone = $this->lead('p', 'MESSAGE', '2026-09-28T14:45:00Z');
         $nothing = $this->lead('n', 'MESSAGE', '2026-09-28T14:45:00Z');
         $this->inTenant($this->t['org'], function () use ($byPhone, $nothing) {
-            $byPhone->forceFill(['contact_name' => null, 'phone' => '+13192102005'])->save();
+            $byPhone->forceFill(['contact_name' => null, 'phone' => '+13195550100'])->save();
             $nothing->forceFill(['contact_name' => null, 'phone' => null])->save();
         });
 
         $this->artisan('ezbizi:leads-reply-overdue')->assertSuccessful();
 
         $names = collect($this->raised())->mapWithKeys(fn ($e) => [$e->subject_id => $e->payload['after']['contact_name']]);
-        $this->assertSame('(319) 210-2005', $names[$byPhone->id]);
+        $this->assertSame('(319) 555-0100', $names[$byPhone->id]);
         $this->assertSame('A customer', $names[$nothing->id]);
     }
 
@@ -205,5 +205,22 @@ class ReplyOverdueTest extends TestCase
             'occurred_at' => now(), 'text' => 'One more question',
         ]));
         $this->assertSame(Lead::STATUS_NEW, $lead->fresh()->status, 'writing again reopens it');
+    }
+
+    /** Jose, 2026-11-02: "stuff marked as not a lead should not be awaiting reply". */
+    public function test_not_a_lead_is_never_awaiting_a_reply(): void
+    {
+        $this->lead('open', 'MESSAGE', '2026-09-28T14:45:00Z');
+        $this->lead('junk', 'MESSAGE', '2026-09-28T14:45:00Z', status: Lead::STATUS_NOT_A_LEAD);
+        $this->lead('silent', 'MESSAGE', '2026-09-28T14:45:00Z', from: '', status: Lead::STATUS_NOT_A_LEAD);
+        $this->inTenant($this->t['org'], fn () => Lead::query()->where('remote_id', 'silent')->update(['last_contact_from' => null]));
+
+        $rows = collect($this->signedInAs($this->t['admin'])->getJson('/api/v1/leads')->assertOk()->json('data'))->keyBy('contact_name');
+        $this->assertSame([true, false, false], [$rows['Customer open']['reply_owed'], $rows['Customer junk']['reply_owed'], $rows['Customer silent']['reply_owed']]);
+        $this->assertSame(['Customer open'], array_column($this->getJson('/api/v1/leads?unreplied=1')->json('data'), 'contact_name'));
+        $this->assertSame(['Customer open'], array_column($this->getJson('/api/v1/leads?overdue=1')->json('data'), 'contact_name'));
+
+        $this->artisan('ezbizi:leads-reply-overdue')->assertSuccessful();
+        $this->assertSame(['open'], array_map(fn ($e) => Lead::withoutGlobalScopes()->find($e->subject_id)->remote_id, $this->raised()));
     }
 }

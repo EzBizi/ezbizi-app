@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import 'financial_cells.dart';
+import '../../core/soft_keyboard.dart';
 
 /// One input for one field, by type. Used by the record panel and the form view.
 class CellEditor extends StatelessWidget {
@@ -211,6 +212,9 @@ class _RecordPanelState extends State<RecordPanel> {
       actions: [
         if (widget.record != null && widget.canDelete)
           TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
             onPressed: _busy ? null : _delete,
             child: const Text('Delete'),
           ),
@@ -354,7 +358,7 @@ class _FieldPanelState extends State<FieldPanel> {
             ),
           TextField(
             controller: _name,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(labelText: 'Field name'),
           ),
           const SizedBox(height: 12),

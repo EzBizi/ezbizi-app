@@ -123,6 +123,28 @@ class PendingSettingsApiTest extends TestCase
         $this->assertSame([['ap@branch.test'], ['(203) 555-0111']], [$invoice['bill_to']['emails'], $invoice['bill_to']['phones']]);
     }
 
+    /** Only a sister branch of a Workiz-using company is asked for Workiz (review 2026-11-02). */
+    public function test_workiz_is_asked_only_of_branches_whose_company_uses_it(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $sister = $this->extraFranchise($tenant, 'Sister');
+        $other  = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $company = \App\Models\Company::create(['organization_id' => $tenant['org']->id, 'name' => 'Other Co']);
+
+            return \App\Models\Franchise::create(['organization_id' => $tenant['org']->id, 'company_id' => $company->id, 'name' => 'Other Branch']);
+        });
+        $this->inTenant($tenant['org'], fn () => \App\Models\SocialConnection::create([
+            'organization_id' => $tenant['org']->id, 'scope_type' => \App\Models\SocialConnection::SCOPE_FRANCHISE,
+            'scope_id' => $tenant['franchise']->id, 'provider' => \App\Support\Social\SocialProvider::Workiz->value,
+            'remote_id' => 'wz-1', 'display_name' => 'Alpha Workiz',
+        ]));
+        $this->signedInAs($tenant['admin']);
+
+        $this->assertContains('workiz.branch_connection', $this->keysFor('Sister'));
+        $this->assertNotContains('workiz.branch_connection', $this->keysFor('Other Branch'));
+        $this->assertNotContains('workiz.branch_connection', $this->keysFor($tenant['franchise']->name));
+    }
+
     /** A company with no connected inbox is listed until one is connected. */
     public function test_a_company_without_a_connected_inbox_is_a_gap(): void
     {

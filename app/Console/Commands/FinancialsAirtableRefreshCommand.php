@@ -27,7 +27,7 @@ class FinancialsAirtableRefreshCommand extends Command
                 foreach (AirtableMirror::linkAll() as $table) {
                     $this->line("{$organization->name} / {$table->name}: now mirrored");
                 }
-                foreach (FinancialTable::query()->whereNotNull('source_table_id')->whereNull('cut_over_at')->get() as $table) {
+                foreach (FinancialTable::query()->stillMirrored()->get() as $table) {
                     $done = AirtableMirror::refresh($table);
                     $this->line("{$organization->name} / {$table->name}: +{$done['added']} ~{$done['changed']} -{$done['removed']}");
                 }

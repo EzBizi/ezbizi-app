@@ -74,7 +74,8 @@ class AssistantController extends Controller
             null => null,
             StaffAnswer::TECH => ['reply' => $found['reply'], 'entry_ids' => [], 'tech' => true,
                 'answer_id' => $found['tech']['answer']?->getKey(), 'order_check' => $found['tech']['answer']?->order_check],
-            StaffAnswer::APP => ['reply' => $found['reply'], 'entry_ids' => [], 'from_app' => true],
+            // The photos WhatsApp sends as images, as links here until the chat shows them inline.
+            StaffAnswer::APP => ['reply' => implode("\n", [$found['reply'], ...($found['media'] ?? [])]), 'entry_ids' => [], 'from_app' => true, 'media' => $found['media'] ?? []],
             default => ['reply' => $found['reply'], 'entry_ids' => $found['entry_ids']],
         };
 

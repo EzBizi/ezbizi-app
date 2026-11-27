@@ -2,9 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/branch_options.dart';
 import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/grouped_rows.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/status_pill.dart';
@@ -44,8 +48,8 @@ class _InvoicesTabState extends State<InvoicesTab> {
         ('charge_sheets', 'Charge sheets', Icons.grid_on_outlined),
       if (_me.can('invoices.invoices.view'))
         ('invoices', 'Invoices', Icons.receipt_outlined),
-      // The registry's Settings tab is the edit tick.
-      if (_me.can('invoices.edit')) ('settings', 'Settings', Icons.tune),
+      if (_me.can('invoices.settings.view'))
+        ('settings', 'Settings', Icons.tune),
     ];
     if (tabs.isEmpty) {
       return const Center(
@@ -152,10 +156,18 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
     super.initState();
     if (widget.initialOpenId != null) widget.onOpened?.call();
     _load();
+    // An invoice paid online, sent or voided elsewhere: the list and
+    // its totals re-read quietly (filters, search and the open one kept).
+    _live = LiveChanges.of(widget.api).subscribe({'invoices'}, (_) {
+      return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -188,7 +200,8 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
     ];
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final query = <String, Object>{
       'status': ?_status,
       'franchise_id': ?_branch,
@@ -196,11 +209,11 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
     };
     if (_month case final m?) {
       final first = DateTime.parse('$m-01');
-      query['from'] = isoDay(first);
-      query['to'] = isoDay(DateTime(first.year, first.month + 1, 0));
+      query['from'] = formatCalendarDay(first);
+      query['to'] = formatCalendarDay(DateTime(first.year, first.month + 1, 0));
     }
     final r = await widget.api.get('/invoices', query.isEmpty ? null : query);
-    if (!mounted) return;
+    if (!mounted || (quiet && !r.ok)) return;
     setState(() {
       if (r.ok) {
         _rows = (r.body['data'] as List).cast<Map<String, dynamic>>();
@@ -234,7 +247,7 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
           final key = '${d.year}-${d.month.toString().padLeft(2, '0')}';
           return SearchOption(
             value: key,
-            label: '${_monthNames[d.month - 1]} ${d.year}',
+            label: '${longMonths[d.month - 1]} ${d.year}',
           );
         }(),
     ];
@@ -321,21 +334,11 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
       children: [
         SizedBox(
           width: phone ? double.infinity : 240,
-          child: TextField(
+          child: ListSearch(
             key: const Key('invoices-search'),
             controller: _search,
+            hint: 'Number or customer',
             onChanged: _searched,
-            // bodyMedium for the text and the hint, as the dense pickers draw:
-            // 53 points tall, as they are; the theme's 16-point hint makes 56.
-            style: Theme.of(context).textTheme.bodyMedium,
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: 'Number or customer',
-              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
-              ),
-            ),
           ),
         ),
         for (final (value, label) in _statuses)
@@ -520,18 +523,3 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
     );
   }
 }
-
-const _monthNames = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];

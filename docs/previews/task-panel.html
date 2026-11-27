@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Task panel: saving and one form</title>
+<style>
+:root{--bg:#f6f8f9;--paper:#fff;--ink:#14191c;--muted:#5d6970;--line:#dde3e6;--fld:#fff;--ok:#1e7a46;--okc:#e3f4ea;--bad:#b3261e;--badc:#fbe4e2;--pri:#00739a;--pric:#dff1f8;--offc:#eceff1;--done:#2f9a4c}
+.dark{--bg:#0c1014;--paper:#151b20;--ink:#e8eef1;--muted:#93a1a8;--line:#33404a;--fld:#161e25;--ok:#6fd49a;--okc:#173626;--bad:#ff8a80;--badc:#3d1614;--pri:#5fc8ea;--pric:#0f3443;--offc:#222b32;--done:#3fae5c}
+body{margin:0;font:14px/1.4 Inter,Segoe UI,Roboto,sans-serif;background:#e9edef;color:#14191c}
+.wrap{max-width:1240px;margin:0 auto;padding:24px 16px}h1{margin:0 0 4px}h2{margin:36px 0 6px;font-size:18px}.cap{color:#4c575d;margin:0 0 12px;max-width:880px}
+.rec{background:#00739a;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle}
+.trio{display:grid;grid-template-columns:2fr 1fr;gap:12px}@media(max-width:900px){.trio{grid-template-columns:1fr}}
+.frame{background:var(--bg);color:var(--ink);border-radius:10px;padding:14px;border:1px solid #cfd6da;overflow:hidden}.frame.phone{max-width:390px}
+.lbl{font-size:11px;color:#4c575d;margin:0 0 4px;font-weight:600}
+.tp-muted{color:var(--muted)}.tp-sm{font-size:12px}
+.tp-sb{background:var(--paper);border:1px solid var(--line);border-radius:12px;max-width:440px;margin-left:auto;position:relative}.phone .tp-sb{max-width:none}
+.tp-hd{display:flex;align-items:flex-start;gap:8px;padding:14px 14px 10px;border-bottom:1px solid var(--line)}
+.tp-hd b{font-size:17px;display:block}.tp-x{color:var(--muted);font-size:18px;line-height:1}
+.tp-state{font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;white-space:nowrap}
+.tp-saved{background:var(--okc);color:var(--ok)}.tp-saving{background:var(--offc);color:var(--muted)}.tp-err{background:var(--badc);color:var(--bad)}
+.tp-bd{padding:14px}
+.tp-f{display:grid;grid-template-columns:92px 1fr;gap:10px;align-items:center;margin-bottom:8px}
+.phone .tp-f{grid-template-columns:1fr;gap:4px;margin-bottom:10px}
+.tp-f>span:first-child{color:var(--muted);font-size:12px}
+.tp-box{height:40px;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:var(--fld);display:flex;align-items:center;gap:8px;padding:0 10px 0 12px;font-size:13px;min-width:0}
+.tp-box .tp-v{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tp-box .tp-i{color:var(--muted);font-size:12px}
+.tp-box.tp-focus{border:2px solid var(--pri);padding:0 9px 0 11px}
+.tp-box.tp-ph .tp-v{color:var(--muted)}
+.tp-box.tp-bad{border-color:var(--bad)}
+.tp-pill{background:var(--done);color:#fff;border-radius:6px;padding:2px 10px;font-weight:700;font-size:12px}
+.tp-av{width:22px;height:22px;border-radius:50%;background:var(--pric);color:var(--pri);font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.tp-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.tp-chip{border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-size:12px}
+.tp-hint{font-size:11px;margin-top:3px}.tp-hint.tp-okc{color:var(--ok)}.tp-hint.tp-badc{color:var(--bad)}
+.tp-link{color:var(--pri);font-weight:600;font-size:12px}
+.tp-sec{font-size:13px;font-weight:700;margin:14px 0 6px;padding-top:12px;border-top:1px solid var(--line)}
+.tp-upd{height:46px;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:8px 12px;color:var(--muted);font-size:13px;background:var(--fld)}
+.tp-row{display:flex;align-items:center;gap:8px}.tp-sp{flex:1}
+.tp-btn{background:var(--pri);color:var(--paper);border-radius:99px;padding:6px 14px;font-weight:600;font-size:12px}
+.tp-ob{border:1px solid var(--line);color:var(--ink);border-radius:99px;padding:6px 14px;font-weight:600;font-size:12px}
+.tp-ft{display:flex;gap:12px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--line)}
+.tp-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line);background:var(--pric)}
+.tp-pop{position:absolute;left:calc(92px + 24px);right:14px;z-index:2;background:var(--paper);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.18);padding:10px}
+.phone .tp-pop{left:14px}
+.tp-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:11px;text-align:center}
+.tp-cal i{font-style:normal;padding:4px 0;border-radius:5px}.tp-cal .tp-e{background:var(--pri);color:var(--paper)}.tp-cal .tp-in{background:var(--pric)}.tp-cal .tp-w{color:var(--muted)}
+.tp-dot{width:6px;height:6px;border-radius:50%;background:var(--pri);display:inline-block}
+.tp-warn{margin:10px 14px 0;border:1px solid var(--bad);background:var(--badc);border-radius:10px;padding:8px 10px;font-size:12px}
+</style></head><body><div class="wrap">
+<h1>Task panel: saving, and one form</h1>
+<p class="cap">Jose (11-16): "there doesnt seem to be a save button … all fields are different sizes, all pickers the same it's a mess." Today the panel does save each change (title on Enter, pickers at once), but it never says so, so it looks like nothing was kept. All three options use the same form: labels in one column (on top on a phone), every field the full width and one height (40), Timeline a compact "Nov 10 – Nov 16" box that opens the calendar only when tapped, in this order: Title, Status, Owner, Assigned, Due, Timeline, Text, then the board's other columns, Updates and Activity.</p>
+
+<template id="form">
+<div class="tp-f"><span>Title</span><div class="tp-box @T"><span class="tp-v">Video For Reschedule</span></div></div>
+<div class="tp-f"><span>Status</span><div class="tp-box"><span class="tp-v"><span class="tp-pill">Done - Pending Review</span></span><span class="tp-i">▾</span></div></div>
+<div class="tp-f"><span>Owner</span><div class="tp-box"><span class="tp-av">SO</span><span class="tp-v">Shoval Ohayon</span></div></div>
+<div class="tp-f"><span>Assigned</span><div class="tp-box"><span class="tp-av">JL</span><span class="tp-v">Jose Luis Demasi</span><span class="tp-i">▾</span></div></div>
+<div class="tp-f"><span></span><div class="tp-box tp-ph"><span class="tp-v">Add another person</span><span class="tp-i">▾</span></div></div>
+<div class="tp-f"><span>Due</span><div class="tp-box"><span class="tp-v">Nov 16, 2026</span><span class="tp-i">📅</span></div></div>
+<div class="tp-f"><span>Timeline</span><div class="tp-box"><span class="tp-v">Nov 10 – Nov 16</span><span class="tp-i">📅</span></div></div>
+@POP
+<div class="tp-f"><span>Text</span><div class="tp-box @X"><span class="tp-v">@XV</span></div></div>
+<div class="tp-f"><span>Category</span><div class="tp-box tp-ph"><span class="tp-v">Not set</span><span class="tp-i">▾</span></div></div>
+<div class="tp-sec">Updates</div>
+<div class="tp-upd">Write an update… (@ to mention)</div>
+<div class="tp-row" style="margin-top:8px"><span class="tp-link">📎 Attach</span><span class="tp-sp"></span><span class="tp-btn">Post update</span></div>
+<div class="tp-sec">Activity <span class="tp-muted" style="float:right">▾</span></div>
+<div class="tp-muted tp-sm">Created 11/6/2026 2:54 PM</div>
+</template>
+
+<template id="popover">
+<div class="tp-pop"><div class="tp-row" style="margin-bottom:6px"><b style="font-size:12px">November 2026</b><span class="tp-sp"></span><span class="tp-muted">‹ ›</span></div>
+<div class="tp-cal"><i class="tp-w">S</i><i class="tp-w">M</i><i class="tp-w">T</i><i class="tp-w">W</i><i class="tp-w">T</i><i class="tp-w">F</i><i class="tp-w">S</i>
+<i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i><i class="tp-e">10</i><i class="tp-in">11</i><i class="tp-in">12</i><i class="tp-in">13</i><i class="tp-in">14</i><i class="tp-in">15</i><i class="tp-e">16</i><i>17</i><i>18</i><i>19</i><i>20</i><i>21</i></div>
+<div class="tp-row tp-sm" style="margin-top:6px"><span class="tp-muted">Pick the first day</span><span class="tp-sp"></span><span class="tp-link">Clear</span><span class="tp-link">Done</span></div></div>
+</template>
+
+<template id="a">
+<div class="tp-sb">
+<div class="tp-hd"><div style="flex:1"><b>My board</b><span class="tp-muted tp-sm">Open Tasks</span></div><span class="tp-state tp-saved">Saved ✓</span><span class="tp-x">✕</span></div>
+<div class="tp-bd">@FORM</div>
+<div class="tp-ft"><span class="tp-link">🔗 Copy link</span><span class="tp-link" style="color:var(--bad)">🗑 Delete…</span></div>
+</div>
+<p class="lbl" style="margin-top:12px">The same header while a save runs, and when one fails</p>
+<div class="tp-sb"><div class="tp-hd"><div style="flex:1"><b>My board</b></div><span class="tp-state tp-saving">Saving…</span><span class="tp-x">✕</span></div></div>
+<div class="tp-sb" style="margin-top:8px"><div class="tp-hd"><div style="flex:1"><b>My board</b></div><span class="tp-state tp-err">Not saved · Retry</span><span class="tp-x">✕</span></div>
+<div class="tp-bd"><div class="tp-f"><span>Title</span><div><div class="tp-box tp-bad"><span class="tp-v">Video For Reschedule v2</span></div><div class="tp-hint tp-badc">Couldn't save: no connection. What you typed is kept. <b>Retry</b></div></div></div></div></div>
+</template>
+
+<template id="b">
+<div class="tp-sb">
+<div class="tp-hd"><div style="flex:1"><b>My board</b><span class="tp-muted tp-sm">Open Tasks</span></div><span class="tp-x">✕</span></div>
+<div class="tp-bd">@FORM</div>
+<div class="tp-bar"><span class="tp-dot"></span><span class="tp-sm" style="font-weight:600">2 unsaved changes</span><span class="tp-sp"></span><span class="tp-ob">Cancel</span><span class="tp-btn">Save</span></div>
+</div>
+<p class="lbl" style="margin-top:12px">Closing with unsaved changes asks, inside the panel</p>
+<div class="tp-sb"><div class="tp-hd"><div style="flex:1"><b>My board</b></div><span class="tp-x">✕</span></div>
+<div class="tp-warn">You changed Title and Timeline. <b>Save them?</b><div class="tp-row" style="margin-top:8px"><span class="tp-sp"></span><span class="tp-ob">Keep editing</span><span class="tp-ob" style="color:var(--bad)">Discard</span><span class="tp-btn">Save</span></div></div><div style="height:12px"></div></div>
+</template>
+
+<template id="c">
+<div class="tp-sb">
+<div class="tp-hd"><div style="flex:1"><b>My board</b><span class="tp-muted tp-sm">Open Tasks</span></div><span class="tp-state tp-saved">All saved</span><span class="tp-x">✕</span></div>
+<div class="tp-bd">@FORM</div>
+<div class="tp-ft"><span class="tp-link">🔗 Copy link</span><span class="tp-link" style="color:var(--bad)">🗑 Delete…</span></div>
+</div>
+<p class="lbl" style="margin-top:12px">Typing shows a ✓ Save inside the box; a picker saves the moment you choose</p>
+</template>
+
+<h2>A · Saves by itself, and says so <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Every change saves on its own: a picker the moment you choose, typing when you press Enter, leave the box, or stop for a second. The header says "Saving…" then "Saved ✓". If a save fails it says "Not saved", keeps what you typed, and offers Retry. Closing the panel saves anything still being typed. Shown with the Timeline tapped open.</p><div data-o="a"></div>
+<h2>B · A Save bar</h2>
+<p class="cap">Nothing is written until Save. A bar appears at the bottom once something changes ("2 unsaved changes · Cancel · Save"); closing with changes asks inside the panel. Familiar, but one more click per edit, and a status change from the board's table would still save at once, so the two places behave differently.</p><div data-o="b"></div>
+<h2>C · Pickers save at once, typing has a ✓</h2>
+<p class="cap">Status, people and dates save the moment they are chosen. While you type in a box, a small ✓ Save appears inside it (Enter does the same); closing saves it too. The header says "All saved" once nothing is waiting.</p><div data-o="c"></div>
+</div>
+<script>
+const tpForm = document.getElementById('form').innerHTML;
+const tpPop = document.getElementById('popover').innerHTML;
+function tpFill(opt){
+  let f = tpForm;
+  if(opt==='a'){f=f.replace('@T','').replace('@POP',tpPop).replace('@X','').replace('@XV','Script ready, needs a voice-over');}
+  if(opt==='b'){f=f.replace('@T','tp-focus').replace('@POP','').replace('@X','').replace('@XV','Script ready, needs a voice-over')
+    .replace('<span>Title</span>','<span>Title <span class="tp-dot"></span></span>').replace('<span>Timeline</span>','<span>Timeline <span class="tp-dot"></span></span>');}
+  if(opt==='c'){f=f.replace('@T','').replace('@POP','').replace('@X','tp-focus').replace('@XV','Script ready, needs a voice-ov|</span><span class="tp-btn" style="padding:3px 10px">✓ Save');}
+  return document.getElementById(opt).innerHTML.split('@FORM').join(f);
+}
+document.querySelectorAll('[data-o]').forEach(h=>{const t=tpFill(h.dataset.o);
+h.innerHTML=`<div class="trio"><div><p class="lbl">Desktop · light</p><div class="frame">${t}</div><p class="lbl" style="margin-top:10px">Desktop · dark</p><div class="frame dark">${t}</div></div><div><p class="lbl">Phone · light</p><div class="frame phone">${t}</div></div></div>`});
+document.body.dataset.built = document.querySelectorAll('.tp-sb').length;
+</script></body></html>

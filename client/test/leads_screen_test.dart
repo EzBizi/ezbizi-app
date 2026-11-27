@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -7,6 +8,7 @@ import 'package:ezbizi_client/screens/leads_screen.dart';
 import 'package:ezbizi_client/widgets/lead_thread.dart';
 import 'package:ezbizi_client/widgets/leads_accounts.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:http/http.dart' as http;
@@ -19,6 +21,7 @@ import 'package:http/http.dart' as http;
 /// the wrong one is the exact failure this module was built to stop, and it is
 /// invisible in a screenshot.
 void main() {
+  _barHeights();
   // UI queue 103 (A1 takeover): the charge / IVR / dispatcher / date
   // filters, and editing a lead with its caller's history.
   testWidgets('a charge filter asks the server, and Edit saves the fields', (
@@ -75,6 +78,70 @@ void main() {
 
     expect(find.text('Dana Whitfield'), findsNWidgets(2));
     expect(find.text('Marcus Bell'), findsOneWidget);
+  });
+
+  /// Jose, 2026-11-05: a notification for A1 Garage Doors opened while the
+  /// view was on Ace Fireplace, and every reply was refused as out of view.
+  testWidgets('a notification for another company moves the view there', (
+    tester,
+  ) async {
+    final inCompany = {
+      ..._me,
+      'scope': {'type': 'company', 'id': 'co-1', 'label': 'Everdoors', 'path': ['Everdoors']},
+      'companies': [
+        {'id': 'co-1', 'name': 'Everdoors', 'parent_company_id': null},
+        {'id': 'co-2', 'name': 'Garage Doors', 'parent_company_id': null},
+      ],
+    };
+    Map<String, dynamic> at(String company, [String id = 'lead-2']) => {
+      ..._lead(id, id == 'lead-2' ? 'Dana Whitfield' : 'Ruth Okafor'),
+      'company': {'id': company, 'name': company},
+    };
+    Map<String, dynamic> viewing(String company) => {
+      ...inCompany,
+      'scope': {'type': 'company', 'id': company, 'label': company, 'path': [company]},
+    };
+    Future<void> remount(String company, List<Map<String, dynamic>> leads, String? open) async {
+      await tester.pumpWidget(const SizedBox());
+      await _pump(
+        tester,
+        leads: leads,
+        connections: _connected,
+        initialLeadId: open,
+        me: viewing(company),
+      );
+    }
+
+    // Leads opened the ordinary way first, as between two notifications: an
+    // earlier test opened lead-2 too.
+    await remount('co-1', const [], null);
+    final leads = [_lead('lead-1', 'Marcus Bell'), at('co-2')];
+    await remount('co-1', leads, 'lead-2');
+    expect(_preferences, [
+      {'navigation.scope': 'company:co-2'},
+    ]);
+
+    // The switch's own remount opens the lead there.
+    await remount('co-2', leads, 'lead-2');
+    expect(_preferences, isEmpty);
+    expect(find.text('Dana Whitfield'), findsNWidgets(2));
+
+    // Then another company picked by hand: the shell hands over the same
+    // lead, and it must neither switch back nor stay selected (Jose,
+    // 2026-11-05: switching company unselects).
+    await remount('co-1', leads, 'lead-2');
+    expect(_preferences, isEmpty);
+    expect(find.text('Dana Whitfield'), findsOneWidget, reason: 'not selected');
+
+    // A notification lead the view already covers moves nothing, and a
+    // company picked afterwards does not snap back to it either.
+    final here = [_lead('lead-1', 'Marcus Bell'), at('co-1', 'lead-3')];
+    await remount('co-1', here, 'lead-3');
+    expect(_preferences, isEmpty);
+    expect(find.text('Ruth Okafor'), findsNWidgets(2));
+    await remount('co-2', here, 'lead-3');
+    expect(_preferences, isEmpty);
+    expect(find.text('Ruth Okafor'), findsOneWidget, reason: 'not selected');
   });
 
   testWidgets('search runs as you type, without Enter', (tester) async {
@@ -150,6 +217,35 @@ void main() {
   /// refresh must leave it alone: a thread that swaps itself out every twenty
   /// seconds while somebody is reading it would be a worse bug than the one
   /// this fixes, and it would look like the feature working.
+  // Design 206: the open iPhone Duo (669 wide) gets the list and the thread
+  // side by side; folding to the outer screen keeps that lead open.
+  testWidgets('the open Duo shows list and thread; folding keeps the lead', (
+    tester,
+  ) async {
+    final leads = [
+      _lead('lead-1', 'Marcus Bell'),
+      _lead('lead-2', 'Priya Raman'),
+    ];
+    await _pump(
+      tester,
+      leads: leads,
+      connections: _connected,
+      size: const Size(669, 951),
+    );
+
+    expect(find.byKey(const ValueKey('source-rail')), findsNothing);
+    await tester.tap(find.text('Priya Raman').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(LeadThread), findsOneWidget);
+    expect(find.text('Priya Raman'), findsNWidgets(2));
+
+    tester.view.physicalSize = const Size(466, 678);
+    await tester.pumpAndSettle();
+    expect(find.byType(LeadThread), findsOneWidget);
+    expect(find.text('Marcus Bell'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a refresh leaves the open thread where it was', (tester) async {
     final leads = [
       _lead('lead-1', 'Marcus Bell'),
@@ -205,6 +301,95 @@ void main() {
       'website_chat',
       reason: 'a refresh that drops the filter would swap the dispatcher off '
           'the tab they are watching',
+    );
+  });
+
+  // Jose, 2026-11-16: the leads a Recovery text went to, in a tab of their
+  // own with an unread badge, and still in All with a Recovery chip.
+  testWidgets('Recovery is a rail tab with its badge, and its leads keep a chip in All', (
+    tester,
+  ) async {
+    final leads = [
+      {..._lead('lead-1', 'Marcus Bell'), 'recovery_at': '2026-11-16T15:00:00Z'},
+      _lead('lead-2', 'Dana Ruiz'),
+    ];
+    await _pump(
+      tester,
+      leads: leads,
+      connections: _connected,
+      permissions: const ['leads.view', 'leads.website_chat.view', 'leads.recovery.view'],
+      unreadBySource: const {'recovery': 3, 'website_chat': 1},
+    );
+
+    expect(find.byKey(const ValueKey('recovery-badge-lead-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('recovery-badge-lead-2')), findsNothing);
+
+    final tab = find.descendant(
+      of: find.byKey(const ValueKey('source-tabs')),
+      matching: find.text('Recovery'),
+    );
+    expect(tab, findsOneWidget);
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['source'], 'recovery');
+  });
+
+  // Shoval, 2026-11-06: "Create under leads new tab 'Returning Client Promo'".
+  testWidgets(
+    'a named promotion is a rail tab of its own, behind the Promotions tick',
+    (tester) async {
+      await _pump(
+        tester,
+        leads: [_lead('lead-1', 'Marcus Bell')],
+        connections: _connected,
+        permissions: const [
+          'leads.view',
+          'leads.website_chat.view',
+          'leads.promotions.view',
+        ],
+        unreadBySource: const {'promo:Returning Client Promo': 2},
+        promotionTabs: const ['Returning Client Promo'],
+      );
+      final tab = find.descendant(
+        of: find.byKey(const ValueKey('source-tabs')),
+        matching: find.text('Returning Client Promo'),
+      );
+      expect(tab, findsOneWidget);
+      await tester.tap(tab);
+      await tester.pumpAndSettle();
+      expect(_lastListQuery['source'], 'promo:Returning Client Promo');
+    },
+  );
+
+  testWidgets('without the Promotions tick there is no named promotion tab', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+      permissions: const ['leads.view', 'leads.website_chat.view'],
+      promotionTabs: const ['Returning Client Promo'],
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('source-tabs')),
+        matching: find.text('Returning Client Promo'),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('without its tick there is no Recovery tab', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+      permissions: const ['leads.view', 'leads.website_chat.view'],
+    );
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('source-tabs')), matching: find.text('Recovery')),
+      findsNothing,
     );
   });
 
@@ -283,13 +468,15 @@ void main() {
       matching: find.text(text),
     );
 
-    expect(inTab('ls_text', '9'), findsOneWidget);
+    // LS Text is inside SMS Texts, LS Call inside Calls (Jose, 2026-11-02).
+    expect(inTab('sms', '9'), findsOneWidget);
+    expect(inTab('calls', '4'), findsOneWidget);
     expect(inTab('website_chat', '2'), findsOneWidget);
-    // All holds everything but LS Call until it is switched on: 9 + 2.
+    // All holds everything but Calls until it is switched on: 9 + 2.
     expect(inTab('all', '11'), findsOneWidget);
     expect(find.byKey(const ValueKey('source-failing-thumbtack')), findsOneWidget);
     // The control: a connected source is not marked.
-    expect(find.byKey(const ValueKey('source-failing-ls_text')), findsNothing);
+    expect(find.byKey(const ValueKey('source-failing-sms')), findsNothing);
   });
 
   testWidgets('the divider drags the panes, within limits', (tester) async {
@@ -374,8 +561,8 @@ void main() {
         size: Size(width, 900),
         leads: [
           {
-            ..._lead('lead-1', 'Dave Malkowski with a long surname'),
-            'phone': '+12196692720',
+            ..._lead('lead-1', 'Dave Mapleford with a long surname'),
+            'phone': '+12195550100',
             'can_reply': true,
             'reply_overdue': true,
             'customer': {'id': 'cu-1', 'number': 'C-0042', 'name': 'Dave'},
@@ -465,7 +652,8 @@ void main() {
     // Folded behind Filters since UI queue 108.
     await tester.tap(find.byKey(const ValueKey('leads-more-filters')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('all-source-ls_call')));
+    // LS Call is one of Calls, switched on together (Jose, 2026-11-02).
+    await tester.tap(find.byKey(const ValueKey('all-source-calls')));
     await tester.pumpAndSettle();
     expect(_lastListQuery['sources'], contains('ls_call'));
     expect(_lastListQuery['sources'], isNot(contains('ls_booking')));
@@ -494,6 +682,35 @@ void main() {
     expect(find.byKey(const ValueKey('viewers-lead-1')), findsOneWidget);
     expect(find.text('Tanya Ruiz +1'), findsOneWidget);
     expect(find.byKey(const ValueKey('viewers-lead-2')), findsNothing);
+  });
+
+  // Mobile review 11-24, phone on its side: the marks took the whole line and
+  // the name got 0 px.
+  testWidgets('in a narrow list the marks leave the name room', (tester) async {
+    const name = 'Alexandra Montgomery-Smith';
+    await _pump(
+      tester,
+      size: const Size(300, 800),
+      leads: [
+        {
+          ..._lead('lead-1', name, note: 'Call back after 5'),
+          'viewers': ['Tanya Ruiz', 'Marco Diaz'],
+          'reply_overdue': true,
+          'ai': ['contact_name'],
+        },
+      ],
+      connections: const [],
+    );
+
+    expect(tester.takeException(), isNull);
+    final marks = find.ancestor(
+      of: find.byKey(const ValueKey('lead-ai-name-lead-1')),
+      matching: find.byType(SingleChildScrollView),
+    );
+    expect(
+      tester.getSize(find.text(name).first).width,
+      greaterThan(tester.getSize(marks).width),
+    );
   });
 
   // Jose, 2026-09-28: a customer left waiting is marked red on the list.
@@ -698,7 +915,7 @@ void main() {
         {
           'id': 'c3',
           'provider': 'google_ads',
-          'display_name': '772-410-3388',
+          'display_name': '772-555-0100',
           'status': 'connected',
           'leads_franchise_id': null,
           'leads_count': 0,
@@ -871,22 +1088,25 @@ void main() {
     );
 
     // Jose, 2026-09-22: Facebook and Instagram messages belong in Leads rather
-    // than in an inbox of their own. Each is its OWN chip: they arrive in one
-    // webhook envelope and are told apart only by Meta's `object`, so a single
-    // "social" chip would put one of them somewhere nobody can reach.
-    for (final word in ['Facebook', 'Instagram']) {
+    // than in an inbox of their own. Since 2026-11-02 (design 166) they share
+    // one Meta tab, and each is still its OWN chip inside it: they arrive in
+    // one webhook envelope and are told apart only by Meta's `object`, so
+    // without the chips one of them could only be reached by scrolling.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Meta'));
+    await tester.pumpAndSettle();
+    for (final word in ['facebook', 'instagram']) {
       expect(
-        find.widgetWithText(ChoiceChip, word),
+        find.byKey(ValueKey('meta-source-$word')),
         findsOneWidget,
-        reason:
-            '$word has no chip, so that source can only be reached by '
-            'scrolling the whole list.',
+        reason: '$word has no chip inside Meta.',
       );
     }
+    expect(find.byKey(const ValueKey('meta-source-whatsapp')), findsNothing,
+        reason: 'WhatsApp was not granted');
 
     // And the four that were already there still are - a list built by index
     // from two const lists is exactly where an insertion goes wrong silently.
-    for (final word in ['LS Call', 'LS Text', 'Thumbtack', 'Chat', 'Forms']) {
+    for (final word in ['Calls', 'SMS Texts', 'Thumbtack', 'Chat', 'Forms']) {
       expect(find.widgetWithText(ChoiceChip, word), findsOneWidget);
     }
   });
@@ -899,13 +1119,97 @@ void main() {
       permissions: const ['leads.view', 'leads.facebook.view'],
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Facebook'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Meta'));
+    await tester.pumpAndSettle();
+    // Meta asks for the Meta sources this person holds, never 'meta' itself.
+    expect(_lastListQuery['source'], isNull);
+    expect(_lastListQuery['sources'], 'facebook');
+
+    await tester.tap(find.byKey(const ValueKey('meta-source-facebook')));
     await tester.pumpAndSettle();
 
     // The chip label and the API value are different strings, and the mapping
     // between them lives in one list. Asserting the drawn label alone would
     // pass with the wrong source wired behind it.
-    expect(_lastListQuery['source'], 'facebook');
+    expect(_lastListQuery['sources'], 'facebook');
+  });
+
+  /// Design 166 (Jose, 2026-11-02): one Meta tab, its three sources picked inside it.
+  testWidgets('Meta holds all three, picks one, and All never asks for "meta"', (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const ['leads.view', 'leads.local_services.view', 'leads.facebook.view',
+        'leads.instagram.view', 'leads.whatsapp.view'],
+    );
+    // All leaves LS Call out by default, so it names what it holds: Meta as its three.
+    expect(_lastListQuery['sources']!.split(','), containsAll(['facebook', 'instagram', 'whatsapp']));
+    expect(_lastListQuery['sources']!.split(','), isNot(contains('meta')));
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Meta'));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'facebook,instagram,whatsapp');
+
+    await tester.tap(find.byKey(const ValueKey('meta-source-whatsapp')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'whatsapp');
+
+    await tester.tap(find.byKey(const ValueKey('meta-source-all')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'facebook,instagram,whatsapp');
+  });
+
+  /// Jose, 2026-11-02: Calls (LS, RC, EZ), SMS Texts (LS, EZ) and Forms +
+  /// Job applicants, each one tab with its sources picked inside it.
+  testWidgets('Calls, SMS Texts and Forms each hold their sources', (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const ['leads.view', 'leads.local_services.view', 'leads.ringcentral.view',
+        'leads.ez_calls.view', 'leads.ez_texts.view', 'leads.website_form.view'],
+    );
+    for (final gone in ['LS Call', 'RC Calls', 'EZ Texts', 'Job applicants']) {
+      expect(find.widgetWithText(ChoiceChip, gone), findsNothing, reason: '$gone is inside a tab now');
+    }
+    // All: every call left out by default, no applicant ever.
+    final all = _lastListQuery['sources']!.split(',');
+    expect(all, containsAll(['ls_text', 'ez_texts', 'website_form']));
+    expect(all, isNot(contains('ls_call')));
+    expect(all, isNot(contains('job_applicant')));
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Calls'));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'ls_call,ringcentral,ez_calls');
+    await tester.tap(find.byKey(const ValueKey('calls-source-ringcentral')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'ringcentral');
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'SMS Texts'));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'ls_text,ez_texts');
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Forms'));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'website_form,job_applicant');
+    await tester.tap(find.byKey(const ValueKey('forms-source-job_applicant')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'job_applicant');
+  });
+
+  testWidgets('a link to a source inside a tab opens the tab with it picked', (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const ['leads.view', 'leads.website_chat.view', 'leads.ez_calls.view'],
+      initialSource: 'ez_calls',
+    );
+    expect(_lastListQuery['sources'], 'ez_calls');
+    // Without Forms, the applicants' tab says what it holds.
+    expect(find.widgetWithText(ChoiceChip, 'Job applicants'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Forms'), findsNothing);
   });
 
   // ── one list across every source (sources layout 1 / 4) ─────────
@@ -919,7 +1223,7 @@ void main() {
 
     // Every source reachable, Thumbtack included: the rail scrolls when a
     // window is too short for all of them.
-    for (final word in ['LS Call', 'LS Text', 'Thumbtack', 'Chat', 'Forms']) {
+    for (final word in ['Calls', 'SMS Texts', 'Thumbtack', 'Chat', 'Forms']) {
       expect(
         find.widgetWithText(ChoiceChip, word),
         findsOneWidget,
@@ -985,7 +1289,9 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Forms'));
     await tester.pumpAndSettle();
 
-    expect(_lastListQuery['source'], 'website_form');
+    // Forms holds Job applicants too (Jose, 2026-11-02).
+    expect(_lastListQuery['source'], isNull);
+    expect(_lastListQuery['sources'], 'website_form,job_applicant');
   });
 
   /// A notification for a source this person may not see opens on All.
@@ -1496,7 +1802,9 @@ void _triageTests() {
       connections: _connected,
     );
 
-    await tester.tap(find.byKey(const ValueKey('filter-unread')));
+    // No Unread chip since 2026-11-02 (Jose); Unreplied stands in.
+    expect(find.byKey(const ValueKey('filter-unread')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('filter-unreplied')));
     await tester.pumpAndSettle();
     // Design 162: the quick filters are one sideways-scrolling row, so the
     // later chips start off screen in a narrow list.
@@ -1504,7 +1812,7 @@ void _triageTests() {
     await tester.tap(find.byKey(const ValueKey('filter-starred')));
     await tester.pumpAndSettle();
 
-    expect(_lastListQuery['unread'], '1');
+    expect(_lastListQuery['unreplied'], '1');
     expect(_lastListQuery['starred'], '1', reason: 'both, not either');
 
     await tester.ensureVisible(find.byKey(const ValueKey('mark-all-read')));
@@ -1517,6 +1825,43 @@ void _triageTests() {
       tester.widget<Text>(find.text('Dana').first).style?.fontWeight,
       isNot(FontWeight.w700),
     );
+  });
+
+  // Jose, 2026-11-02: "these 3 fields have different sizes".
+  testWidgets('search, status and Filters are one height', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+    );
+    final heights = [
+      for (final k in [
+        'tour-leads-search',
+        'tour-leads-status',
+        'leads-more-filters',
+      ])
+        tester.getSize(find.byKey(ValueKey(k))).height,
+    ];
+    expect(heights.toSet(), hasLength(1), reason: '$heights');
+    for (final (k, t) in [
+      ('tour-leads-search', 'Search name, phone or message'),
+      ('tour-leads-status', 'Any status'),
+      ('leads-more-filters', 'Filters'),
+    ]) {
+      final box = tester.getCenter(find.byKey(ValueKey(k))).dy;
+      final text = tester
+          .getCenter(
+            find
+                .descendant(
+                  of: find.byKey(ValueKey(k)),
+                  // Narrow, Filters is its icon alone.
+                  matching: t == 'Filters' ? find.byType(Icon) : find.text(t),
+                )
+                .first,
+          )
+          .dy;
+      expect((box - text).abs(), lessThan(2), reason: '$k off centre');
+    }
   });
 }
 
@@ -1582,10 +1927,20 @@ void _conversationRowTests() {
         // existed.
         _lead('lead-3', 'T. Bergqvist',
             from: 'CONSUMER', channel: 'PHONE_CALL', preview: 'Call · 1:08'),
+        // Not a lead: the customer spoke last and it can be replied to, but
+        // nobody owes an answer (Jose, 2026-11-02).
+        {
+          ..._lead('lead-4', 'Spam Caller',
+              from: 'CONSUMER', channel: 'MESSAGE',
+              preview: 'Buy followers', canReply: true),
+          'status': 'not_a_lead',
+          'reply_owed': false,
+        },
       ],
       connections: _connected,
     );
 
+    expect(find.byKey(const ValueKey('reply-badge-lead-4')), findsNothing);
     expect(find.byKey(const ValueKey('reply-badge-lead-1')), findsOneWidget);
     expect(find.text('Awaiting reply'), findsOneWidget);
 
@@ -1640,8 +1995,21 @@ void _conversationRowTests() {
       connections: _connected,
     );
 
+    // Design lead-header A (2026-11-16): the header's facts grid says the
+    // service, the source and the branch, each once.
     expect(
-      find.text('Fireplace chimney · Google Ads · Connecticut'),
+      tester.widget<Text>(find.byKey(const ValueKey('details-service'))).data,
+      'Fireplace chimney',
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('details-branch'))).data,
+      'Connecticut',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('fact-source')),
+        matching: find.text('Google Ads'),
+      ),
       findsOneWidget,
     );
     expect(find.textContaining('home inspector'), findsNothing);
@@ -1659,7 +2027,8 @@ void _conversationRowTests() {
       connections: _connected,
     );
 
-    expect(find.text('Google Ads · Connecticut'), findsOneWidget);
+    expect(find.byKey(const ValueKey('fact-service')), findsNothing);
+    expect(find.byKey(const ValueKey('fact-branch')), findsOneWidget);
     expect(find.textContaining('No service'), findsNothing);
   });
 
@@ -1675,7 +2044,8 @@ void _conversationRowTests() {
       size: const Size(375, 812),
     );
 
-    final search = find.byKey(const ValueKey('source-button'));
+    // Design 171: search and the one Filters button.
+    final search = find.byKey(const ValueKey('leads-more-filters'));
     expect(tester.getTopLeft(search).dy, greaterThanOrEqualTo(0));
 
     await tester.drag(find.text('Caller 0'), const Offset(0, -500));
@@ -1688,6 +2058,60 @@ void _conversationRowTests() {
       isTrue,
     );
   });
+
+  /// Jose, 2026-11-10: "add a third line, move all the tags to the third
+  /// line instead, maybe make them a bit smaller too". Name, time and star on
+  /// line 1; every tag on line 3, under the name, status first. Same on phone.
+  for (final size in const [Size(1400, 900), Size(390, 844)]) {
+    testWidgets('every tag is on line 3, under the name (${size.width})', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        leads: [
+          {
+            ..._lead('lead-1', 'Christopher Wellington', canReply: true),
+            'customer': {'id': 'c1'},
+            'status': 'booked',
+          },
+        ],
+        connections: _connected,
+        size: size,
+      );
+
+      Rect at(String key) => tester.getRect(find.byKey(ValueKey(key)));
+      final name = tester.getRect(find.text('Christopher Wellington').first);
+      final line3 = at('lead-tags-lead-1');
+      expect(line3.top, greaterThan(name.bottom));
+      expect((line3.left - name.left).abs(), lessThan(1));
+      // The star stays on line 1, beside the time.
+      expect(at('star-lead-1').center.dy, lessThan(line3.top));
+      // Status, then reply, then Customer, then the source, in reading
+      // order across however many runs the pane needs; none hidden.
+      final order = [
+        'status-pill-lead-1',
+        'reply-badge-lead-1',
+        'customer-badge-lead-1',
+        'source-badge-lead-1',
+      ].map((k) => at(k).top.round() * 10000 + at(k).left).toList();
+      expect(order, [...order]..sort());
+      for (final k in ['status-pill', 'reply-badge', 'customer-badge']) {
+        expect(at('$k-lead-1').top, greaterThanOrEqualTo(line3.top));
+      }
+      expect(find.textContaining(RegExp(r'^\+\d$')), findsNothing);
+      // Smaller than today's labelSmall.
+      expect(
+        tester
+            .renderObject<RenderParagraph>(find.text('Customer'))
+            .text
+            .style
+            ?.fontSize,
+        10,
+      );
+      expect(name.width, greaterThan(150));
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   /// Tapping a row opens the thread in place, with a way back: never a page
   /// pushed over the app (the containment rule; design 30).
@@ -1743,7 +2167,7 @@ void _conversationRowTests() {
     await tester.tap(find.byKey(const ValueKey('thread-back')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('source-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('leads-more-filters')), findsOneWidget);
     expect(find.byKey(const ValueKey('thread-back')), findsNothing);
   });
 
@@ -1759,6 +2183,9 @@ void _conversationRowTests() {
       size: const Size(375, 812),
     );
 
+    // Design 171: the source button is on the Filters page.
+    await tester.tap(find.byKey(const ValueKey('leads-more-filters')));
+    await tester.pumpAndSettle();
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('source-button')),
@@ -1782,6 +2209,17 @@ void _conversationRowTests() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('source-button')),
+        matching: find.text('Chat'),
+      ),
+      findsOneWidget,
+    );
+
+    // Back on the list, the source it is narrowed to still shows.
+    await tester.tap(find.byKey(const ValueKey('filters-done')));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('leads-source-chip')),
         matching: find.text('Chat'),
       ),
       findsOneWidget,
@@ -1865,8 +2303,10 @@ Future<void> _pump(
   Size size = const Size(1200, 900),
   String? initialSource,
   String? initialLeadId,
+  Map<String, dynamic> me = _me,
   Map<String, dynamic> preferences = const {},
   Map<String, int> unreadBySource = const {},
+  List<String> promotionTabs = const [],
 }) async {
   _posts.clear();
   _patches.clear();
@@ -2001,7 +2441,7 @@ Future<void> _pump(
         return http.Response(
           jsonEncode({
             'data': {
-              ..._me,
+              ...me,
               'permissions': permissions,
               'preferences': preferences,
             },
@@ -2027,6 +2467,7 @@ Future<void> _pump(
               'connections': connections,
               'sync_delayed_since': delayedSince,
               'unread_by_source': unreadBySource,
+              'promotion_tabs': promotionTabs,
             },
           }),
           200,
@@ -2090,3 +2531,20 @@ const _me = {
     {'key': 'leads', 'label': 'Leads', 'available': true, 'reachable': true},
   ],
 };
+
+/// Jose, 2026-11-13: "The Filters button is not the same size as the status
+/// picker or the field". On a desktop, where the density is compact.
+void _barHeights() => testWidgets('search, status and Filters share one height and centre line', (tester) async {
+  debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+  addTearDown(() => debugDefaultTargetPlatformOverride = null);
+  await _pump(tester, leads: [_lead('lead-1', 'Marcus Bell')], connections: _connected);
+
+  Rect inside(String key, Finder what) =>
+      tester.getRect(find.descendant(of: find.byKey(ValueKey(key)), matching: what).first);
+  final button = tester.getRect(find.byKey(const ValueKey('leads-more-filters')));
+  expect(tester.getSize(find.byKey(const ValueKey('tour-leads-search'))).height, button.height);
+  expect(tester.getSize(find.byKey(const ValueKey('tour-leads-status'))).height, button.height);
+  expect(inside('tour-leads-search', find.byType(EditableText)).center.dy, button.center.dy);
+  expect(inside('tour-leads-status', find.byType(Text)).center.dy, button.center.dy);
+  debugDefaultTargetPlatformOverride = null;
+});

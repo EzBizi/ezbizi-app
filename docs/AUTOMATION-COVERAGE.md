@@ -10,6 +10,15 @@ evaporated there.
 
 **Re-measure before trusting the table.** It is a snapshot.
 
+> **Partly re-checked 2026-11-13 (code only, counts NOT re-measured):** of the
+> "declared but unrunnable" actions below, every one except
+> `user.assign_to_scope` now has an arm in `ActionRunner::run`'s match
+> (`notify_administrators`, `resend`, `revoke`, `onboarding.start`,
+> `reassign_owner`, `job.create`, `add_to_audience`, `draft_reply`,
+> `report.send`). The four never-raised triggers are still `isRaised: false`.
+> Many modules have gained triggers/actions since (e.g. `whatsapp.send`,
+> `task.create`, `review.publish_reply`), so the TRIG/ACTS columns are stale.
+
 ## The table
 
     MODULE             TRIG  ACTS   declared but unrunnable

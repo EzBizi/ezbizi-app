@@ -95,6 +95,54 @@ class ProjectWorkizRecordsTest extends TestCase
         $this->assertSame(['ana ruiz', $tenant['admin']->id], [$job->created_by_label, $job->created_by_user_id]);
     }
 
+    /** Jobs, 2026-11-02: type, sub-status and tags land on create and follow Workiz until a person changes them. */
+    public function test_workiz_labels_land_and_follow_until_a_person_changes_them(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $row = $this->mirror($tenant, [], ['JobType' => ' Chimney Sweep ', 'SubStatus' => 'Waiting', 'Tags' => ['VIP ', 'VIP', 'Roof']]);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $job = fn () => $this->inTenant($tenant['org'], fn () => Job::query()->sole());
+        $this->assertSame(['Chimney Sweep', 'Waiting', ['VIP', 'Roof']], [$job()->job_type, $job()->sub_status, $job()->tags]);
+
+        // Workiz moves all three; nobody touched them here, so they follow.
+        $move = fn (array $p) => $this->inTenant($tenant['org'], fn () => $row->fresh()->forceFill(['payload' => $p + $row->fresh()->payload])->save());
+        $move(['JobType' => 'Inspection', 'SubStatus' => 'Parts ordered', 'Tags' => ['Roof']]);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame(['Inspection', 'Parts ordered', ['Roof']], [$job()->job_type, $job()->sub_status, $job()->tags]);
+
+        // A person sets the type and empties the tags; Workiz moving again leaves those alone.
+        $this->inTenant($tenant['org'], fn () => $job()->forceFill(['job_type' => 'Repair', 'tags' => []])->save());
+        $move(['JobType' => 'Sweep', 'SubStatus' => 'Ready', 'Tags' => ['New']]);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame(['Repair', 'Ready', []], [$job()->job_type, $job()->sub_status, $job()->tags]);
+    }
+
+    /** Jobs, 11-10: Workiz's notes grow after the job is copied; the description follows until a person edits it. */
+    public function test_workiz_notes_follow_into_the_description_until_a_person_edits_it(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $row = $this->mirror($tenant, [], ['JobNotes' => 'Line 1']);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $job = fn () => $this->inTenant($tenant['org'], fn () => Job::query()->sole());
+        $notes = fn (string $n) => $this->inTenant($tenant['org'], fn () => $row->fresh()->forceFill(['payload' => ['JobNotes' => $n] + $row->fresh()->payload])->save());
+
+        // A row copied before the description was followed: the start of Workiz's notes is still ours.
+        $this->inTenant($tenant['org'], fn () => $row->fresh()->forceFill(['projected' => array_diff_key($row->fresh()->projected, ['description' => 1])])->save());
+        $notes("Line 1
+Line 2");
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame("Line 1
+Line 2", $job()->description);
+
+        $this->inTenant($tenant['org'], fn () => $job()->forceFill(['description' => 'Typed in EzBizi'])->save());
+        $notes("Line 1
+Line 2
+Line 3");
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame('Typed in EzBizi', $job()->description);
+    }
+
     /** Scheduling, 2026-10-27: Workiz's team is handed over on create and again only when it moves. */
     public function test_the_workiz_team_is_followed_only_when_it_moves(): void
     {
@@ -1196,6 +1244,34 @@ class ProjectWorkizRecordsTest extends TestCase
      * NONE rather than a subset — a partial flood is worse than none, because
      * nobody can tell which customers were texted.
      */
+    /** Automations, 2026-11-03: a recent Workiz tag move announces job.tags_changed; an old one or a burst over the limit (a backfill) does not. */
+    public function test_a_workiz_tag_move_is_announced_only_when_recent_and_not_a_backfill(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $rows = array_map(fn ($u) => $this->mirror($tenant, [], ['UUID' => $u, 'Tags' => ['Old']]), ['JOB001', 'JOB002', 'JOB003']);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $tagEvents = fn () => $this->inTenant($tenant['org'], fn () => AutomationEvent::query()->where('event_key', 'job.tags_changed')->get());
+        $move = function (WorkizJob $row, array $tags, string $when) use ($tenant) {
+            $this->inTenant($tenant['org'], fn () => $row->fresh()->forceFill(['payload' => ['Tags' => $tags] + $row->fresh()->payload, 'last_status_update' => $when])->save());
+        };
+        $recent = now('America/New_York')->subMinutes(5)->format('Y-m-d H:i:s');
+
+        $move($rows[0], ['Old', 'VIP'], '2026-08-28 11:00:13');
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertCount(0, $tagEvents(), 'an old move is followed silently');
+
+        $move($rows[1], ['Old', 'VIP'], $recent);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertEquals(['before' => ['tags' => ['Old']], 'after' => ['tags' => ['Old', 'VIP']]], $tagEvents()->sole()->payload);
+
+        $move($rows[0], ['New'], $recent);
+        $move($rows[1], ['New'], $recent);
+        $move($rows[2], ['New'], $recent);
+        $this->artisan('ezbizi:project-workiz', ['--announce-limit' => 2])->assertSuccessful();
+        $this->assertCount(1, $tagEvents(), 'three at once over a limit of two is a backfill');
+    }
+
     public function test_a_burst_of_recent_moves_beyond_the_limit_announces_nothing(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -1336,6 +1412,20 @@ class ProjectWorkizRecordsTest extends TestCase
     }
 
     /** The booker at another house, and the placeholder address staff share, are not the same person. */
+    /** Customers, 11-04: the placeholder streets are the org's own list, not a constant. */
+    public function test_a_street_the_org_lists_as_a_placeholder_is_never_matched(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->pat($tenant, $tenant['franchise']->id);
+        $this->inTenant($tenant['org'], fn () => \App\Models\BusinessListItem::create(['organization_id' => $tenant['org']->id,
+            'list_key' => 'customers.placeholder_streets', 'item_key' => '1 Example Street', 'value' => [], 'sort' => 0, 'active' => true]));
+        $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame(2, $this->inTenant($tenant['org'], fn () => Customer::query()->count()), 'created, not adopted at the listed street');
+    }
+
     public function test_another_postal_code_or_a_placeholder_street_is_a_new_customer(): void
     {
         $tenant = $this->provisionTenant('Alpha');

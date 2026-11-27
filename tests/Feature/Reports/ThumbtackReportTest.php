@@ -54,6 +54,20 @@ class ThumbtackReportTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.rows', []);
 
+        // A lead no branch has claimed still shows in a company's view, as "No
+        // branch" (2026-11-04: all 19 of A-1's had none, so the view was empty).
+        DB::table('leads')->insert([
+            'id' => (string) Str::uuid(), 'organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
+            'franchise_id' => null, 'source' => 'thumbtack', 'is_test' => false, 'remote_id' => Str::random(8),
+            'category' => 'Chimney Sweep', 'service_state' => 'NY', 'charge_status' => 'CHARGED', 'lead_cost_minor' => 500,
+            'received_at' => '2026-10-06 12:00:00', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->signedInAs($user)->withHeader('X-EzBizi-View', 'company:'.$t['company']->id)
+            ->getJson('/api/v1/reports/thumbtack?from=2026-10-01&to=2026-10-07&state=NY')
+            ->assertOk()
+            ->assertJsonPath('data.rows.0.branch', null)
+            ->assertJsonPath('data.rows.0.leads', 1);
+
         $this->signedInAs($this->userWithRole($t, 'Tech', []))
             ->getJson('/api/v1/reports/thumbtack?from=2026-10-01&to=2026-10-07')
             ->assertForbidden();

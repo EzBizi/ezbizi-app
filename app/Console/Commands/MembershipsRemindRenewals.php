@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\Settings\SettingsResolver;
 use App\Http\Controllers\Api\MembershipsController;
 use App\Models\Membership;
 use App\Models\Organization;
@@ -22,7 +23,6 @@ class MembershipsRemindRenewals extends Command
 
     public const FOLLOW_UP = 'membership.visit_unconfirmed';
 
-    public const FOLLOW_UP_DAYS = 14;
 
     protected $signature = 'memberships:remind-renewals';
 
@@ -30,15 +30,17 @@ class MembershipsRemindRenewals extends Command
 
     public function handle(TenantContext $tenant, EventEmitter $events): int
     {
-        $cutoff = CarbonImmutable::today()->addMonth()->toDateString();
-        // ponytail: every organization with a live membership; narrow it
-        // when there are thousands of organizations.
+        // ponytail: every organization with a membership not cancelled;
+        // narrow it when there are thousands of organizations.
         $ids = Membership::withoutGlobalScopes()->whereNull('cancelled_at')
-            ->where('ends_on', '>=', CarbonImmutable::today()->subMonth()->toDateString())
             ->distinct()->pluck('organization_id');
 
         foreach (Organization::query()->whereIn('id', $ids)->get() as $organization) {
-            $tenant->run($organization, function () use ($events, $cutoff) {
+            $tenant->run($organization, function () use ($events, $organization) {
+                // Jose, 11-04: these are the organization's settings, not constants.
+                $cutoff = CarbonImmutable::today()->addDays(max(1, (int) app(SettingsResolver::class)->get('customers.membership_reminder_days', Organization::query()->withoutGlobalScopes()->findOrFail($organization->id))))->toDateString();
+                $followUpDays = max(1, (int) app(SettingsResolver::class)->get('customers.membership_follow_up_days', Organization::query()->withoutGlobalScopes()->findOrFail($organization->id)));
+
                 $due = Membership::query()->with('plan')
                     ->whereNull('reminded_at')->whereNull('cancelled_at')
                     ->where('ends_on', '<=', $cutoff)->where('ends_on', '>=', CarbonImmutable::today()->toDateString())
@@ -51,10 +53,10 @@ class MembershipsRemindRenewals extends Command
 
                 $this->line($due->count().' reminded');
 
-                // Jose: no answer leaves staff a follow-up. Two weeks after
-                // the reminder, once, while no visit is booked.
+                // Jose: no answer leaves staff a follow-up, once, while no
+                // visit is booked.
                 $silent = Membership::query()->with('plan')
-                    ->whereNotNull('reminded_at')->where('reminded_at', '<=', now()->subDays(self::FOLLOW_UP_DAYS))
+                    ->whereNotNull('reminded_at')->where('reminded_at', '<=', now()->subDays($followUpDays))
                     ->whereNull('visit_job_id')->whereNull('followed_up_at')->whereNull('cancelled_at')
                     ->get();
 

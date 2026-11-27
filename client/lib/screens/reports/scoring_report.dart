@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/ai_mark.dart';
+import '../../widgets/call_text.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
 import 'experimental_call_report.dart';
@@ -14,6 +16,7 @@ import 'report_dates.dart';
 import 'scoring_person_calls.dart';
 import '../../widgets/side_panel.dart';
 import 'scoring_weights_panel.dart';
+import '../../widgets/user_avatar.dart';
 
 /// Reports › Scoring (Jose, 2026-10-13: "the Scoring and Performance of each
 /// employee ... the employees as cards, and clicking on them shows me the
@@ -35,6 +38,7 @@ class ScoringReport extends StatefulWidget {
     required this.formats,
     this.now,
     this.canWeigh = false,
+    this.canCorrect = false,
     this.span,
   });
 
@@ -48,6 +52,9 @@ class ScoringReport extends StatefulWidget {
 
   /// May change what the score weighs (reports.scoring_weights).
   final bool canWeigh;
+
+  /// May set a call's client and booking by hand (reports.handles).
+  final bool canCorrect;
 
   @override
   State<ScoringReport> createState() => _ScoringReportState();
@@ -64,6 +71,9 @@ const _checks = {
   'asked_for_booking': 'Asked to book',
 };
 
+/// The checks' words, for Leaderboard › My performance.
+const scoringCheckLabels = _checks;
+
 /// The two metrics beside the checks in the weighted score.
 const _metricNames = {'conversion': 'Conversion', 'quality': 'AI call score'};
 
@@ -79,6 +89,7 @@ List<String> _strings(Object? v) => [
 class _Person {
   _Person(Map<String, dynamic> row)
     : name = '${row['person']}',
+      userId = row['user_id'] as String?,
       n = (row['calls_scored'] as num?)?.toInt() ?? 0,
       // The weighted score (conversion and the checks, Jose 2026-10-14);
       // AI's plain call average where the server sends no weighted one.
@@ -98,6 +109,9 @@ class _Person {
       weekly = (row['review_weekly'] as Map?)?.cast<String, dynamic>();
 
   final String name;
+
+  /// The EzBizi user this name is, when the server matched one; for the photo.
+  final String? userId;
   final int n;
   final double avg;
   final int? conversion;
@@ -126,6 +140,9 @@ class _Team {
 
   final List<_Person> people;
   final int minCalls;
+
+  /// For the people's photos; set once the screen has read the report.
+  ApiClient? api;
 
   /// What each metric counts for in the score, summing to 100.
   final Map<String, int> weights;
@@ -259,7 +276,7 @@ class _ScoringReportState extends State<ScoringReport> {
         }
         team.before = earlier.avg;
       }
-      _team = team;
+      _team = team..api = widget.api;
     });
   }
 
@@ -337,6 +354,7 @@ class _ScoringReportState extends State<ScoringReport> {
               api: widget.api,
               person: open.name,
               span: _span,
+              canCorrect: widget.canCorrect,
             ),
             ranking: phone
                 ? null
@@ -380,17 +398,10 @@ class _ScoringReportState extends State<ScoringReport> {
                   // Standard field height, as tall as Leads search (Jose, 2026-10-27).
                   SizedBox(
                     width: 240,
-                    child: TextField(
+                    child: ListSearch(
                       key: const Key('scoring-report-search'),
                       controller: _search,
-                      textAlignVertical: TextAlignVertical.center,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        prefixIconConstraints: BoxConstraints(minWidth: 36),
-                        prefixIcon: Icon(Icons.search, size: 18),
-                        hintText: 'Find a person',
-                        border: OutlineInputBorder(),
-                      ),
+                      hint: 'Find a person',
                       onChanged: (v) => setState(() => _query = v),
                     ),
                   ),
@@ -541,13 +552,17 @@ class _Rank extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar(this.person, {this.radius = 14});
+  const _Avatar(this.person, {this.radius = 14, this.api});
 
   final _Person person;
   final double radius;
+  final ApiClient? api;
 
   @override
   Widget build(BuildContext context) {
+    if ((api, person.userId) case (final api?, final id?)) {
+      return UserAvatar(api: api, userId: id, name: person.name, radius: radius);
+    }
     final scheme = Theme.of(context).colorScheme;
     return CircleAvatar(
       radius: radius,
@@ -815,7 +830,7 @@ class _Ranking extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          _Avatar(p, radius: 12),
+                          _Avatar(p, radius: 12, api: team.api),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -922,7 +937,7 @@ class _Card extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  _Avatar(p),
+                  _Avatar(p, api: team.api),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1184,18 +1199,29 @@ class _DetailState extends State<_Detail> {
       trailing: Text('mark: the team', style: muted),
     );
 
-    Widget list(String title, List<String> items) => items.isEmpty
+    Widget list(String title, List<String> items, {Tone? tone}) => items.isEmpty
         ? const SizedBox.shrink()
         : Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(title, style: theme.textTheme.labelLarge),
+                if (tone == null)
+                  Text(title, style: theme.textTheme.labelLarge)
+                else
+                  ToneHeading(title, tone),
                 for (final item in items)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Text('• $item', style: theme.textTheme.bodyMedium),
+                    child: tone == null
+                        ? Text('• $item', style: theme.textTheme.bodyMedium)
+                        : Align(
+                            alignment: Alignment.centerLeft,
+                            child: Copyable(
+                              item,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
                   ),
               ],
             ),
@@ -1271,8 +1297,8 @@ class _DetailState extends State<_Detail> {
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          list('Strong at', p.strengths),
-          list('To improve', p.improve),
+          list('Strong at', p.strengths, tone: Tone.ok),
+          list('To improve', p.improve, tone: Tone.caution),
           Text(_caveat, style: muted?.copyWith(fontStyle: FontStyle.italic)),
         ],
       ),

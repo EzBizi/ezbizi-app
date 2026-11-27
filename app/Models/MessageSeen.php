@@ -49,6 +49,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MessageSeen extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** Somebody reading a message is its mailbox's change on the live feed (the inbox shows who saw it). */
+    protected static array $changeParent = ['mailboxes', Mailbox::class, 'mailbox_id'];
+
     use HasFactory;
     use HasUuids;
 

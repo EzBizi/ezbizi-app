@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Integrations cards</title>
+<style>
+:root{--bg:#f6f8f9;--paper:#fff;--ink:#14191c;--muted:#5d6970;--line:#dde3e6;--ok:#1e7a46;--okc:#e3f4ea;--cau:#9a6400;--cauc:#fdf1d8;--bad:#b3261e;--badc:#fbe4e2;--pri:#00739a;--pric:#dff1f8;--off:#6b767c;--offc:#eceff1}
+.dark{--bg:#0c1014;--paper:#151b20;--ink:#e8eef1;--muted:#93a1a8;--line:#26313a;--ok:#6fd49a;--okc:#173626;--cau:#f2c063;--cauc:#3a2d10;--bad:#ff8a80;--badc:#3d1614;--pri:#5fc8ea;--pric:#0f3443;--off:#93a1a8;--offc:#222b32}
+body{margin:0;font:14px/1.4 Inter,Segoe UI,Roboto,sans-serif;background:#e9edef;color:#14191c}
+.wrap{max-width:1240px;margin:0 auto;padding:24px 16px}h1{margin:0 0 4px}h2{margin:36px 0 6px;font-size:18px}.cap{color:#4c575d;margin:0 0 12px;max-width:880px}
+.rec{background:#00739a;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle}
+.trio{display:grid;grid-template-columns:2fr 1fr;gap:12px}@media(max-width:900px){.trio{grid-template-columns:1fr}}
+.frame{background:var(--bg);color:var(--ink);border-radius:10px;padding:14px;border:1px solid #cfd6da;overflow:hidden}.frame.phone{max-width:390px}
+.lbl{font-size:11px;color:#4c575d;margin:0 0 4px;font-weight:600}.muted{color:var(--muted)}.sm{font-size:12px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}.phone .grid{grid-template-columns:1fr 1fr}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;position:relative}
+.logo{width:32px;height:32px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;background:var(--offc)}
+.st{font-size:12px;display:flex;gap:6px;align-items:flex-start}.st i{flex:0 0 8px;height:8px;border-radius:50%;margin-top:5px}
+.g i{background:var(--ok)}.w i{background:var(--pri)}.r i{background:var(--bad)}.a i{background:var(--cau)}.n i{background:var(--line)}
+.r{color:var(--bad)}.w{color:var(--pri)}
+.badge{position:absolute;top:8px;right:8px;min-width:18px;height:18px;border-radius:99px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px}
+.bb{background:var(--bad);color:var(--paper)}.bw{background:var(--pric);color:var(--pri)}
+.note{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:13px}.note div{display:flex;gap:8px;align-items:baseline;padding:3px 0}
+.link{color:var(--pri);font-weight:600;font-size:12px;white-space:nowrap}
+.search{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;padding:6px 10px;font:inherit;width:220px;max-width:100%}
+.sec{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px}
+.dim .card{opacity:.75}
+</style></head><body><div class="wrap">
+<h1>Integrations · back to cards, problems grouped</h1>
+<p class="cap">Starts from the card grid you had before 0.0.0566. Rules in all three: one card per service; problems with the same cause are one line ("14 phone lines can't text yet"), never one row per account; something only an outside company can fix (Twilio's A2P review) is <b style="color:#00739a">blue "waiting"</b>, not red; branch choices nobody needs today sit quietly; no "in 0 min".</p>
+
+<template id="a">
+<div class="row" style="margin-bottom:10px"><input class="search" placeholder="Find a service"></div>
+<div class="note">
+ <div><span class="st r"><i></i></span><span><b>Bluesky</b> stopped accepting the connection. Needs a new app password.</span><span class="link">Reconnect</span></div>
+ <div><span class="st r"><i></i></span><span><b>Toll-free 877</b> has no E911 address.</span><span class="link">Add address</span></div>
+ <div><span class="st w"><i></i></span><span class="muted"><b style="color:var(--ink)">14 phone lines can't text yet</b>: waiting on Twilio (ticket #29486941). Nothing to do.</span></div>
+ <div class="muted sm" style="padding-top:6px">17 accounts have no branch for their leads. <span class="link">Choose later ›</span></div>
+</div>
+<div class="grid">
+ <div class="card"><span class="logo">☎</span><b>Phone</b><span class="st w"><i></i>16 lines · texting waits on Twilio</span></div>
+ <div class="card"><span class="logo">G</span><b>Google Ads / LSA</b><span class="st g"><i></i>52 accounts working</span></div>
+ <div class="card"><span class="logo">B</span><b>Bluesky</b><span class="st r"><i></i>Needs reconnecting</span></div>
+ <div class="card"><span class="logo">W</span><b>WhatsApp</b><span class="st g"><i></i>Connected · Customer chat</span></div>
+ <div class="card"><span class="logo">@</span><b>Email</b><span class="st g"><i></i>6 inboxes working</span></div>
+ <div class="card"><span class="logo">S</span><b>Stripe</b><span class="st n muted"><i></i>Not connected</span></div>
+</div>
+</template>
+
+<template id="b">
+<div class="row" style="margin-bottom:10px"><input class="search" placeholder="Find a service"></div>
+<div class="grid">
+ <div class="card"><span class="badge bw">⏳</span><span class="logo">☎</span><b>Phone</b><span class="muted sm">16 lines</span></div>
+ <div class="card"><span class="logo">G</span><b>Google Ads / LSA</b><span class="muted sm">52 accounts</span></div>
+ <div class="card"><span class="badge bb">1</span><span class="logo">B</span><b>Bluesky</b><span class="muted sm">ezbizi.bsky.social</span></div>
+ <div class="card"><span class="logo">W</span><b>WhatsApp</b><span class="muted sm">1 number</span></div>
+ <div class="card"><span class="logo">@</span><b>Email</b><span class="muted sm">6 inboxes</span></div>
+ <div class="card"><span class="logo">S</span><b>Stripe</b><span class="muted sm">Connect</span></div>
+</div>
+<p class="muted sm">Exactly today's cards plus a small corner badge: a red count for things to fix, a blue ⏳ for waiting on someone else. Opening the card shows the grouped details. The quietest change.</p>
+</template>
+
+<template id="c">
+<div class="row" style="margin-bottom:6px"><input class="search" placeholder="Find a service"></div>
+<div class="sec" style="color:var(--bad)">Needs you · 2</div>
+<div class="grid">
+ <div class="card"><span class="logo">B</span><b>Bluesky</b><span class="st r"><i></i>Needs a new app password</span><span class="link">Reconnect</span></div>
+ <div class="card"><span class="logo">☎</span><b>Toll-free 877</b><span class="st r"><i></i>No E911 address</span><span class="link">Add address</span></div>
+</div>
+<div class="sec" style="color:var(--pri)">Waiting on someone else · 1</div>
+<div class="grid"><div class="card"><span class="logo">☎</span><b>Phone texting</b><span class="st w"><i></i>14 lines · Twilio reviewing (ticket #29486941)</span></div></div>
+<div class="sec">Working · 18</div>
+<div class="grid dim">
+ <div class="card"><span class="logo">G</span><b>Google Ads / LSA</b><span class="muted sm">52 accounts · 17 without a branch</span></div>
+ <div class="card"><span class="logo">W</span><b>WhatsApp</b><span class="muted sm">Customer chat</span></div>
+ <div class="card"><span class="logo">@</span><b>Email</b><span class="muted sm">6 inboxes</span></div>
+</div>
+</template>
+
+<h2>A · Cards with one status line, a short grouped note above <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">The old grid, with one plain sentence on each card. Above it, a short note: one line per <i>cause</i>, never per account. 61 rows become 3 lines and a quiet "17 have no branch · choose later".</p><div data-o="a"></div>
+<h2>B · Old cards plus a corner badge only</h2>
+<p class="cap">The smallest change: the cards look exactly as before, with a badge in the corner. Details only appear when you open the card.</p><div data-o="b"></div>
+<h2>C · Cards sorted into three shelves</h2>
+<p class="cap">The same cards, grouped as "Needs you", "Waiting on someone else" and "Working". Makes it obvious what is yours to do; the working shelf sits dimmer.</p><div data-o="c"></div>
+</div>
+<script>
+document.querySelectorAll('[data-o]').forEach(h=>{const t=document.getElementById(h.dataset.o).innerHTML;
+h.innerHTML=`<div class="trio"><div><p class="lbl">Desktop · light</p><div class="frame">${t}</div><p class="lbl" style="margin-top:10px">Desktop · dark</p><div class="frame dark">${t}</div></div><div><p class="lbl">Phone · light</p><div class="frame phone">${t}</div></div></div>`});
+</script></body></html>

@@ -58,6 +58,120 @@ void main() {
     }
   });
 
+  testWidgets(
+    'a past day does not call a device that is capturing now "stopped"',
+    (tester) async {
+      // Mobile review 11-25: Nov 22 read "capture stopped 2d ago" while the
+      // same PC said "last capture 2m ago" on Today.
+      final now = DateTime.now().toUtc();
+      Map<String, dynamic> shot(String id, Duration ago) => {
+        'id': id,
+        'device_id': _capableDevice['id'],
+        'captured_at': now.subtract(ago).toIso8601String(),
+        'bytes': 1, 'width': 1, 'height': 1,
+      };
+      await _pumpTab(
+        tester,
+        devices: [_capableDevice],
+        shots: const [],
+        meta: {'in_range': 1, 'total': 2},
+        page: (u) => u.queryParameters['limit'] == '1'
+            ? [shot('newest', const Duration(minutes: 2))]
+            : u.queryParameters['from']!.compareTo(
+                    now.subtract(const Duration(hours: 30)).toIso8601String()) < 0
+                ? [shot('old', const Duration(days: 2))]
+                : [shot('newest', const Duration(minutes: 2))],
+      );
+      expect(find.textContaining('capture stopped'), findsNothing,
+          reason: 'the control: today is fresh');
+
+      await tester.tap(find.byKey(const Key('desktop-monitoring-day-back')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('desktop-monitoring-day-back')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('capture stopped'), findsNothing);
+    },
+  );
+
+  testWidgets('a swipe left on the large view steps to an older capture', (
+    tester,
+  ) async {
+    await _pumpTab(tester, devices: [_capableDevice], shots: _freshShots);
+    final hero = find.byKey(const Key('desktop-monitoring-hero'));
+    expect(find.descendant(of: hero, matching: find.textContaining('2m ago')), findsOneWidget);
+
+    await tester.fling(hero, const Offset(-300, 0), 1000);
+    await tester.pumpAndSettle();
+
+    expect(find.descendant(of: hero, matching: find.textContaining('2m ago')), findsNothing,
+        reason: 'the hero moved off the newest capture');
+  });
+
+  testWidgets('the day bar says how many captures exist, today and in 30 days', (
+    tester,
+  ) async {
+    await _pumpTab(
+      tester,
+      devices: [_capableDevice],
+      shots: _freshShots,
+      meta: {'in_range': 124, 'total': 5170},
+    );
+
+    expect(find.text('124 today · 5,170 in 30 days'), findsOneWidget);
+    expect(find.text('Today'), findsOneWidget);
+  });
+
+  testWidgets(
+    'right arrow past the last held capture loads the next page of the day',
+    (tester) async {
+      // Jose 11-25: only the newest 12 were reachable of ~5,000.
+      final now = DateTime.now().toUtc();
+      Map<String, dynamic> shot(int i) => {
+        'id': 'p$i',
+        'device_id': _capableDevice['id'],
+        'captured_at': now.subtract(Duration(seconds: i * 30)).toIso8601String(),
+        'bytes': 1, 'width': 1, 'height': 1,
+      };
+      final requests = <Uri>[];
+      await _pumpTab(
+        tester,
+        devices: [_capableDevice],
+        shots: const [],
+        meta: {'in_range': 101, 'total': 101},
+        shotRequests: requests,
+        page: (u) => u.queryParameters.containsKey('before')
+            ? [shot(100)]
+            : [for (var i = 0; i < 100; i++) shot(i)],
+      );
+
+      expect(requests.first.queryParameters['from'], isNotNull,
+          reason: 'the strip asks for one day, not the newest N');
+
+      // The large view takes the arrow keys once it is tapped.
+      await tester.tap(find.byKey(const Key('desktop-monitoring-hero')));
+      await tester.pump();
+      for (var i = 0; i < 100; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      }
+      await tester.pumpAndSettle();
+
+      expect(
+        requests.where((u) => u.queryParameters['before'] == shot(99)['captured_at']),
+        isNotEmpty,
+        reason: 'the next page starts before the oldest capture held',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('desktop-monitoring-hero')),
+          matching: find.textContaining('50m ago'),
+        ),
+        findsOneWidget,
+        reason: 'the large view stepped across the page boundary to capture 101',
+      );
+    },
+  );
+
   testWidgets('tapping a filmstrip thumbnail makes it the hero', (
     tester,
   ) async {
@@ -1258,6 +1372,9 @@ Future<void> _pumpTab(
   bool grantScreenshotsView = true,
   VoidCallback? onDevicesFetch,
   Size size = const Size(1280, 900),
+  Map<String, Object?>? meta,
+  List<Map<String, dynamic>> Function(Uri request)? page,
+  List<Uri>? shotRequests,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -1301,7 +1418,11 @@ Future<void> _pumpTab(
       }
 
       if (path.endsWith('/monitoring/screenshots')) {
-        return _json({'data': liveShots});
+        shotRequests?.add(request.url);
+        return _json({
+          'data': page?.call(request.url) ?? liveShots,
+          'meta': ?meta,
+        });
       }
 
       if (path.contains('/monitoring/screenshots/')) {

@@ -104,7 +104,7 @@ class Notification extends Model implements HoldsPersonalData
     public const UPDATED_AT = null;   // read_at is the only mutation
 
     protected $fillable = [
-        'organization_id', 'user_id', 'source', 'title', 'body',
+        'organization_id', 'user_id', 'source', 'kind', 'title', 'body',
         'subject_type', 'subject_id', 'automation_id', 'event_id', 'created_at',
     ];
 

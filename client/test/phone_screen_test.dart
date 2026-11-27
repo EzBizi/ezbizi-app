@@ -543,7 +543,7 @@ void main() {
       },
       {
         'id': 'n-2',
-        'e164': '+13057242199',
+        'e164': '+13055550107',
         'label': 'Old fax',
         'record': false,
         'transcribe': false,
@@ -721,7 +721,7 @@ void main() {
           },
           {
             'id': 'n-2',
-            'e164': '+15612323930',
+            'e164': '+15615550100',
             'label': 'Quiet line',
             'record': false,
             'transcribe': false,
@@ -766,7 +766,7 @@ void main() {
           },
           {
             'id': 'n-2',
-            'e164': '+15612323930',
+            'e164': '+15615550100',
             'label': 'Second',
             'record': true,
             'transcribe': false,
@@ -925,6 +925,21 @@ void main() {
       expect(find.textContaining('A-1 Chimney'), findsWidgets);
       expect(find.textContaining('Everdoors'), findsNothing);
       expect(find.textContaining('EzBizi —'), findsNothing);
+    });
+
+    testWidgets('an approval does not show staff their own note (D9)', (tester) async {
+      await _pump(
+        tester,
+        companies: threeCompanies,
+        scope: const {'type': 'organization', 'id': 'org-1'},
+        serviceRequest: {...grantedAll, 'decision_note': 'Approved by the phone-system session.'},
+        approvedCompanyIds: const ['co-1', 'co-2', 'co-3'],
+      );
+
+      await _tap(tester, find.text('Settings'));
+
+      expect(find.text('Phone service is switched on'), findsOneWidget);
+      expect(find.textContaining('phone-system session'), findsNothing);
     });
 
     testWidgets('standing at the organization, every company is named', (tester) async {

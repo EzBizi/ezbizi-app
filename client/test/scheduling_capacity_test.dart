@@ -1643,6 +1643,13 @@ void main() {
     await tester.tap(find.text('Dallas').first);
     await tester.pumpAndSettle();
 
+    // Read the day when the picker opens, not after the save: a run that
+    // crosses midnight expected tomorrow (0.0.0629 mobile, 2026-11-24).
+    final now = DateTime.now();
+    final today =
+        '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
     await _reveal(tester, find.byKey(const Key('add-specific-date')));
     await tester.tap(find.byKey(const Key('add-specific-date')));
     await tester.pumpAndSettle();
@@ -1658,12 +1665,6 @@ void main() {
     await _reveal(tester, find.byKey(const Key('save-specific-date')));
     await tester.tap(find.byKey(const Key('save-specific-date')));
     await tester.pumpAndSettle();
-
-    final now = DateTime.now();
-    final today =
-        '${now.year.toString().padLeft(4, '0')}-'
-        '${now.month.toString().padLeft(2, '0')}-'
-        '${now.day.toString().padLeft(2, '0')}';
 
     expect(path, endsWith('/dates/$today'));
     expect(body, {'closed': true});

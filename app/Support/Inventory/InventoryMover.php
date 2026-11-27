@@ -633,6 +633,6 @@ final class InventoryMover
             $tz = Franchise::query()->orderBy('created_at')->value('timezone');
         }
 
-        return now(filled($tz) ? $tz : 'America/New_York')->toDateString();
+        return now(filled($tz) ? $tz : \App\Support\Settings\OrgTimezone::of())->toDateString();
     }
 }

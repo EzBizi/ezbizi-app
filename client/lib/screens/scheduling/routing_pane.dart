@@ -588,7 +588,7 @@ class _RoutingPaneState extends State<RoutingPane> {
             Text(
               stops
                   .map((s) => '${(s['customer'] as Map?)?['name'] ?? '—'}')
-                  .join(' → '),
+                  .join(' › '),
               style: muted,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

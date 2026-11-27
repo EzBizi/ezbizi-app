@@ -91,6 +91,13 @@ final class TabDefinition
          * — a correct name that is not the tab's name.
          */
         public readonly ?string $action = null,
+        /**
+         * The tab this one is drawn INSIDE (Jose, 2026-11-09: "marketing does
+         * not show the social media management tab, instead it just shows the
+         * sub tabs under it"). Another tab's key in this module, or, for a
+         * group with no grant of its own (Leads › Calls), the group's label.
+         */
+        public readonly ?string $within = null,
     ) {
         if (trim($key) === '') {
             throw new InvalidArgumentException('A tab needs a key.');

@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\Mailbox;
 use App\Models\Organization;
+use App\Models\PaymentAccount;
 use App\Models\PhoneNumber;
 use App\Models\WhatsAppNumber;
 use App\Support\Email\MailboxReaders;
@@ -113,7 +114,7 @@ final class InvoiceChannels
     {
         $number = PhoneNumber::query()->findOrFail((string) $this->settings->get('invoicing.sms_from', $issuer));
         foreach ($phones as $phone) {
-            $this->texts->send($number, $phone, $this->shortText($issuer, $invoice));
+            $this->texts->send($number, $phone, $this->shortText($issuer, $invoice), automated: true);
         }
 
         return (string) $number->e164;
@@ -139,12 +140,25 @@ final class InvoiceChannels
         return URL::temporarySignedRoute('invoice.shared', now()->addDays(60), ['invoice' => $invoice->id]);
     }
 
+    /**
+     * The Pay link (card or bank, through Stripe), when the invoicing company
+     * has a Stripe account that can take charges; null otherwise.
+     */
+    public static function payLink(Invoice $invoice): ?string
+    {
+        $payable = (string) config('services.stripe.secret') !== '' && $invoice->company_id !== null
+            && PaymentAccount::query()->where('company_id', $invoice->company_id)->where('charges_enabled', true)->exists();
+
+        return $payable ? URL::temporarySignedRoute('invoice.pay', now()->addDays(60), ['invoice' => $invoice->id]) : null;
+    }
+
     public function shortText(Company|Organization $issuer, Invoice $invoice): string
     {
         $due = $invoice->due_on ? ', due '.$invoice->due_on->format('m/d/Y') : '';
+        $pay = self::payLink($invoice);
 
         return "{$issuer->name}: invoice {$invoice->number} for $".number_format($invoice->total_cents / 100, 2)."{$due}. "
-            .'View it: '.$this->link($invoice);
+            .'View it: '.$this->link($invoice).($pay ? ' Pay online: '.$pay : '');
     }
 
     // ── Readiness ─────────────────────────────────────────────

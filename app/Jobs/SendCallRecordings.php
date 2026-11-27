@@ -19,7 +19,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * "Please send me all the calls w this number 9524572594" (Ana, via Jose,
+ * "Please send me all the calls w this number 9525550100" (Ana, via Jose,
  * 2026-10-13): Grok reads the number and dates, then each call with that
  * number comes back as a line (time, in/out, who answered) and its recording
  * as a WhatsApp audio message. Only for staff with Reports access - the
@@ -35,7 +35,10 @@ class SendCallRecordings implements ShouldQueue
 
     public int $timeout = 85; // under the single worker's 90 s retry_after
 
-    public function __construct(public string $numberId, public string $to, public string $text) {}
+    public function __construct(public string $numberId, public string $to, public string $text)
+    {
+        $this->onQueue(config('services.ai.staff_queue', 'default'));   // a person is waiting: never behind call processing
+    }
 
     public function handle(TenantContext $tenant, RingCentralCallLog $log, WhatsAppCloud $cloud): void
     {
@@ -46,14 +49,14 @@ class SendCallRecordings implements ShouldQueue
                 ['type' => 'text', 'text' => ['preview_url' => false, 'body' => $body]], $body);
 
             try {
-                $ask = CallRecordingsRequest::read($this->text, CarbonImmutable::now('America/New_York'));
+                $ask = CallRecordingsRequest::read($this->text, CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of()));
             } catch (RuntimeException) {
                 $say("\u{26A0}\u{FE0F} I couldn't read that just now. Try again in a minute.");
 
                 return;
             }
             if ($ask === null) {
-                $say("\u{1F914} I couldn't tell which calls you want. Send the phone number and the day, e.g. *calls with 9524572594 yesterday*.");
+                $say("\u{1F914} I couldn't tell which calls you want. Send the phone number and the day, e.g. *calls with 9525550100 yesterday*.");
 
                 return;
             }
@@ -63,7 +66,7 @@ class SendCallRecordings implements ShouldQueue
                 return;
             }
 
-            $zone = 'America/New_York';
+            $zone = \App\Support\Settings\OrgTimezone::of();
             $calls = array_values(array_filter(
                 $log->forPeriod(CarbonImmutable::parse($ask['from'], $zone), CarbonImmutable::parse($ask['to'], $zone)->endOfDay(), outbound: true),
                 fn (array $c) => in_array($ask['phone'], [NumberNames::lastTen($c['from'] ?? null), NumberNames::lastTen($c['to_number'] ?? null)], true),

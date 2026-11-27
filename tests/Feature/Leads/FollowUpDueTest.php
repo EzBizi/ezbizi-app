@@ -66,6 +66,18 @@ class FollowUpDueTest extends TestCase
         return AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.follow_up_due')->get()->all();
     }
 
+    /** Production's state (desk, 2026-11-02): after an automatic reply LeadThread leaves last_contact_from on the customer. */
+    public function test_a_lead_whose_last_human_word_was_the_customers_is_followed_up(): void
+    {
+        $quiet = $this->lead('Dana Whitfield', [[LeadConversation::FROM_CONSUMER, '2026-09-30T14:00:00Z'],
+            [LeadConversation::FROM_ADVERTISER, '2026-09-30T14:00:30Z', true]]);
+        $this->inTenant($this->t['org'], fn () => $quiet->forceFill(['last_contact_from' => LeadConversation::FROM_CONSUMER])->save());
+
+        $this->artisan('ezbizi:leads-follow-up-due')->assertSuccessful();
+
+        $this->assertSame([$quiet->id], array_map(fn ($e) => $e->subject_id, $this->raised()));
+    }
+
     public function test_a_quiet_customer_is_followed_up_once(): void
     {
         $C = LeadConversation::FROM_CONSUMER;
@@ -85,7 +97,11 @@ class FollowUpDueTest extends TestCase
         $this->assertCount(1, $events);
         $this->assertSame($quiet->id, $events[0]->subject_id);
         $this->assertSame('Hi Dana', $events[0]->payload['after']['greeting']);
+        // ActionRunner reads {{greeting}} off the lead before the payload: a Lead
+        // method named greeting() was called as a relation and threw (health 11-16).
+        $this->assertNull($quiet->getAttribute('greeting'));
         $this->assertSame('ls_text', $events[0]->payload['after']['kind']);
+        $this->assertFalse($events[0]->payload['after']['not_booked_call']);
 
         Carbon::setTestNow('2026-09-30T19:00:00Z');
         $this->artisan('ezbizi:leads-follow-up-due')->assertSuccessful();
@@ -94,10 +110,46 @@ class FollowUpDueTest extends TestCase
         $this->assertCount(2, $ids, 'and Early is due now, 3.5 hours on');
     }
 
+    /** Jose, 2026-11-05: "send only one" - a rule can tell the after-call text already went. */
+    public function test_it_says_when_the_call_was_not_booked(): void
+    {
+        $caller = $this->lead('Pat Caller', [[LeadConversation::FROM_CONSUMER, '2026-09-30T14:00:00Z'],
+            [LeadConversation::FROM_ADVERTISER, '2026-09-30T14:00:30Z', true]]);
+        $this->inTenant($this->t['org'], fn () => AutomationEvent::create(['organization_id' => $this->t['org']->id,
+            'event_key' => 'lead.call_not_booked', 'subject_type' => $caller->getMorphClass(), 'subject_id' => $caller->id,
+            'payload' => [], 'occurred_at' => now(), 'available_at' => now()]));
+
+        $this->artisan('ezbizi:leads-follow-up-due')->assertSuccessful();
+
+        $this->assertTrue($this->raised()[0]->payload['after']['not_booked_call']);
+    }
+
+    /** Desk for Jose, 2026-11-16: no went-quiet text after the missed-call text. */
+    public function test_it_says_when_the_call_was_missed(): void
+    {
+        $caller = $this->lead('Pat Caller', [[LeadConversation::FROM_CONSUMER, '2026-09-30T14:00:00Z'],
+            [LeadConversation::FROM_ADVERTISER, '2026-09-30T14:00:30Z', true]]);
+        $this->artisan('ezbizi:leads-follow-up-due')->assertSuccessful();
+        $this->assertFalse($this->raised()[0]->payload['after']['missed_call']);
+    }
+
+    public function test_it_says_when_the_call_was_missed_and_texted(): void
+    {
+        $caller = $this->lead('Pat Caller', [[LeadConversation::FROM_CONSUMER, '2026-09-30T14:00:00Z'],
+            [LeadConversation::FROM_ADVERTISER, '2026-09-30T14:00:30Z', true]]);
+        $this->inTenant($this->t['org'], fn () => AutomationEvent::create(['organization_id' => $this->t['org']->id,
+            'event_key' => 'lead.missed_call', 'subject_type' => $caller->getMorphClass(), 'subject_id' => $caller->id,
+            'payload' => [], 'occurred_at' => now(), 'available_at' => now()]));
+
+        $this->artisan('ezbizi:leads-follow-up-due')->assertSuccessful();
+
+        $this->assertTrue($this->raised()[0]->payload['after']['missed_call']);
+    }
+
     public function test_first_name(): void
     {
-        $this->assertSame('Mark', Lead::firstNameOf('mark Morrow'));
-        $this->assertNull(Lead::firstNameOf('+1 (202) 250-1749'));
+        $this->assertSame('Mark', Lead::firstNameOf('mark Mercer'));
+        $this->assertNull(Lead::firstNameOf('+1 (202) 555-0100'));
         $this->assertNull(Lead::firstNameOf(null));
     }
 

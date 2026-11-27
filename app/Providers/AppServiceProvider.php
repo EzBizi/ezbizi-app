@@ -8,9 +8,9 @@ use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\ReportEmail;
 use App\Models\User;
 use App\Observers\JobThumbtackObserver;
-use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
 use App\Services\Leads\ThumbtackLeads;
 use App\Support\Access\ScopeReach;
@@ -29,11 +29,11 @@ use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\WebsiteChatReplies;
-use Aws\BedrockRuntime\BedrockRuntimeClient;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\DiagnosingHealth;
 use Illuminate\Http\Request;
+use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Mail\MailManager;
 use Illuminate\Queue\Events\JobExceptionOccurred;
 use Illuminate\Support\Facades\DB;
@@ -54,6 +54,9 @@ class AppServiceProvider extends ServiceProvider
         // One instance per process — see plan §5.1
         $this->app->singleton(TenantContext::class);
 
+        // One tag-colour map per request, read once for every job it shows.
+        $this->app->scoped(\App\Support\Workiz\WorkizTagColours::class);
+
         // What stops working when an integration is disconnected. Each module
         // adds its own counter here; the disconnect panel lists them all.
         $this->app->tag([
@@ -68,22 +71,6 @@ class AppServiceProvider extends ServiceProvider
             \App\Support\Integrations\Dependents\Counters\TelegramLinksCounter::class,
             \App\Support\Integrations\Dependents\Counters\ProviderFeaturesCounter::class,
         ],\App\Support\Integrations\Dependents\DependentRegistry::TAG);
-
-        // Bedrock, for what a model can say about a lead. No keys, no client:
-        // LeadInsights::enabled() is false and every caller shows nothing.
-        $this->app->bind(LeadInsights::class, function () {
-            $cfg = (array) config('services.bedrock');
-            $on = ($cfg['key'] ?? '') !== '' && ($cfg['secret'] ?? '') !== '' && ($cfg['model'] ?? '') !== '';
-
-            return new LeadInsights(
-                $on ? new BedrockRuntimeClient([
-                    'version' => 'latest',
-                    'region' => (string) ($cfg['region'] ?? 'us-east-1'),
-                    'credentials' => ['key' => $cfg['key'], 'secret' => $cfg['secret']],
-                ]) : null,
-                (string) ($cfg['model'] ?? ''),
-            );
-        });
 
         /*
          * Where a reply to a lead goes, per source.
@@ -122,11 +109,20 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind('lead-reply-channel.whatsapp', WhatsAppReplies::class);
 
         // EZ Texts and EZ Calls: a text back from the EzBizi line (2026-10-16).
-        foreach ([Lead::SOURCE_EZ_TEXTS, Lead::SOURCE_EZ_CALLS] as $source) {
+        foreach ([Lead::SOURCE_EZ_TEXTS, Lead::SOURCE_EZ_CALLS, Lead::SOURCE_PROMOTIONS] as $source) {
             $this->app->bind('lead-reply-channel.'.$source, fn ($app) => new \App\Support\Leads\EzTextReplies(
                 $source,
                 $app->make(\App\Support\Phone\PhoneTexts::class),
                 $app->make(LeadThread::class),
+            ));
+        }
+
+        // A call, a form or an online booking has no chat: the answer is a
+        // text (SmsLeadReplies; bookings added 2026-11-06, lead parity audit).
+        foreach ([Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_BOOKING] as $source) {
+            $this->app->bind('lead-reply-channel.'.$source, fn ($app) => new \App\Support\Leads\SmsLeadReplies(
+                $source,
+                $app->make(\App\Support\Leads\LeadTexts::class),
             ));
         }
 
@@ -140,6 +136,10 @@ class AppServiceProvider extends ServiceProvider
                 'lead-reply-channel.whatsapp',
                 'lead-reply-channel.ez_texts',
                 'lead-reply-channel.ez_calls',
+                'lead-reply-channel.promotions',
+                'lead-reply-channel.ringcentral',
+                'lead-reply-channel.website_form',
+                'lead-reply-channel.website_booking',
             ],
             LeadReplies::TAG,
         );
@@ -242,6 +242,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // A person's edit on a Reviews & Complaints card comes back to the complaint (CX, 2026-11-20).
+        \App\Support\Tasks\ModuleBoard::listen('complaint:', [\App\Support\CustomerExperience\ComplaintBoardMirror::class, 'heard']);
+
         /*
          * Sanctum resolves a bearer token to the account that issued it, and
          * that lookup necessarily happens before any tenant is in context — the
@@ -269,7 +272,12 @@ class AppServiceProvider extends ServiceProvider
         // Task Board: every company, franchise and person gets their own board
         // the moment they exist (ezbizi:backfill-task-boards covers older rows).
         foreach ([Company::class, Franchise::class, User::class] as $owner) {
-            $owner::created(fn ($model) => app(TaskBoards::class)->ensureFor($model));
+            // A Sub Company and its franchises get none (Jose, 2026-11-06).
+            $owner::created(function ($model) {
+                if ($model instanceof User || TaskBoards::hasPlaceBoard($model)) {
+                    app(TaskBoards::class)->ensureFor($model);
+                }
+            });
         }
 
         /*
@@ -303,6 +311,9 @@ class AppServiceProvider extends ServiceProvider
         );
 
         $this->defineRateLimiters();
+
+        // An emailed report, kept as it went (Reports › Reports, Jose 2026-11-25).
+        Event::listen(MessageSent::class, [ReportEmail::class, 'record']);
 
         /*
          * `/up` is already registered in bootstrap/app.php. Laravel's default

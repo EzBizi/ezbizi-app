@@ -243,6 +243,8 @@ class WorkizConnectController extends Controller
             'provider_label' => SocialProvider::Workiz->label(),
             'display_name' => $connection->display_name,
             'scope_type' => $connection->scope_type,
+            // The whole setup, done now, and what still needs a person (Jose, 2026-11-12).
+            'health' => \App\Support\Workiz\WorkizHealth::setUp($connection),
         ]], Status::HTTP_CREATED);
     }
 

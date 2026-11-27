@@ -14,6 +14,11 @@ use Illuminate\Database\Eloquent\Model;
 class InvoiceLine extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A write here is its invoice's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['invoices', Invoice::class, 'invoice_id'];
+
     use HasUuids;
 
     protected function casts(): array

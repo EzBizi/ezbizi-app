@@ -112,6 +112,32 @@ class BusinessProfileReviewsTest extends TestCase
     }
 
     /**
+     * Desk 2026-11-20: the same review through a second account is the same row, and the listing keeps
+     * Google's own count and average, which the company summary sums.
+     */
+    public function test_a_review_through_a_second_account_is_one_row_and_google_totals_are_kept(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->connection($t);
+        $this->inTenant($t['org'], fn () => (new \App\Models\BusinessLocation)->forceFill(['organization_id' => $t['org']->id,
+            'company_id' => $t['company']->id, 'remote_name' => 'locations/1', 'title' => 'North'])->save());
+        $this->fakeGoogle([
+            'mybusinessbusinessinformation.googleapis.com/*' => Http::response(['locations' => [['name' => 'locations/1']]], 200),
+            'mybusiness.googleapis.com/v4/*' => Http::response(['reviews' => [$this->review('accounts/111/locations/1/reviews/a')],
+                'totalReviewCount' => 412, 'averageRating' => 4.8], 200),
+        ]);
+        $this->inTenant($t['org'], fn () => Review::create(['organization_id' => $t['org']->id, 'remote_name' => 'accounts/999/locations/1/reviews/a',
+            'location_name' => 'accounts/999/locations/1', 'reviewer_name' => 'Dana', 'rating' => 4, 'reviewed_at' => now()]));
+
+        $this->inTenant($t['org'], fn () => app(BusinessProfileReviews::class)->sync(SocialConnection::query()->firstOrFail()));
+
+        $this->assertSame(1, $this->inTenant($t['org'], fn () => Review::query()->count()), 'one review, whichever account names it');
+        $summary = $this->inTenant($t['org'], fn () => \App\Support\CustomerExperience\GoogleReviewTotals::forCompany($t['company']->id));
+        $this->assertSame(412, $summary['count']);
+        $this->assertEquals(4.8, $summary['average']);
+    }
+
+    /**
      * 403 is PERMISSION_DENIED - a revoked grant, or a location this user may
      * not read. That IS a problem with the connection, and the fix is to
      * reconnect. Telling the customer it is quota "and not a problem with the

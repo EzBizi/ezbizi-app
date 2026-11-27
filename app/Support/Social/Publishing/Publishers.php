@@ -113,7 +113,9 @@ final class Publishers
 
         return $provider === null
             ? 'EzBizi does not recognise that account’s network, so it cannot post to it.'
-            : 'Publishing to '.$provider->label().' is not built yet. The account is '
-              .'connected, and posting to it will work without reconnecting.';
+            // Desktop review 2026-11-13, D9: what the user can do, not how far
+            // the build has got.
+            : 'EzBizi cannot post to '.$provider->label().' yet. The account stays '
+              .'connected, and posting will work without reconnecting.';
     }
 }

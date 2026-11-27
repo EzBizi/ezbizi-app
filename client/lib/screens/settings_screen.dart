@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+
+import '../widgets/list_search.dart';
 import '../core/api_client.dart';
 import '../core/files.dart';
 import '../core/session.dart';
@@ -14,6 +16,7 @@ import '../widgets/setting_editors.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/sending_server_panel.dart';
 import '../widgets/location_setting.dart';
+import '../widgets/async_body.dart';
 
 /// Settings, at whichever scope is selected (plan §6).
 ///
@@ -543,30 +546,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final me = widget.session.me!;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // A line saying what these settings belong to. The switcher above says
-        // where you are; this says what changing something here would affect,
-        // which is the question people actually get wrong.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-          child: Text(
-            _scopeType == 'organization'
-                ? 'Settings for ${me.organization.name} — everything inherits these '
-                      'unless a company or a '
-                      '${me.organization.franchiseLabel.toLowerCase()} overrides them.'
-                : 'Settings for $_scopeLabel. Anything left alone inherits from '
-                      'above; anything set here overrides it.',
-            style: Theme.of(context).textTheme.bodyMedium,
+    // On a phone the sentence and the search scroll away with the settings:
+    // at iOS accessibility text sizes they left the list -45 px (mobile
+    // review 11-24).
+    return HeaderAboveList(
+      header: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // A line saying what these settings belong to. The switcher above says
+          // where you are; this says what changing something here would affect,
+          // which is the question people actually get wrong.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+            child: Text(
+              _scopeType == 'organization'
+                  ? 'Settings for ${me.organization.name} — everything inherits these '
+                        'unless a company or a '
+                        '${me.organization.franchiseLabel.toLowerCase()} overrides them.'
+                  : 'Settings for $_scopeLabel. Anything left alone inherits from '
+                        'above; anything set here overrides it.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           ),
-        ),
-        // Nothing to search and nothing to count until the first load lands.
-        if (_rows.isNotEmpty) _toolbar(context),
-        const SizedBox(height: 12),
-        const Divider(height: 1),
-        Expanded(child: _body(context)),
-      ],
+          // Nothing to search and nothing to count until the first load lands.
+          if (_rows.isNotEmpty) _toolbar(context),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+        ],
+      ),
+      list: _body(context),
     );
   }
 
@@ -589,23 +598,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         runSpacing: 10,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          SizedBox(
-            width: 300,
-            child: TextField(
-              controller: _search,
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: 'Search $total settings',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _search.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        tooltip: 'Clear',
-                        onPressed: _search.clear,
-                      ),
-              ),
-            ),
+          ListSearch(
+            key: const Key('settings-search'),
+            controller: _search,
+            hint: 'Search $total settings',
+            onClear: _search.clear,
           ),
 
           // The one number that says how much of this scope is its own doing.
@@ -1670,7 +1667,7 @@ class _SettingRow extends StatelessWidget {
     // needs (UI audit, 2026-10-08) — so it gets the width of one, and on a
     // phone the Flexible around the control keeps it on the screen.
     return SizedBox(
-      width: type == 'string' ? 320 : 150,
+      width: type == 'string' ? 440 : 150,
       child: _InlineField(
         // Keyed by value, so a save elsewhere or a scope switch rebuilds the
         // field instead of leaving the old text sitting in it.
@@ -1679,6 +1676,7 @@ class _SettingRow extends StatelessWidget {
         hint: sensitive ? 'Hidden' : null,
         enabled: editable,
         numeric: type == 'int' || type == 'decimal',
+        sms: setting['sms'] == true,
         onCommitted: (v) => onChanged(key, v),
       ),
     );
@@ -1702,9 +1700,13 @@ class _InlineField extends StatefulWidget {
     required this.numeric,
     required this.onCommitted,
     this.hint,
+    this.sms = false,
   });
 
   final String initial;
+
+  /// A text message: warn on characters outside GSM-7.
+  final bool sms;
 
   /// What to show when the box is empty because the value is not ours to see.
   final String? hint;
@@ -1727,6 +1729,7 @@ class _InlineFieldState extends State<_InlineField> {
   @override
   void initState() {
     super.initState();
+    if (widget.sms) _controller.addListener(() => setState(() {}));
     _focus.addListener(() {
       if (!_focus.hasFocus) _commit();
     });
@@ -1780,6 +1783,11 @@ class _InlineFieldState extends State<_InlineField> {
       decoration: InputDecoration(
         isDense: true,
         hintText: widget.hint,
+        errorMaxLines: 3,
+        errorText: widget.sms && nonGsm(_controller.text).isNotEmpty
+            ? 'Not plain text: ${nonGsm(_controller.text).join(' ')}. '
+                  'Each text then costs about 3 times as much.'
+            : null,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 10,
           vertical: 10,
@@ -2192,8 +2200,11 @@ class _EnumControl extends StatelessWidget {
       ...choices,
     ];
 
+    // 340: at 260 the longer answers were cut on every settings page —
+    // "The same window or the o…", "During their scheduled wor…" (UI pass
+    // 2026-11-17). On a phone the Flexible around the control still fits it.
     return SizedBox(
-      width: 260,
+      width: 340,
       child: SearchPickerField<Object>(
         key: ValueKey(selected),
         value: selected is Object ? selected : null,
@@ -2322,3 +2333,14 @@ class _DurationControlState extends State<_DurationControl> {
     );
   }
 }
+
+const _gsm =
+    '@£\$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?'
+    '¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà'
+    '^{}\\[~]|€';
+
+/// The characters in [text] a GSM-7 text cannot carry (curly quotes, dashes, emoji).
+List<String> nonGsm(String text) => {
+  for (final c in text.characters)
+    if (!_gsm.contains(c)) c,
+}.toList();

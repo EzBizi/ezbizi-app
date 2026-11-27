@@ -4,11 +4,12 @@ namespace App\Support\Phone;
 
 use App\Models\Organization;
 use App\Models\PhoneNumber;
+use App\Support\Access\GrantDirectory;
 
 /**
  * The phone lines the roles editor may grant, for this organization.
  */
-final class PhoneNumberDirectory
+final class PhoneNumberDirectory implements GrantDirectory
 {
     public const MODULE = 'phone';
 

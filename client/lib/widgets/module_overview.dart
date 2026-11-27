@@ -15,6 +15,7 @@ class OverviewFigure {
     this.tone,
     this.onTap,
     this.key,
+    this.help,
   });
 
   final String label;
@@ -23,6 +24,9 @@ class OverviewFigure {
   final Tone? tone;
   final VoidCallback? onTap;
   final Key? key;
+
+  /// What the figure counts, on hover over the card, with an info mark.
+  final String? help;
 }
 
 /// Figures in a wrapping grid: four across on a desktop, two on a phone.
@@ -69,7 +73,7 @@ class _FigureCard extends StatelessWidget {
         : ToneColours.of(context, figure.tone!).ink;
     final radius = BorderRadius.circular(EzBiziTheme.controlRadius);
 
-    return Material(
+    final card = Material(
       key: figure.key,
       color: theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
@@ -86,12 +90,26 @@ class _FigureCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  figure.label.toUpperCase(),
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    letterSpacing: 0.8,
-                    fontWeight: FontWeight.w700,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        figure.label.toUpperCase(),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          letterSpacing: 0.8,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    if (figure.help != null) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.info_outline,
+                        size: 13,
+                        color: theme.colorScheme.outline,
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -116,6 +134,10 @@ class _FigureCard extends StatelessWidget {
         ),
       ),
     );
+
+    return figure.help == null
+        ? card
+        : Tooltip(message: figure.help, child: card);
   }
 }
 

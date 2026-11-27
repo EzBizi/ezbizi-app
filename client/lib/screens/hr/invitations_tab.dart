@@ -1,3 +1,5 @@
+import '../../core/mask.dart';
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -5,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/hr.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -17,6 +20,8 @@ import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
+import 'invite_links_panel.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Every invitation and where it got to (HR plan, "Invitations").
 ///
@@ -88,6 +93,7 @@ class _InvitationsTabState extends State<InvitationsTab> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _searchDelay?.cancel();
     super.dispose();
   }
@@ -118,7 +124,13 @@ class _InvitationsTabState extends State<InvitationsTab> {
   void initState() {
     super.initState();
     _load();
+    // An invitation opened, accepted or sent elsewhere: page one re-read.
+    _live = LiveChanges.of(widget.api).subscribe({'hr_invitations'}, (_) {
+      if (_page == 1 && !_fetching) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   /// The list's search box (Jose, 2026-10-14: "we lack searchbars on the 3
   /// last human resources tabs"), as Records has one.
@@ -126,14 +138,9 @@ class _InvitationsTabState extends State<InvitationsTab> {
     alignment: Alignment.centerLeft,
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 320),
-      child: TextField(
+      child: ListSearch(
         key: const ValueKey('tour-hr-invitations-search'),
-        decoration: const InputDecoration(
-          hintText: 'Search by name or email',
-          prefixIcon: Icon(Icons.search),
-          isDense: true,
-          border: OutlineInputBorder(),
-        ),
+        hint: 'Search by name or email',
         onChanged: (value) {
           _searchDelay?.cancel();
           _searchDelay = Timer(const Duration(milliseconds: 300), () {
@@ -145,7 +152,8 @@ class _InvitationsTabState extends State<InvitationsTab> {
     ),
   );
 
-  Future<void> _load({int page = 1}) async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     if (page > 1 && _fetching) return;
 
     final request = ++_request;
@@ -155,8 +163,10 @@ class _InvitationsTabState extends State<InvitationsTab> {
       // refresh after inviting, resending or revoking leaves the rows up.
       _loading = page == 1 && _invitations.isEmpty;
       _fetching = true;
-      _error = null;
-      _pageError = null;
+      if (!quiet) {
+        _error = null;
+        _pageError = null;
+      }
     });
 
     final answers = await Future.wait([
@@ -175,6 +185,15 @@ class _InvitationsTabState extends State<InvitationsTab> {
     if (!mounted || request != _request) return;
 
     final invitations = answers[0];
+    if (quiet && !invitations.ok) {
+      // And the spinner off: a failed quiet re-read on an empty list left it
+      // turning forever (full-code audit, 2026-11-27).
+      setState(() {
+        _fetching = false;
+        _loading = false;
+      });
+      return;
+    }
     final options = answers[1];
 
     setState(() {
@@ -256,11 +275,35 @@ class _InvitationsTabState extends State<InvitationsTab> {
           note:
               'One person at a time. A link works once and expires after a '
               'week; “received” means they opened it.',
-          action: FilledButton.icon(
-            key: const ValueKey('tour-hr-invitations-invite'),
-            onPressed: _cannotInvite == null ? _invite : null,
-            icon: const Icon(Icons.person_add_alt_outlined, size: 18),
-            label: const Text('Invite somebody'),
+          action: Wrap(
+            spacing: 8,
+            children: [
+              // Many people at once (Jose, 2026-11-23).
+              OutlinedButton.icon(
+                key: const ValueKey('hr-invite-links'),
+                onPressed: _cannotInvite == null
+                    ? () => showSidePanel<void>(
+                        context,
+                        builder: (_) =>
+                            InviteLinksPanel(
+                              api: widget.api,
+                              options: _options,
+                              formats:
+                                  widget.session.me?.display ??
+                                  DisplayFormats.fallback,
+                            ),
+                      )
+                    : null,
+                icon: const Icon(Icons.link, size: 18),
+                label: const Text('Invite link'),
+              ),
+              FilledButton.icon(
+                key: const ValueKey('tour-hr-invitations-invite'),
+                onPressed: _cannotInvite == null ? _invite : null,
+                icon: const Icon(Icons.person_add_alt_outlined, size: 18),
+                label: const Text('Invite somebody'),
+              ),
+            ],
           ),
         ),
         if (_cannotInvite != null)
@@ -395,7 +438,10 @@ class _InvitationsTabState extends State<InvitationsTab> {
     final role = invitation['role'] as Map<String, dynamic>?;
     final scope = invitation['scope'] as Map<String, dynamic>?;
     final invitedBy = invitation['invited_by'] as Map<String, dynamic>?;
-    final email = invitation['email'] as String? ?? '';
+    // An erased person's stand-in address ("removed-…@invalid") is not a
+    // name anybody can read (deep dive 2026-11-02 #4).
+    final rawEmail = invitation['email'] as String? ?? '';
+    final email = rawEmail.endsWith('@invalid') ? 'Removed person' : rawEmail;
 
     final name = [
       invitation['first_name'],
@@ -403,10 +449,11 @@ class _InvitationsTabState extends State<InvitationsTab> {
     ].whereType<String>().where((part) => part.trim().isNotEmpty).join(' ');
 
     // A revoked one is a decision somebody made, and the server refuses to
-    // resend it. An accepted one has nothing to resend but can still be
-    // revoked (Jose, 2026-10-05: "regardless of anything"). Expired is NOT
-    // settled: chasing one that lapsed is the most useful thing Resend does.
-    final settled = status == 'revoked';
+    // resend it. An accepted one has an account now: removing that person is
+    // their HR record's job, so no Revoke either (Jose, 2026-11-24, replacing
+    // 2026-10-05's "regardless of anything"). Expired is NOT settled: chasing
+    // one that lapsed is the most useful thing Resend does.
+    final settled = status == 'revoked' || status == 'completed';
     // Accepted: nothing to resend. Held: it goes out when the paperwork is
     // signed, not before.
     final accepted = status == 'completed' || invitation['held'] == true;
@@ -416,7 +463,10 @@ class _InvitationsTabState extends State<InvitationsTab> {
     );
 
     return [
-      PersonCell(name: name.isEmpty ? email : name, sub: name.isEmpty ? null : email),
+      PersonCell(
+        name: name.isEmpty ? email : name,
+        sub: name.isEmpty ? null : maskEmail(email),
+      ),
       Text(role?['name'] as String? ?? '—', overflow: TextOverflow.ellipsis),
       Text(scope?['name'] as String? ?? '—', overflow: TextOverflow.ellipsis),
       Tag(
@@ -441,17 +491,21 @@ class _InvitationsTabState extends State<InvitationsTab> {
                       'hr.create',
                       'resend invitations',
                     ),
-                  child: TextButton(
-                    onPressed: mayAct ? () => _resend(invitation) : null,
-                    child: const Text('Resend'),
+                    child: TextButton(
+                      onPressed: mayAct ? () => _resend(invitation) : null,
+                      child: const Text('Resend'),
+                    ),
                   ),
-                ),
                 Refused(
                   reason: widget.session.me?.refusal(
                     'hr.create',
                     'withdraw invitations',
                   ),
                   child: TextButton(
+                    // Red: it withdraws the link (phone audit 2026-11-04).
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error,
+                    ),
                     onPressed: mayAct ? () => _revoke(invitation) : null,
                     child: const Text('Revoke'),
                   ),
@@ -1000,7 +1054,7 @@ class _InvitePanelState extends State<_InvitePanel> {
         children: [
           TextField(
             controller: _email,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             enabled: !_busy,
             keyboardType: TextInputType.emailAddress,
             decoration: const InputDecoration(
@@ -1050,9 +1104,13 @@ class _InvitePanelState extends State<_InvitePanel> {
             border: OutlineInputBorder(),
             options: [
               for (final role in widget.options.roles)
-                SearchOption(value: role.id, label: role.assignable
-                        ? role.name
-                        : '${role.name} — not yours to give', enabled: role.assignable),
+                SearchOption(
+                  value: role.id,
+                  label: role.assignable
+                      ? role.name
+                      : '${role.name} — not yours to give',
+                  enabled: role.assignable,
+                ),
             ],
             onChanged: _busy ? null : (v) => setState(() => _roleId = v),
           ),
@@ -1060,15 +1118,22 @@ class _InvitePanelState extends State<_InvitePanel> {
           SearchPickerField<String>(
             value: _scope,
             label: 'Where they are assigned',
-            helperText: 'Everything beneath it comes with it. This list holds only '
-                  'places you can reach yourself.',
+            helperText:
+                'Everything beneath it comes with it. This list holds only '
+                'places you can reach yourself.',
             helperMaxLines: 3,
             border: OutlineInputBorder(),
             options: [
+              // Switched-off places are not offered (Jose, 2026-11-10).
               for (final scope in widget.options.scopes)
-                SearchOption(value: scope.value, label: scope.isActive
+                if (scope.isActive || scope.value == _scope)
+                  SearchOption(
+                    value: scope.value,
+                    label: scope.isActive
                         ? scope.pathLabel
-                        : '${scope.pathLabel} — deactivated', enabled: scope.isActive),
+                        : '${scope.pathLabel} — deactivated',
+                    enabled: scope.isActive,
+                  ),
             ],
             onChanged: _busy ? null : (v) => setState(() => _scope = v),
           ),
@@ -1107,9 +1172,7 @@ class _InvitePanelState extends State<_InvitePanel> {
                       label: contract['name'] as String? ?? '',
                     ),
               ],
-              onChanged: _busy
-                  ? null
-                  : (v) => setState(() => _contractId = v),
+              onChanged: _busy ? null : (v) => setState(() => _contractId = v),
             ),
           if (_error != null) ...[
             const SizedBox(height: 18),

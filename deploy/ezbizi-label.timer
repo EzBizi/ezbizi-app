@@ -1,0 +1,10 @@
+[Unit]
+Description=Label and split new EzBizi call transcripts every three minutes
+
+[Timer]
+OnBootSec=4min
+OnUnitInactiveSec=3min
+Unit=ezbizi-label.service
+
+[Install]
+WantedBy=timers.target

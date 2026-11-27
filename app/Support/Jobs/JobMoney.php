@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * A job's money, the one definition both Project Managements read (Jose,
+ * A job's money, the one definition every reader uses (Jose,
  * 2026-10-27: "EzBizi is the master system and Workiz a mirror"; "Pending,
  * Paid, Total"). When Jobs records its own payments, this is the one file
  * that changes.
@@ -51,7 +51,13 @@ final class JobMoney
     /** The jobs' totals, or what they still owe, summed in cents. */
     public static function sum(Builder $jobs, string $what): int
     {
-        return (int) (clone $jobs)->toBase()->sum(\DB::raw(['total' => 'COALESCE('.self::total().', 0)', 'due' => self::dueSql()][$what]));
+        return (int) (clone $jobs)->toBase()->sum(\DB::raw([
+            'total' => 'COALESCE('.self::total().', 0)',
+            'due' => self::dueSql(),
+            'paid' => 'COALESCE('.self::paid().', 0)',
+            // Paid beyond the total: what due's clamp at 0 leaves out, so paid - over + due = total.
+            'over' => 'GREATEST('.self::paid().' - COALESCE('.self::total().', 0), 0)',
+        ][$what]));
     }
 
     /** @return Collection<string, Collection<int, array{job_id: string, at: Carbon, cents: int}>> each job's payments, oldest first */
@@ -88,32 +94,6 @@ final class JobMoney
         return self::paidRecords()->whereIn('job_id', $jobIds)->when($from, fn ($q) => $q->whereBetween('starts_at', [$from, $to]))
             ->groupBy('job_id')->selectRaw('job_id, SUM('.self::cents().') AS cents')->pluck('cents', 'job_id')
             ->map(fn ($c) => (int) $c)->all();
-    }
-
-    /** @return array<string, array{first: Carbon, last: Carbon}> each paid job's first and last payment */
-    public static function paidDates(array|Collection $jobIds): array
-    {
-        return self::paidRecords()->whereIn('job_id', $jobIds)->groupBy('job_id')
-            ->selectRaw('job_id, MIN(starts_at) AS first_paid, MAX(starts_at) AS last_paid')->get()
-            ->mapWithKeys(fn ($r) => [$r->job_id => ['first' => Carbon::parse($r->first_paid), 'last' => Carbon::parse($r->last_paid)]])->all();
-    }
-
-    /** The ids of jobs with a payment, within [$from, $to] when given, as a subquery. */
-    public static function paidJobIds(?Carbon $from = null, ?Carbon $to = null): Builder
-    {
-        return self::paidRecords()->when($from, fn ($q) => $q->whereBetween('starts_at', [$from, $to]))->select('job_id');
-    }
-
-    /** The ids of jobs first paid on or before $at, as a subquery. */
-    public static function firstPaidBy(Carbon $at): Builder
-    {
-        return self::paidRecords()->groupBy('job_id')->havingRaw('MIN(starts_at) <= ?', [$at])->select('job_id');
-    }
-
-    /** The ids of jobs last paid before $at, as a subquery. */
-    public static function lastPaidBefore(Carbon $at): Builder
-    {
-        return self::paidRecords()->groupBy('job_id')->havingRaw('MAX(starts_at) < ?', [$at])->select('job_id');
     }
 
     private static function paidRecords(): Builder

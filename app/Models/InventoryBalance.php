@@ -27,6 +27,19 @@ class InventoryBalance extends Model implements StatesRetention
     use BelongsToTenant;
     use HasUuids;
 
+    /** Stock on hand is the item's row on the Inventory list: a balance write is the item's change. */
+    protected static function booted(): void
+    {
+        $feed = function (self $b) {
+            if ($b->item_id !== null) {
+                \App\Support\Live\ChangeFeed::record(InventoryItem::withoutGlobalScopes()->find($b->item_id, ['id', 'organization_id', 'company_id', 'franchise_id'])
+                    ?? (new InventoryItem)->forceFill(['id' => $b->item_id, 'organization_id' => $b->organization_id]), 'inventory');
+            }
+        };
+        static::saved($feed);
+        static::deleted($feed);
+    }
+
     protected function casts(): array
     {
         return [

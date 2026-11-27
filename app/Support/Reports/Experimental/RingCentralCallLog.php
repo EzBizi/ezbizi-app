@@ -5,6 +5,7 @@ namespace App\Support\Reports\Experimental;
 use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Support\Reports\ReportView;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
@@ -77,9 +78,6 @@ use Throwable;
  */
 final class RingCentralCallLog
 {
-    /** RingCentral keeps 12 months of call log; older dates return nothing. */
-    public const RETENTION_MONTHS = 12;
-
     /** The one organization the env credential belongs to (Jose, 2026-10-15). Slug, not name: it was renamed. */
     public const ENV_ORGANIZATION_SLUG = 'a-1-chimney';
 
@@ -188,6 +186,12 @@ final class RingCentralCallLog
                 'account' => (string) $c->remote_id,
             ];
         }
+        // Asked for one account that this reader cannot see: none, never the
+        // env account in its place (2026-11-17: EverDoors' header listed A-1's
+        // numbers for a reader viewing A-1 Chimney).
+        if ($this->only !== null) {
+            return null;
+        }
 
         // The env account belongs to one company (REPORT_RINGCENTRAL_COMPANY,
         // 2026-10-19): a signed-in reader whose view is another company or a
@@ -289,8 +293,8 @@ final class RingCentralCallLog
      * The call log is in RingCentral's heavy rate group - ten requests a
      * minute - so a month asked for whole would wait minutes on the limit.
      * A day that has ended no longer changes, so it is fetched once and
-     * reused; only today is read live. `ezbizi:warm-call-log` reads yesterday
-     * each night, so a week or a month is normally all cache.
+     * reused; only today is read live. `ezbizi:warm-call-log` keeps every
+     * account's last month each hour, so a week or a month is normally all kept.
      *
      * Inbound only unless $outbound: Jose, 2026-10-12, wants missed calls told
      * apart "between inbound and outbound", and only the report shows
@@ -307,10 +311,17 @@ final class RingCentralCallLog
         for ($day = $start->startOfDay(); $day <= $end; $day = $day->addDay()) {
             $fetch = fn () => $this->forDate($day->toIso8601String(), $day->endOfDay()->toIso8601String());
 
+            // Today is live, but shared for a minute: every open fetched it
+            // afresh, and a burst of opens met RingCentral's 429s, whose waits
+            // outran nginx's 120s (504s, 2026-11-03).
             $calls = [...$calls, ...($day < $today
                 ? $this->storedDay($this->dayKeyFor($day), $fetch)
-                : $fetch())];
+                : Cache::remember($this->dayKeyFor($day).':live', 60, $fetch))];
         }
+
+        // Newest first across the days: each day comes newest first, but the
+        // days were joined oldest first, so a week opened on its first day.
+        usort($calls, fn (array $a, array $b) => strcmp((string) ($b['started_at'] ?? ''), (string) ($a['started_at'] ?? '')));
 
         return $outbound ? $calls : array_values(array_filter($calls, fn (array $call) => $call['direction'] === 'Inbound'));
     }
@@ -396,16 +407,42 @@ final class RingCentralCallLog
     }
 
     /**
-     * The queues that say what the caller was asking for.
+     * The queues that say what the caller was asking for: the business's own
+     * names (Settings: leads.new_client_queue, leads.existing_client_queue;
+     * A-1's are "A1 - New Client" and "A1 - Existing Client").
      *
-     * Named here rather than pattern-matched, because "A1 - New Client" is a
-     * label A-1 chose and can change, and a report that silently reclassified
+     * Named rather than pattern-matched, because a queue name is a label the
+     * business chose and can change, and a report that silently reclassified
      * every call the day somebody renamed a queue would be worse than one that
-     * stopped splitting them.
+     * stopped splitting them. Unset, no call is either.
      */
-    public const NEW_CLIENT_QUEUE = 'A1 - New Client';
+    public static function newClientQueue(): ?string
+    {
+        return self::queueSetting('leads.new_client_queue');
+    }
 
-    public const EXISTING_CLIENT_QUEUE = 'A1 - Existing Client';
+    public static function existingClientQueue(): ?string
+    {
+        return self::queueSetting('leads.existing_client_queue');
+    }
+
+    /** 'new', 'existing', or null: which of the two a call's queue is. */
+    public static function clientOf(?string $queue): ?string
+    {
+        return match (true) {
+            $queue === null => null,
+            $queue === self::newClientQueue() => 'new',
+            $queue === self::existingClientQueue() => 'existing',
+            default => null,
+        };
+    }
+
+    private static function queueSetting(string $key): ?string
+    {
+        $org = app(TenantContext::class)->get();
+
+        return $org === null ? null : ((string) app(SettingsResolver::class)->get($key, $org) ?: null);
+    }
 
     /**
      * @param  array<string, mixed>  $record
@@ -580,7 +617,7 @@ final class RingCentralCallLog
      *
      * The call log never says "In Progress": a live call is listed there as
      * "Accepted" with no answered leg yet, so it read as missed (Jose,
-     * 2026-10-19, +1 732-275-7027 at 1:05 PM). Only active-calls says so -
+     * 2026-10-19, +1 732-555-0102 at 1:05 PM). Only active-calls says so -
      * measured that day: its ids are the call log's.
      *
      * @return array<string, true>
@@ -654,7 +691,8 @@ final class RingCentralCallLog
     private function token(): string
     {
         $config = $this->credentialsOrFail();
-        $key = 'ringcentral-token:'.sha1((string) $config['client_id']);
+        // Per sign-in, not per app: two accounts on one app each have their own JWT.
+        $key = 'ringcentral-token:'.sha1($config['client_id'].'|'.$config['jwt']);
 
         if (is_string($cached = Cache::get($key))) {
             return $cached;

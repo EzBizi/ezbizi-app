@@ -23,6 +23,12 @@ import 'package:http/testing.dart';
 /// `outlineVariant` so two symmetric saturated bars could not pass. Top and
 /// bottom are not compared.
 void main() {
+  // Jose, 2026-11-16: an automatic text says which rule wrote it.
+  testWidgets('an automatic message names its rule', (tester) async {
+    await _pump(tester, EzBiziTheme.light());
+    expect(find.textContaining('Automatic · Not booked - after a call'), findsOneWidget);
+  });
+
   for (final (name, theme) in [
     ('light', EzBiziTheme.light()),
     ('dark', EzBiziTheme.dark()),
@@ -150,6 +156,7 @@ Future<void> _pump(WidgetTester tester, ThemeData theme) async {
                   'attachments': <String>[],
                   'has_recording': false,
                   'automatic': true,
+                  'automation_name': 'Not booked - after a call',
                 },
               ],
             },

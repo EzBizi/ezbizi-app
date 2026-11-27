@@ -23,11 +23,20 @@ use Illuminate\Support\Carbon;
 class Newsletter extends Model implements CarriesAutomationScope, StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'newsletters';
+
     use HasUuids;
 
     public const SCOPE_ORGANIZATION = 'organization';
     public const SCOPE_COMPANY      = 'company';
     public const SCOPE_FRANCHISE    = 'franchise';
+
+    /** The two designs a newsletter keeps side by side; `active_design` names the one that goes out. */
+    public const DESIGN_HTML   = 'html';
+    public const DESIGN_BLOCKS = 'blocks';
 
     public const STATUS_DRAFT     = 'draft';
     public const STATUS_SCHEDULED = 'scheduled';
@@ -46,7 +55,7 @@ class Newsletter extends Model implements CarriesAutomationScope, StatesRetentio
     }
 
     protected $fillable = [
-        'subject', 'blocks', 'html_override', 'newsletter_audience_id',
+        'subject', 'name', 'preheader', 'blocks', 'html_override', 'active_design', 'brand', 'newsletter_audience_id',
         'created_by', 'scope_type', 'scope_id', 'status',
         'scheduled_for', 'scheduled_timezone',
     ];
@@ -92,7 +101,33 @@ class Newsletter extends Model implements CarriesAutomationScope, StatesRetentio
 
     protected function casts(): array
     {
-        return ['blocks' => 'array'];
+        return ['blocks' => 'array', 'brand' => 'array', 'revision' => 'integer', 'last_test_revision' => 'integer', 'last_test_at' => 'datetime'];
+    }
+
+    /**
+     * The custom HTML to render, or null to render the blocks: the active
+     * design decides, never whether HTML happens to be stored. An HTML
+     * design that is empty falls back to the blocks rather than an empty email.
+     */
+    public function designHtml(): ?string
+    {
+        return self::htmlFor($this->active_design, $this->html_override);
+    }
+
+    public static function htmlFor(?string $active, ?string $html): ?string
+    {
+        return $active !== self::DESIGN_BLOCKS && is_string($html) && trim($html) !== '' ? $html : null;
+    }
+
+    /** A row written without naming its design keeps what it rendered before: its HTML if it has any. */
+    protected static function booted(): void
+    {
+        static::creating(function (self $n) {
+            if ($n->active_design === null) {
+                $n->active_design = self::htmlFor(self::DESIGN_HTML, $n->html_override) !== null
+                    ? self::DESIGN_HTML : self::DESIGN_BLOCKS;
+            }
+        });
     }
 
     public function audience(): BelongsTo

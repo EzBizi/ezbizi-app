@@ -80,6 +80,70 @@ class AttachmentsTest extends TestCase
         $this->assertSame($content, $body);
     }
 
+    /** Inspection labels a job's photos before or after; the list says which. */
+    public function test_the_list_says_a_photos_before_or_after_label(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $job   = $this->job($alpha);
+
+        $id = $this->signedInAs($alpha['admin'])->post('/api/v1/attachments', [
+            'attachable_type' => 'jobs',
+            'attachable_id'   => $job->id,
+            'file'            => UploadedFile::fake()->createWithContent('meter.pdf', "%PDF-1.4
+%%EOF
+"),
+        ], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
+
+        $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/attachments?attachable_type=jobs&attachable_id='.$job->id)
+            ->assertJsonPath('data.0.label', null);
+
+        $this->inTenant($alpha['org'], fn () => Attachment::findOrFail($id)->update(['label' => 'before']));
+
+        $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/attachments?attachable_type=jobs&attachable_id='.$job->id)
+            ->assertJsonPath('data.0.label', 'before');
+    }
+
+    /** A job's list carries its inspection reports' before and after photos, no others. */
+    public function test_a_jobs_list_carries_its_inspection_reports_labelled_photos(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $job   = $this->job($alpha);
+        $list  = fn () => $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/attachments?attachable_type=jobs&attachable_id='.$job->id)->json('data');
+
+        $ids = [];
+        foreach (['before', null] as $label) {
+            $ids[] = $id = $this->signedInAs($alpha['admin'])->post('/api/v1/attachments', [
+                'attachable_type' => 'jobs',
+                'attachable_id'   => $job->id,
+                'file'            => UploadedFile::fake()->createWithContent('p.pdf', "%PDF-1.4\n%%EOF\n"),
+            ], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
+        }
+
+        $this->inTenant($alpha['org'], function () use ($alpha, $job, $ids) {
+            $definition = \App\Models\InspectionDefinition::create([
+                'name' => 'Level 1', 'created_by' => $alpha['admin']->id, 'published_at' => now(), 'screens' => [],
+            ]);
+            $version = \App\Models\InspectionDefinitionVersion::create([
+                'inspection_definition_id' => $definition->id, 'version' => 1,
+                'layout_preset' => 'step_strip', 'screens' => [], 'published_by' => $alpha['admin']->id,
+            ]);
+            $report = \App\Models\InspectionReport::create([
+                'customer_id' => $job->customer_id, 'job_id' => $job->id,
+                'inspection_definition_id' => $definition->id, 'inspection_definition_version_id' => $version->id,
+                'submitted_by' => $alpha['admin']->id, 'submitted_at' => now(), 'answers' => [],
+                'layout_preset' => 'step_strip', 'definition_name' => 'Level 1',
+            ]);
+            // Both moved to the report; only the labelled one belongs on the job.
+            Attachment::whereIn('id', $ids)->update(['attachable_type' => 'inspection_reports', 'attachable_id' => $report->id]);
+            Attachment::whereKey($ids[0])->update(['label' => 'before']);
+        });
+
+        $this->assertSame([$ids[0]], array_column($list(), 'id'));
+    }
+
     /**
      * The row records the bytes, not what the uploader said about them.
      *

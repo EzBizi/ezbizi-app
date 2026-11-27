@@ -90,4 +90,16 @@ class AiTraceEvalTest extends TestCase
         $this->assertSame(['about bo'], AiTrace::personalDataAbout($bo)->pluck('prompt')->all());
         $this->assertSame(1, AiTrace::whereNull('subject_id')->count(), 'the context ends with its closure');
     }
+
+    /** Prod 2026-11-02: most failures were an empty answer; one retry, timeouts not retried. */
+    public function test_an_empty_answer_is_asked_once_more(): void
+    {
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        Process::fake(['*' => Process::sequence()
+            ->push(Process::result(json_encode(['text' => '', 'structuredOutput' => null])))
+            ->push(Process::result(json_encode(['structuredOutput' => ['ok' => true]])))]);
+
+        $this->assertSame(['ok' => true], GrokCli::ask('q', ['type' => 'object'], 30));
+        Process::assertRanTimes(fn () => true, 2);
+    }
 }

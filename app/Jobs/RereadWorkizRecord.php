@@ -24,7 +24,14 @@ final class RereadWorkizRecord implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 3;
+    /** A real throw (a bug) still fails after three; 429 releases are not exceptions and do not count. */
+    public int $maxExceptions = 3;
+
+    /** Each 429 release spends an attempt, so a count ran out in one rate-limit burst (11-21); a time budget does not. */
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addHours(2);
+    }
 
     public array $backoff = [60, 300];
 

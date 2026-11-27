@@ -4,9 +4,12 @@ namespace Tests\Feature\Api;
 
 use App\Models\AuditEvent;
 use App\Models\QrCode;
+use App\Support\Files\FileStore;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -251,6 +254,30 @@ class QrCodesTest extends TestCase
         ])->assertNotFound();
     }
 
+    /** Jose, 2026-11-23: organization-level codes stay in the organization view. */
+    public function test_a_company_view_shows_only_its_own_codes_never_organization_ones(): void
+    {
+        $t = $this->provisionTenant('Golf');
+        $admin = $this->userWithRole($t, 'Marketer', self::EDITOR);
+        [$org, $mine] = $this->inTenant($t['org'], fn () => [
+            QrCode::create(['scope_type' => 'organization', 'scope_id' => $t['org']->id,
+                'code' => QrCode::freshCode(), 'name' => 'Org code', 'destination_url' => 'https://a.test']),
+            QrCode::create(['scope_type' => 'company', 'scope_id' => $t['company']->id,
+                'code' => QrCode::freshCode(), 'name' => 'Company code', 'destination_url' => 'https://b.test']),
+        ]);
+        $company = ['X-EzBizi-View' => 'company:'.$t['company']->id];
+
+        $this->signedInAs($admin)->getJson('/api/v1/marketing/qr-codes', ['X-EzBizi-View' => 'organization'])
+            ->assertJsonCount(2, 'data');
+        $this->signedInAs($admin)->getJson('/api/v1/marketing/qr-codes', $company)
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $mine->id);
+        $this->signedInAs($admin)->getJson('/api/v1/marketing/qr-codes/'.$org->id.'/image', $company)->assertNotFound();
+
+        $made = $this->signedInAs($admin)->postJson('/api/v1/marketing/qr-codes',
+            ['name' => 'New', 'destination_url' => 'https://c.test'], $company)->assertCreated()->json('data');
+        $this->assertSame(['company', $t['company']->id], [$made['scope_type'], $made['scope_id']]);
+    }
+
     public function test_the_printable_image_comes_as_svg_and_png(): void
     {
         $t = $this->provisionTenant('Golf');
@@ -285,5 +312,79 @@ class QrCodesTest extends TestCase
 
         $this->assertTrue($holds($marketer, 'marketing.qr_codes.view'));
         $this->assertFalse($holds($other, 'marketing.qr_codes.view'));
+    }
+
+    /**
+     * Bar, 01a1f4ba: the company logo sits in the middle by default; "none"
+     * takes it out; any picture can be uploaded instead. The picture travels
+     * into both downloads, never only the preview.
+     */
+    public function test_the_logo_is_the_default_centre_and_none_removes_it(): void
+    {
+        Storage::fake(config('filesystems.default'));
+        $t = $this->provisionTenant('Juliet');
+        $editor = $this->userWithRole($t, 'Marketer', self::EDITOR);
+        $logo = $this->picture(512, 512);
+        $path = app(FileStore::class)->putContents($logo, 'logos', 'png');
+        $t['org']->forceFill(['logo_path' => $path])->save();
+
+        $qr = $this->signedInAs($editor)->postJson('/api/v1/marketing/qr-codes', [
+            'name' => 'Vans', 'destination_url' => 'https://a-1chimney.com',
+        ])->assertCreated()->assertJsonPath('data.center_image', 'logo')->json('data');
+
+        $base = '/api/v1/marketing/qr-codes/'.$qr['id'];
+        $this->assertSame($logo, $this->signedInAs($editor)->get($base.'/center-image')->assertOk()->getContent());
+        $this->assertStringContainsString('<image ', $this->signedInAs($editor)->get($base.'/image')->getContent());
+        $png = imagecreatefromstring($this->signedInAs($editor)->get($base.'/image?format=png')->getContent());
+        $this->assertSame(0xFF0000, imagecolorat($png, 1000, 1000) & 0xFFFFFF, 'The logo is drawn in the PNG.');
+
+        $this->signedInAs($editor)->putJson($base, ['center_image' => 'none'])
+            ->assertOk()->assertJsonPath('data.center_image', 'none');
+        $this->signedInAs($editor)->get($base.'/center-image')->assertNotFound();
+        $this->assertStringNotContainsString('<image ', $this->signedInAs($editor)->get($base.'/image')->getContent());
+
+        // `upload` is reached by uploading, never named.
+        $this->signedInAs($editor)->putJson($base, ['center_image' => 'upload'])->assertUnprocessable();
+    }
+
+    public function test_an_uploaded_picture_replaces_the_logo_and_only_pictures_are_taken(): void
+    {
+        Storage::fake(config('filesystems.default'));
+        $t = $this->provisionTenant('Kilo');
+        $editor = $this->userWithRole($t, 'Marketer', self::EDITOR);
+        $reader = $this->userWithRole($t, 'Reader', ['marketing.view', 'marketing.qr_codes.view']);
+        $qr = $this->signedInAs($editor)->postJson('/api/v1/marketing/qr-codes', [
+            'name' => 'Vans', 'destination_url' => 'https://a-1chimney.com',
+        ])->json('data');
+        $base = '/api/v1/marketing/qr-codes/'.$qr['id'];
+
+        // No logo anywhere: the default draws nothing rather than failing.
+        $this->signedInAs($editor)->get($base.'/center-image')->assertNotFound();
+        $this->signedInAs($editor)->get($base.'/image?format=png')->assertOk();
+
+        $bytes = $this->picture(300, 120);
+        $file = UploadedFile::fake()->createWithContent('badge.png', $bytes);
+        $this->signedInAs($reader)->post($base.'/center-image', ['file' => $file])->assertForbidden();
+        $this->signedInAs($editor)->post($base.'/center-image', ['file' => $file])
+            ->assertOk()->assertJsonPath('data.center_image', 'upload');
+        $this->assertSame($bytes, $this->signedInAs($editor)->get($base.'/center-image')->assertOk()->getContent());
+
+        $fake = UploadedFile::fake()->createWithContent('logo.png', '<svg onload="x"/>');
+        $this->signedInAs($editor)->post($base.'/center-image', ['file' => $fake])
+            ->assertUnprocessable()->assertJsonValidationErrors('file');
+
+        // Back to the logo is one choice away.
+        $this->signedInAs($editor)->putJson($base, ['center_image' => 'logo'])->assertJsonPath('data.center_image', 'logo');
+        $this->signedInAs($editor)->get($base.'/center-image')->assertNotFound();
+    }
+
+    private function picture(int $w, int $h): string
+    {
+        $img = imagecreatetruecolor($w, $h);
+        imagefill($img, 0, 0, imagecolorallocate($img, 255, 0, 0));
+        ob_start();
+        imagepng($img);
+
+        return (string) ob_get_clean();
     }
 }

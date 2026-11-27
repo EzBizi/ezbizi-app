@@ -1,9 +1,9 @@
 [Unit]
-Description=Transcribe new EzBizi call recordings every five minutes
+Description=Transcribe new EzBizi call recordings every minute after the last run (5 min idle left a backlog at peak, 2026-11-03)
 
 [Timer]
 OnBootSec=3min
-OnUnitInactiveSec=5min
+OnUnitInactiveSec=1min
 Unit=ezbizi-transcribe.service
 
 [Install]

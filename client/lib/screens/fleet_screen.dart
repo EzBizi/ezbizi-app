@@ -1,6 +1,8 @@
+import '../widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/async_body.dart';
@@ -60,10 +62,11 @@ class _FleetScreenState extends State<FleetScreen> {
   bool _insuranceExpiring = false;
 
   /// The open state (franchise id, or 'general'), or null for all of them.
-  /// The first load opens the first state rather than every state at once —
-  /// Eve: "I don't wanna see them all on one page because it's confusing".
+  /// Opens on every state, the list split into one section per branch (Jose,
+  /// 2026-11-03: "what eve asked was divissions in the list, not just show
+  /// ct"). Eve, 2026-10-12: "I don't wanna see them all on one page because
+  /// it's confusing".
   String? _place;
-  bool _placeChosen = false;
   List<Map<String, dynamic>> _places = const [];
 
   /// 0 General, 1 Vehicles.
@@ -77,17 +80,26 @@ class _FleetScreenState extends State<FleetScreen> {
   void initState() {
     super.initState();
     _load();
+    // A van assigned, serviced or insured elsewhere: page one re-read
+    // quietly (scroll, filters and the open vehicle kept).
+    _live = LiveChanges.of(widget.api).subscribe({'vehicles'}, (_) {
+      if (_page == 1 && !_fetching) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }
 
   bool get _hasPane => _adding || _open != null;
 
-  Future<void> _load({int page = 1}) async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     if (page > 1 && _fetching) return;
 
     final request = ++_request;
@@ -95,8 +107,10 @@ class _FleetScreenState extends State<FleetScreen> {
     setState(() {
       _loading = page == 1 && _vehicles.isEmpty;
       _fetching = true;
-      _error = null;
-      _pageError = null;
+      if (!quiet) {
+        _error = null;
+        _pageError = null;
+      }
     });
 
     final ownership = _owned == _rented ? null : (_owned ? 'owned' : 'rented');
@@ -114,8 +128,10 @@ class _FleetScreenState extends State<FleetScreen> {
     });
 
     if (!mounted || request != _request) return;
-
-    var openFirstPlace = false;
+    if (quiet && !response.ok) {
+      setState(() => _fetching = false);
+      return;
+    }
 
     setState(() {
       _loading = false;
@@ -132,23 +148,15 @@ class _FleetScreenState extends State<FleetScreen> {
 
       final meta = response.body['meta'] as Map<String, dynamic>?;
       final places = meta?['places'];
-      if (places is List) {
+      // A filter with no matches answers no places; keeping the last row stops
+      // the chips vanishing and the next click landing on a different chip
+      // (deep dive 2026-11-02 #8).
+      if (places is List && places.isNotEmpty) {
         _places = [
           for (final p in places)
             if (p is Map) Map<String, dynamic>.from(p),
         ];
       }
-
-      // Open on one state, once. Rows from the all-states answer are not
-      // drawn, so the first thing on screen is a single state.
-      if (!_placeChosen && _place == null && _places.length > 1) {
-        _placeChosen = true;
-        _place = _places.first['id'] as String?;
-        _loading = true;
-        openFirstPlace = true;
-        return;
-      }
-      _placeChosen = true;
 
       final rows = List<Map<String, dynamic>>.from(response.data as List);
       _vehicles = page == 1 ? rows : [..._vehicles, ...rows];
@@ -157,9 +165,6 @@ class _FleetScreenState extends State<FleetScreen> {
       _lastPage = meta?['last_page'] as int? ?? 1;
       _page = page;
     });
-
-    // The first answer chose a state above; fetch that state.
-    if (openFirstPlace) _load();
   }
 
   void _clearPane() => setState(() {
@@ -176,9 +181,7 @@ class _FleetScreenState extends State<FleetScreen> {
       _search.clear();
       _statuses
         ..clear()
-        ..addAll(
-          (query['status'] ?? '').split(',').where((s) => s.isNotEmpty),
-        );
+        ..addAll((query['status'] ?? '').split(',').where((s) => s.isNotEmpty));
       _owned = query['ownership'] == 'owned';
       _rented = query['ownership'] == 'rented';
       _unassigned = query['unassigned'] == '1';
@@ -232,7 +235,9 @@ class _FleetScreenState extends State<FleetScreen> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text('No Fleet Management tabs have been granted to your role.'),
+          child: Text(
+            'No Fleet Management tabs have been granted to your role.',
+          ),
         ),
       );
     }
@@ -266,7 +271,8 @@ class _FleetScreenState extends State<FleetScreen> {
                 canAdd: canCreate && vehicles,
                 onAdd: _add,
               ),
-              if (vehicles) _register(context),
+              if (vehicles)
+                ModuleActionGate(active: _tab == 1, child: _register(context)),
             ],
           ),
         ),
@@ -296,13 +302,15 @@ class _FleetScreenState extends State<FleetScreen> {
               ? '1 vehicle in the register.'
               : '$_total in the register.',
           action: canCreate
-              ? Refused(
-                  reason: refused,
-                  child: FilledButton.icon(
-                    key: const ValueKey('tour-fleet_management-add'),
-                    onPressed: refused == null ? _add : null,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add vehicle'),
+              ? ModuleAction(
+                  child: Refused(
+                    reason: refused,
+                    child: FilledButton.icon(
+                      key: const ValueKey('tour-fleet_management-add'),
+                      onPressed: refused == null ? _add : null,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add vehicle'),
+                    ),
                   ),
                 )
               : null,

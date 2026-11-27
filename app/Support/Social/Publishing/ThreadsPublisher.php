@@ -4,6 +4,7 @@ namespace App\Support\Social\Publishing;
 
 use App\Models\SocialConnection;
 use App\Support\Social\SocialMediaKind;
+use App\Support\Social\SocialProvider;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
@@ -37,9 +38,13 @@ use Illuminate\Support\Facades\Http;
  */
 final class ThreadsPublisher implements LinksToPosts, SocialPublisher
 {
+    use PostsThroughMetaGraph;
+
     private const API = 'https://graph.threads.net/v1.0';
 
     private const TIMEOUT = 30;
+
+    private const NETWORK = 'Threads';
 
     /**
      * ponytail: 30 seconds, bounded by the queue rather than by Threads - the
@@ -66,6 +71,12 @@ final class ThreadsPublisher implements LinksToPosts, SocialPublisher
 
         if ($kind === SocialMediaKind::Text && $body === '') {
             throw new SocialPublishFailed('A thread with no words would be an empty post. Write something.');
+        }
+
+        // Refused, never cut mid-sentence. The composer checks first; this
+        // holds for posts written before it did.
+        if (($why = SocialProvider::Threads->refusesLength($body)) !== null) {
+            throw new SocialPublishFailed($why.' Nothing was posted.');
         }
 
         $token = $this->token($connection);
@@ -116,9 +127,9 @@ final class ThreadsPublisher implements LinksToPosts, SocialPublisher
             },
             'image_url' => $kind === SocialMediaKind::Image ? $url : null,
             'video_url' => $kind === SocialMediaKind::Video ? $url : null,
-            // Threads counts by characters and stops at 500. On a media post
-            // the text is the caption, and an empty one is allowed.
-            'text' => $body === '' ? null : mb_substr($body, 0, 500),
+            // On a media post the text is the caption, and an empty one is
+            // allowed. Its 500-character limit is checked in publish().
+            'text' => $body === '' ? null : $body,
         ], fn ($value) => $value !== null));
 
         $id = $container['id'] ?? null;
@@ -168,27 +179,6 @@ final class ThreadsPublisher implements LinksToPosts, SocialPublisher
         );
     }
 
-    /** @return array<string, mixed> */
-    private function call(string $path, string $token, array $payload): array
-    {
-        try {
-            $response = Http::timeout(self::TIMEOUT)
-                ->asForm()
-                ->post(self::API.$path, $payload + ['access_token' => $token]);
-        } catch (ConnectionException) {
-            throw SocialPublishFailed::network('Threads', 'EzBizi could not reach it.');
-        }
-
-        if ($response->failed()) {
-            throw SocialPublishFailed::network(
-                'Threads',
-                (string) ($response->json('error.message') ?? 'HTTP '.$response->status()),
-            );
-        }
-
-        return (array) $response->json();
-    }
-
     private function token(SocialConnection $connection): string
     {
         $credentials = $connection->getAttribute('credentials');
@@ -202,20 +192,5 @@ final class ThreadsPublisher implements LinksToPosts, SocialPublisher
         }
 
         return $token;
-    }
-
-    /**
-     * Read back from the network rather than built from the id: a Page post's
-     * address is not derivable from its id, and a guessed link that 404s is
-     * worse than none.
-     */
-    public function permalink(SocialConnection $connection, string $remoteId): ?string
-    {
-        $url = Http::timeout(10)->get(self::API.'/'.$remoteId, [
-            'fields' => 'permalink',
-            'access_token' => $this->token($connection),
-        ])->json('permalink');
-
-        return is_string($url) && str_starts_with($url, 'https://') ? $url : null;
     }
 }

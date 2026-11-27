@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/list_table.dart';
 import '../../widgets/book_job_panel.dart';
+import '../../widgets/proofread_hint.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../customers/customer_detail_panel.dart';
@@ -18,6 +19,8 @@ import '../../core/phone_call_service.dart';
 import '../../core/timestamps.dart';
 import 'staff_thread.dart';
 import 'call_history_pane.dart';
+import 'phone_search.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Call desk — layout 1: teammates, pad, person. Below 600px, one pane at a time.
 /// Which of the desk's two faces is showing.
@@ -42,6 +45,7 @@ class CallTab extends StatefulWidget {
 
   final ApiClient api;
   final Session session;
+
   /// The desk. Defaults to the app-wide one the shell brought up; a test
   /// passes its own so it does not have to stub three endpoints to get a
   /// phone that answers.
@@ -221,7 +225,7 @@ class _CallTabState extends State<CallTab> {
   ///
   /// This used to strip the non-digits and put a `+` in front. So "305 724
   /// 2199" — how anybody in the United States writes a phone number — became
-  /// `+3057242199`, which is not that number. It is missing the country code,
+  /// `+3055550107`, which is not that number. It is missing the country code,
   /// and +305 is not a country. Every outbound call went to it.
   ///
   /// Nothing rejected it. It is well-formed enough to pass a length check, so
@@ -235,7 +239,7 @@ class _CallTabState extends State<CallTab> {
   ///
   /// Ten digits is the North American Numbering Plan and is unambiguous.
   /// Anything shorter is not a number we can complete, and guessing a country
-  /// code is exactly what produced +3057242199. A refusal is recoverable; a
+  /// code is exactly what produced +3055550107. A refusal is recoverable; a
   /// plausible wrong number is what cost the week.
   String? get _peer {
     final text = _destination.text.trim();
@@ -251,10 +255,10 @@ class _CallTabState extends State<CallTab> {
 
     final digits = text.replaceAll(RegExp(r'\D'), '');
 
-    // 1-305-724-2199, written out with its country code but no plus.
+    // 1-305-555-0107, written out with its country code but no plus.
     if (digits.length == 11 && digits.startsWith('1')) return '+$digits';
 
-    // 305 724 2199 — the ordinary way it is written here.
+    // 305 555 0107 — the ordinary way it is written here.
     if (digits.length == 10) return '+1$digits';
 
     // Anything else, including a bare 11+ digits that is not NANP, needs the
@@ -304,9 +308,10 @@ class _CallTabState extends State<CallTab> {
       // whichever number happened to sort first — "General Use" — while the
       // person's own line sat below it marked "yours", and every call went
       // out under the wrong one unless they noticed and switched.
-      _numberId ??= (numbers.where((n) => n.assignedToMe).firstOrNull
-              ?? numbers.firstOrNull)
-          ?.id;
+      _numberId ??=
+          (numbers.where((n) => n.assignedToMe).firstOrNull ??
+                  numbers.firstOrNull)
+              ?.id;
     });
 
     if (numbers.isEmpty) return;
@@ -350,6 +355,7 @@ class _CallTabState extends State<CallTab> {
 
     await _loadUnread();
 
+    if (!mounted) return;
     if (presence.ok) {
       setState(() {
         _teammates = [
@@ -357,7 +363,7 @@ class _CallTabState extends State<CallTab> {
             if (row is Map<String, dynamic>) _Teammate.fromJson(row),
         ];
         for (final row in _teammates) {
-          if (row.userId == widget.session.me!.id) {
+          if (row.userId == widget.session.me?.id) {
             _dnd = row.state == 'dnd';
           }
         }
@@ -464,7 +470,7 @@ class _CallTabState extends State<CallTab> {
     final number = _selected;
     if (number == null) return;
     await widget.api.put('/phone/presence', {
-      'connection_id': number.connectionId,
+      'connection_id': _releaseLine(number),
       'state': _dnd ? 'dnd' : 'registered',
     });
   }
@@ -480,7 +486,7 @@ class _CallTabState extends State<CallTab> {
 
     await _service.connect(to: parked.pickUp, callerId: number.e164);
     await widget.api.put('/phone/presence', {
-      'connection_id': number.connectionId,
+      'connection_id': _markOnCall(number),
       'state': 'on_call',
     });
 
@@ -673,7 +679,7 @@ class _CallTabState extends State<CallTab> {
     }
 
     await widget.api.put('/phone/presence', {
-      'connection_id': number.connectionId,
+      'connection_id': _markOnCall(number),
       'state': 'on_call',
     });
   }
@@ -736,6 +742,19 @@ class _CallTabState extends State<CallTab> {
     return 'client:${id.replaceAll('-', '')}';
   }
 
+  /// The line `on_call` was written to, so the release goes to the same one
+  /// even if the picker moved during the call (audit 11-27).
+  String? _onCallLine;
+
+  String _markOnCall(_Number number) =>
+      _onCallLine = _service.callConnectionId ?? number.connectionId;
+
+  String _releaseLine(_Number number) {
+    final line = _onCallLine ?? number.connectionId;
+    _onCallLine = null;
+    return line;
+  }
+
   Future<void> _hangUp() async {
     _service.hangUp();
 
@@ -744,7 +763,7 @@ class _CallTabState extends State<CallTab> {
     final number = _selected;
     if (number == null) return;
     await widget.api.put('/phone/presence', {
-      'connection_id': number.connectionId,
+      'connection_id': _releaseLine(number),
       'state': _dnd ? 'dnd' : 'registered',
     });
 
@@ -819,7 +838,7 @@ class _CallTabState extends State<CallTab> {
     final number = _selected;
     if (number == null) return;
     await widget.api.put('/phone/presence', {
-      'connection_id': number.connectionId,
+      'connection_id': _markOnCall(number),
       'state': 'on_call',
     });
   }
@@ -852,7 +871,7 @@ class _CallTabState extends State<CallTab> {
   }
 
   /// A number chosen from the history or a suggestion, shown formatted:
-  /// the box read +13057242199 (Jose, 2026-09-30).
+  /// the box read +13055550107 (Jose, 2026-09-30).
   void _pick(String e164, {String? name}) {
     final shown = formatPhoneNumber(e164);
     setState(() {
@@ -1057,18 +1076,37 @@ class _CallTabState extends State<CallTab> {
           : LayoutBuilder(
               builder: (context, constraints) {
                 final wide = constraints.maxWidth >= CallTab.splitAbove;
+                final banners = [
+                  if (_incomingFrom != null) _banner(),
+                  if (_deskDown) _deskDownBanner(),
+
+                  // Only when somebody is actually waiting. A permanent
+                  // empty "Parked calls" panel is a box that teaches people
+                  // to stop looking at it, and the whole value of this one
+                  // is being noticed on the rare day it has somebody in it.
+                  if (_parked.isNotEmpty || _ringing.isNotEmpty)
+                    _waitingBanner(),
+                ];
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (_incomingFrom != null) _banner(),
-                    if (_deskDown) _deskDownBanner(),
-
-                    // Only when somebody is actually waiting. A permanent
-                    // empty "Parked calls" panel is a box that teaches people
-                    // to stop looking at it, and the whole value of this one
-                    // is being noticed on the rare day it has somebody in it.
-                    if (_parked.isNotEmpty || _ringing.isNotEmpty)
-                      _waitingBanner(),
+                    // At most 40% of the pane, scrolling inside: at iOS
+                    // accessibility text sizes the desk-down banner pushed
+                    // the dial pad 127 px off the screen (mobile review 11-24).
+                    if (banners.isNotEmpty)
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: constraints.maxHeight * 0.4,
+                        ),
+                        child: SingleChildScrollView(
+                          primary: false,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: banners,
+                          ),
+                        ),
+                      ),
                     Expanded(child: wide ? _wide() : _narrow()),
 
                     // The zero-sized WebView2 host moved to the shell with
@@ -1235,26 +1273,41 @@ class _CallTabState extends State<CallTab> {
         // Starting widths. The history opened at whatever was left over when
         // the customer pane was away, which on a wide window was about three
         // quarters of the screen for a list of phone numbers.
-        var history = _historyWidth ?? available * 0.26;
-        var customer = showCustomer ? (_customerWidth ?? available * 0.44) : 0.0;
+        // Never under their floors, even from a saved drag: the history at
+        // ~170 px cut every name and number (desktop review 2026-11-13).
+        var history = math.max(
+          _historyWidth ?? available * 0.26,
+          _historyFloor,
+        );
+        var customer = showCustomer
+            ? math.max(_customerWidth ?? available * 0.44, _customerFloor)
+            : 0.0;
 
         // The pad is the one with a hard minimum: a list just gets narrower
         // and stays readable, a keypad stops being tappable. So it is paid
-        // first and the other two give the width back.
+        // first: the customer pane gives back first, then the history.
         var pad = available - history - customer;
+        if (pad < _padFloor && showCustomer) {
+          final take = math.min(_padFloor - pad, customer - _customerFloor);
+          customer -= take;
+          pad += take;
+        }
         if (pad < _padFloor) {
-          final short = _padFloor - pad;
-          final give = (history - _historyFloor) + (customer - _customerFloor);
-
-          if (give <= 0) {
-            // Nothing left to take. Let the pad be squeezed rather than
-            // overflow the row, which is a yellow-and-black stripe.
-            pad = math.max(0, available - history - customer);
-          } else {
-            history -= short * ((history - _historyFloor) / give);
-            if (showCustomer) customer -= short * ((customer - _customerFloor) / give);
-            pad = available - history - customer;
-          }
+          final take = math.min(_padFloor - pad, history - _historyFloor);
+          history -= take;
+          pad += take;
+        }
+        if (pad < _padFloor && showCustomer) {
+          // Still short: the customer pane narrows past its floor (it
+          // collapses first) rather than the list or the keypad.
+          customer = math.max(0, customer - (_padFloor - pad));
+          pad = available - history - customer;
+        }
+        if (pad < 0) {
+          // Nothing left to take. Let the pad be squeezed rather than
+          // overflow the row, which is a yellow-and-black stripe.
+          history = math.max(0, history + pad);
+          pad = 0;
         }
 
         return Row(
@@ -1353,7 +1406,7 @@ class _CallTabState extends State<CallTab> {
   /// The customer pane needed a constant of its own once it became draggable:
   /// it used to take whatever was left, so it could not be dragged to nothing
   /// because nothing ever dragged it.
-  static const double _historyFloor = 200;
+  static const double _historyFloor = 260;
   static const double _padFloor = 280;
   static const double _customerFloor = 280;
 
@@ -1366,9 +1419,13 @@ class _CallTabState extends State<CallTab> {
   double? _historyWidth;
   double? _customerWidth;
 
-  Widget _history({required void Function(String e164) onPick}) =>
+  Widget _history({
+    required void Function(String e164) onPick,
+    double bottomPadding = 4,
+  }) =>
       CallHistoryPane(
         api: widget.api,
+        bottomPadding: bottomPadding,
         formats: widget.session.me!.display,
         reloadToken: _historyToken,
         onPick: onPick,
@@ -1394,6 +1451,9 @@ class _CallTabState extends State<CallTab> {
           children: [
             Positioned.fill(
               child: _history(
+                // Clear of the Keypad button, which covered the last row's
+                // time (phone audit 2026-11-04).
+                bottomPadding: 72,
                 onPick: (e164) {
                   _pick(e164);
                   setState(() {
@@ -1406,11 +1466,14 @@ class _CallTabState extends State<CallTab> {
             Positioned(
               right: 16,
               bottom: 16,
-              child: FilledButton.icon(
-                key: const Key('phone-open-keypad'),
-                onPressed: () => setState(() => _pane = _CallPane.pad),
-                icon: const Icon(Icons.dialpad, size: 18),
-                label: const Text('Keypad'),
+              // Typing a search, it stops covering the list.
+              child: FoldWhileTyping(
+                child: FilledButton.icon(
+                  key: const Key('phone-open-keypad'),
+                  onPressed: () => setState(() => _pane = _CallPane.pad),
+                  icon: const Icon(Icons.dialpad, size: 18),
+                  label: const Text('Keypad'),
+                ),
               ),
             ),
           ],
@@ -1433,6 +1496,9 @@ class _CallTabState extends State<CallTab> {
   /// Which tile is picked on the Team roster: `available`, `on_call`, `dnd`,
   /// `unread`, or null for everyone.
   String? _teamFilter;
+
+  /// The Team roster's search (every list has one; deep dive 2026-11-02 #12).
+  String _teamQuery = '';
 
   /// The tile a presence state falls under. The same three words the row
   /// prints, so a tile and the pills under it can never disagree.
@@ -1467,7 +1533,10 @@ class _CallTabState extends State<CallTab> {
         _teammates.where((row) => _stateKey(row.state) == key).length;
     int unreadFrom(_Teammate row) => _unread[row.userId] ?? 0;
 
-    final waiting = _teammates.fold<int>(0, (sum, row) => sum + unreadFrom(row));
+    final waiting = _teammates.fold<int>(
+      0,
+      (sum, row) => sum + unreadFrom(row),
+    );
     final shown = [
       for (final row in _teammates)
         if (switch (_teamFilter) {
@@ -1475,7 +1544,7 @@ class _CallTabState extends State<CallTab> {
           'unread' => unreadFrom(row) > 0,
           final key => _stateKey(row.state) == key,
         })
-          row,
+          if (phoneSearchHit(_teamQuery, [row.name])) row,
     ];
 
     return ListView(
@@ -1525,6 +1594,15 @@ class _CallTabState extends State<CallTab> {
           ],
         ),
         const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: phoneSearchBox(
+            key: const ValueKey('phone-team-search'),
+            hint: 'Search people',
+            onChanged: (v) => setState(() => _teamQuery = v),
+          ),
+        ),
+        const SizedBox(height: 12),
         if (_teammates.isEmpty)
           Padding(
             padding: const EdgeInsets.all(8),
@@ -1534,9 +1612,14 @@ class _CallTabState extends State<CallTab> {
             ),
           )
         else if (shown.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(24),
-            child: Text('Nobody in this state.', textAlign: TextAlign.center),
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              _teamQuery.trim().isNotEmpty
+                  ? 'Nothing matches "${_teamQuery.trim()}".'
+                  : 'Nobody in this state.',
+              textAlign: TextAlign.center,
+            ),
           )
         else
           ListTable(
@@ -1571,10 +1654,7 @@ class _CallTabState extends State<CallTab> {
                     },
                   ),
                   unreadFrom(row) > 0
-                      ? StatusPill(
-                          '${unreadFrom(row)} new',
-                          tone: Tone.caution,
-                        )
+                      ? StatusPill('${unreadFrom(row)} new', tone: Tone.caution)
                       : Text(
                           '—',
                           style: theme.textTheme.bodySmall?.copyWith(
@@ -1896,7 +1976,7 @@ class _CallTabState extends State<CallTab> {
                   onPressed: () => setState(() => _pane = _personFrom),
                 ),
               // Who it is, when anybody knows; the number, formatted, when
-              // not. The panel said "Customer" over a raw +13057242199.
+              // not. The panel said "Customer" over a raw +13055550107.
               Expanded(
                 child: Text(
                   _personTitle,
@@ -1918,9 +1998,7 @@ class _CallTabState extends State<CallTab> {
                     : 'Keep this open between calls',
                 visualDensity: VisualDensity.compact,
                 icon: Icon(
-                  _customerPinned
-                      ? Icons.push_pin
-                      : Icons.push_pin_outlined,
+                  _customerPinned ? Icons.push_pin : Icons.push_pin_outlined,
                   size: 18,
                 ),
                 onPressed: () {
@@ -1994,6 +2072,12 @@ class _CallTabState extends State<CallTab> {
                 minLines: 1,
                 maxLines: 3,
                 onChanged: (_) => setState(() {}),
+              ),
+              // "Did you mean" (Jose, 2026-11-05), as in Leads.
+              ProofreadHint(
+                api: widget.api,
+                controller: _body,
+                path: '/proofread',
               ),
               const SizedBox(height: 8),
               Align(
@@ -2766,7 +2850,7 @@ extension _LiveCall on _CallTabState {
               row(
                 Icons.ring_volume_outlined,
                 '${formatPhoneNumber(ringing.fromE164)} is ringing '
-                    '${formatPhoneNumber(ringing.toE164)}',
+                '${formatPhoneNumber(ringing.toE164)}',
                 () => _takeRinging(ringing),
               ),
             for (final parked in _parked)

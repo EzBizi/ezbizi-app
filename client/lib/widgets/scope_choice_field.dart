@@ -141,19 +141,36 @@ class _ScopeChoicePanelState extends State<ScopeChoicePanel> {
     super.dispose();
   }
 
+  /// [ScopeChoicePanel.places] without switched-off companies and places
+  /// (Jose, 2026-11-10), except the one already chosen.
+  Map<String, String> get _places {
+    final named = {
+      for (final c in widget.companies) 'company:${c.id}',
+      for (final f in widget.branches) 'franchise:${f.id}',
+    };
+    final on = {
+      for (final c in switchedOnCompanies(widget.companies)) 'company:${c.id}',
+      for (final f in switchedOnFranchises(widget.branches, widget.companies))
+        'franchise:${f.id}',
+    };
+    return {
+      for (final e in widget.places.entries)
+        if (!named.contains(e.key) ||
+            on.contains(e.key) ||
+            e.key == widget.value)
+          e.key: e.value,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final term = _search.text.trim();
-    final all = scopeGroups(widget.places, widget.companies, widget.branches);
+    final places = _places;
+    final all = scopeGroups(places, widget.companies, widget.branches);
     final groups = term.isEmpty
         ? all
-        : scopeGroups(
-            widget.places,
-            widget.companies,
-            widget.branches,
-            term: term,
-          );
+        : scopeGroups(places, widget.companies, widget.branches, term: term);
 
     // A search box earns its place once the list stops fitting in one glance.
     final searchable = all.fold<int>(0, (n, g) => n + g.rows.length) >= 8;

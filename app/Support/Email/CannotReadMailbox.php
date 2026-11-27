@@ -131,8 +131,7 @@ class CannotReadMailbox extends RuntimeException
                 .'normally; EzBizi simply cannot show it to you.',
                 $address,
                 match ($provider) {
-                    MailboxProvider::GmailOAuth => 'Somebody with permission to manage mailboxes '
-                        .'needs to sign in to Google and give EzBizi permission to read it.',
+                    MailboxProvider::GmailOAuth => GmailMailboxReader::RETIRED,
                     MailboxProvider::GmailWorkspace => 'Somebody with permission to manage '
                         .'mailboxes needs to connect this organization\'s Google Workspace and '
                         .'pick this address from the directory.',

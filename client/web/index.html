@@ -76,6 +76,33 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <script>
+    // CanvasKit's wasm can abort ("RuntimeError: Aborted()": 164 times from
+    // 11 people, 10-16 to 11-02). After that the render tree is dead and the
+    // screen freezes, so reload once with a note. At most once a minute, so a
+    // build that aborts on start cannot loop.
+    (function () {
+      function aborted(v) {
+        return /Aborted\(/.test(String((v && (v.message || v.reason)) || v || ''));
+      }
+      function recover(e) {
+        if (!aborted(e && (e.error || e.reason || e.message))) return;
+        var key = 'ezbizi.wasm-reload', now = Date.now(), last = 0;
+        try { last = +sessionStorage.getItem(key) || 0; } catch (_) {}
+        if (now - last < 60000) return;
+        try { sessionStorage.setItem(key, String(now)); } catch (_) { return; }
+        var n = document.createElement('div');
+        n.textContent = 'Reloading…';
+        n.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);' +
+          'background:#1f2a30;color:#fff;padding:10px 18px;border-radius:10px;' +
+          'font:14px sans-serif;z-index:2147483647';
+        document.body.appendChild(n);
+        setTimeout(function () { location.reload(); }, 800);
+      }
+      window.addEventListener('error', recover);
+      window.addEventListener('unhandledrejection', recover);
+    })();
+  </script>
+  <script>
     // Unregister any service worker this browser already installed, and empty
     // its caches.
     //

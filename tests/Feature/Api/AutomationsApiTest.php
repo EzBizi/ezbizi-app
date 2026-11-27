@@ -141,7 +141,7 @@ class AutomationsApiTest extends TestCase
         $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
 
         $this->assertSame(
-            ['modules', 'people', 'work_hours_reports', 'whatsapp_groups', 'report_text_kinds', 'reports', 'places', 'templates', 'trainings', 'contracts', 'audiences', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
+            ['modules', 'people', 'work_hours_reports', 'whatsapp_groups', 'report_text_kinds', 'reports', 'places', 'templates', 'trainings', 'task_boards', 'contracts', 'audiences', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
             array_keys($data)
         );
 
@@ -443,7 +443,9 @@ class AutomationsApiTest extends TestCase
     {
         $source = file_get_contents(app_path('Support/Automations/ActionRunner.php'));
 
-        $match = preg_match('/return match \(\$type\) \{(.*?)\n        \};/s', $source, $m);
+        // The runner now wraps its match in AutomationVoice::speak(..., fn () => match ...) (11-24),
+        // and that in ReportSource::during(self::reportKey(...), fn () => ...) (Reports, 11-25).
+        $match = preg_match('/return (?:ReportSource::during\([^\n]*?, fn \(\) => )?(?:AutomationVoice::speak\(\$automation, fn \(\) => )?match \(\$type\) \{(.*?)\n        \}\)?\)?;/s', $source, $m);
         $this->assertSame(1, $match, 'the runner no longer has one match on $type — this guard needs rewriting, not deleting');
 
         preg_match_all("/^\s+'([a-z0-9_.]+)' => \\\$this->/m", $m[1], $found);
@@ -834,6 +836,66 @@ class AutomationsApiTest extends TestCase
         $this->assertSame(2, $updated->json('data.version'));
         $this->assertCount(2, $updated->json('data.versions'));
         $this->assertSame('second', $updated->json('data.actions.0.message'));
+    }
+
+    public function test_a_patch_of_only_the_actions_keeps_the_conditions(): void
+    {
+        $conditions = ['all' => [['field' => 'status', 'op' => 'eq', 'value' => 'completed']]];
+        $id = $this->as()->postJson('/api/v1/automations', [
+            'name' => 'Rule', 'trigger_key' => 'job.status_changed', 'conditions' => $conditions,
+            'actions' => [['type' => 'notify', 'message' => 'first']],
+        ])->assertCreated()->json('data.id');
+
+        $updated = $this->as()->patchJson("/api/v1/automations/{$id}", [
+            'actions' => [['type' => 'notify', 'message' => 'second']],
+        ])->assertOk();
+
+        $this->assertEquals($conditions, $updated->json('data.conditions'));
+        $this->assertSame('second', $updated->json('data.actions.0.message'));
+
+        // And the other half: conditions alone keep the actions.
+        $updated = $this->as()->patchJson("/api/v1/automations/{$id}", ['conditions' => null])->assertOk();
+        $this->assertNull($updated->json('data.conditions'));
+        $this->assertSame('second', $updated->json('data.actions.0.message'));
+    }
+
+    /** Jose, 2026-11-17: a fixed rule stayed silently off for twelve hours, and the calls it failed on were lost. */
+    public function test_a_saved_fix_rearms_a_switched_off_rule_and_runs_what_it_failed_on(): void
+    {
+        $id = $this->as()->postJson('/api/v1/automations', ['name' => 'Rule', 'trigger_key' => 'reports.call.missed',
+            'actions' => [['type' => 'notify', 'message' => 'broken']]])->assertCreated()->json('data.id');
+        $this->as()->patchJson("/api/v1/automations/{$id}", ['is_active' => true])->assertOk();
+        $org = $this->org['organization'];
+        [$lost, $didSomething] = app(\App\Support\Tenancy\TenantContext::class)->run($org, function () use ($id, $org) {
+            $rule = \App\Models\Automation::find($id);
+            $event = fn () => \App\Models\AutomationEvent::create(['organization_id' => $org->id, 'event_key' => 'reports.call.missed',
+                'payload' => ['from' => '+13055550101'], 'occurred_at' => now(), 'available_at' => now(), 'delivered_at' => now()]);
+            [$lost, $didSomething] = [$event(), $event()];
+            foreach ([[$lost, [['type' => 'notify', 'ok' => false]]], [$didSomething, [['type' => 'notify', 'ok' => true], ['type' => 'notify', 'ok' => false]]]] as [$e, $results]) {
+                \App\Models\AutomationRun::create(['organization_id' => $org->id, 'automation_id' => $id, 'automation_version_id' => $rule->active_version_id,
+                    'event_id' => $e->id, 'status' => \App\Models\AutomationRun::FAILED, 'action_results' => $results, 'started_at' => now()]);
+            }
+            $rule->forceFill(['disabled_at' => now(), 'disabled_reason' => 'Disabled after 5 consecutive failures.', 'consecutive_failures' => 5])->save();
+
+            return [$lost, $didSomething];
+        });
+
+        $this->as()->patchJson("/api/v1/automations/{$id}", ['actions' => [['type' => 'notify', 'message' => 'fixed']]])
+            ->assertOk()->assertJsonPath('data.disabled_at', null);
+
+        app(\App\Support\Tenancy\TenantContext::class)->run($org, function () use ($id, $lost, $didSomething) {
+            $version = \App\Models\Automation::find($id)->active_version_id;
+            $this->assertTrue(\App\Models\AutomationRun::query()->where('event_id', $lost->id)->where('automation_version_id', $version)->exists(), 'the lost call runs on the fix');
+            $this->assertFalse(\App\Models\AutomationRun::query()->where('event_id', $didSomething->id)->where('automation_version_id', $version)->exists(), 'a run that did a step is not repeated');
+        });
+    }
+
+    public function test_texting_every_new_lead_needs_saying_out_loud(): void
+    {
+        $rule = ['name' => 'Text all', 'trigger_key' => 'lead.received', 'actions' => [['type' => 'sms.send']]];
+
+        $this->as()->postJson('/api/v1/automations', $rule)->assertStatus(422)->assertJsonValidationErrors('conditions');
+        $this->as()->postJson('/api/v1/automations', $rule + ['confirm_no_conditions' => true])->assertCreated();
     }
 
     public function test_an_earlier_version_can_be_reactivated(): void
@@ -1248,5 +1310,28 @@ class AutomationsApiTest extends TestCase
         $this->assertSame($original['actions'], $copy['actions']);
 
         $this->assertTrue(Automation::query()->withoutGlobalScopes()->findOrFail($original['id'])->is_active);
+    }
+
+    /** Jose 11-25: a Task Board rule names its board(s); any other rule carries nothing. */
+    public function test_a_task_board_rule_names_its_boards(): void
+    {
+        $make = fn (array $rule) => $this->as()->postJson('/api/v1/automations', $rule + ['conditions' => ['all' => []]])->assertCreated()->json('data.id');
+        $plain = $make(['name' => 'Plain', 'trigger_key' => 'job.status_changed', 'actions' => [['type' => 'notify', 'message' => 'x']]]);
+        $every = $make(['name' => 'Every', 'trigger_key' => 'job.status_changed', 'actions' => [['type' => 'task.create', 'title' => 'x', 'assignee' => 'user:'.$this->org['admin']->id]]]);
+        $board = app(TenantContext::class)->run($this->org['organization'], fn () => \App\Models\TaskBoard::query()->create([
+            'organization_id' => $this->org['organization']->id, 'kind' => 'custom', 'name' => 'Leads', 'created_by_user_id' => $this->org['admin']->id]));
+        $named = $make(['name' => 'Named', 'trigger_key' => 'task.overdue', 'conditions' => ['all' => [['field' => 'board_id', 'op' => 'eq', 'value' => $board->id]]],
+            'actions' => [['type' => 'notify', 'message' => 'x']]]);
+
+        $list = collect($this->as()->getJson('/api/v1/automations')->assertOk()->json('data'))->keyBy('id');
+        $this->assertNull($list[$plain]['task_board']);
+        $this->assertSame('Task Board · every board', $list[$every]['task_board']['label']);
+        $this->assertSame('Task Board · Leads', $list[$named]['task_board']['label']);
+        $this->assertSame(['Leads'], $list[$named]['task_board']['boards']);
+
+        // A Monday copy's stored key is shown in words (Mobile UI-UX 11-25).
+        $this->assertSame('Brought over from Monday. Off here: this board has no group (removed on Monday).',
+            AutomationsController::descriptionShown('monday:384190975 (Monday, active) — off: not here: group (gone on Monday)'));
+        $this->assertSame('Mine', AutomationsController::descriptionShown('Mine'));
     }
 }

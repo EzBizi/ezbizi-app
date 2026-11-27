@@ -9,9 +9,45 @@ import 'files_io.dart' if (dart.library.js_interop) 'files_web.dart' as impl;
 class Files {
   /// Offer [content] to the user as a download named [filename].
   static void download(String filename, List<int> content) {
+    final name = withExtension(filename, content);
     final hook = debugOnDownload;
-    if (hook != null) return hook(filename, content);
-    impl.download(filename, content);
+    if (hook != null) return hook(name, content);
+    impl.download(name, content);
+  }
+
+  /// [filename] with an extension read from [content]'s first bytes when it
+  /// has none (Adeline 11-24: Monday assets often come without one, and the
+  /// saved file would not open).
+  static String withExtension(String filename, List<int> content) {
+    if (RegExp(r'\.[A-Za-z0-9]{1,5}$').hasMatch(filename)) return filename;
+    bool at(int i, List<int> sig) =>
+        content.length >= i + sig.length &&
+        List.generate(
+          sig.length,
+          (k) => content[i + k] == sig[k],
+        ).every((b) => b);
+    final ext = at(0, [0x89, 0x50, 0x4E, 0x47])
+        ? 'png'
+        : at(0, [0xFF, 0xD8, 0xFF])
+        ? 'jpg'
+        : at(0, [0x47, 0x49, 0x46, 0x38])
+        ? 'gif'
+        : at(0, [0x25, 0x50, 0x44, 0x46])
+        ? 'pdf'
+        : at(8, [0x57, 0x45, 0x42, 0x50])
+        ? 'webp'
+        : at(4, [0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63])
+        ? 'heic'
+        : at(4, [0x66, 0x74, 0x79, 0x70, 0x71, 0x74])
+        ? 'mov'
+        : at(4, [0x66, 0x74, 0x79, 0x70])
+        ? 'mp4'
+        : at(0, [0x50, 0x4B, 0x03, 0x04])
+        ? 'zip'
+        : null;
+    return ext == null
+        ? filename
+        : '${filename.isEmpty ? 'download' : filename}.$ext';
   }
 
   /// Tests set this to see what would have been saved, and under what name.
@@ -44,8 +80,14 @@ class Files {
   ///
   /// Papers on a period, visit or payment are PDFs as often as pictures, and
   /// reading them as text would corrupt them the same way a photo would.
-  static Future<PickedBytes?> pickBytes({String accept = ''}) =>
-      impl.pickBytes(accept: accept);
+  static Future<PickedBytes?> pickBytes({String accept = ''}) {
+    final hook = debugPickBytes;
+    if (hook != null) return hook(accept);
+    return impl.pickBytes(accept: accept);
+  }
+
+  /// Tests set this to answer [pickBytes] with a file, given its `accept`.
+  static Future<PickedBytes?> Function(String accept)? debugPickBytes;
 
   /// A URL the browser can play or show, for bytes we already hold.
   ///
@@ -65,6 +107,9 @@ class Files {
   /// Hand back a URL from [previewUrl]. Blobs are held until revoked, so a
   /// composer that picked ten videos would otherwise keep all ten in memory.
   static void releasePreviewUrl(String url) => impl.releasePreviewUrl(url);
+
+  /// Running under `flutter test`, where no platform video player answers.
+  static bool get underTest => impl.underTest;
 }
 
 class PickedFile {

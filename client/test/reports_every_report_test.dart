@@ -355,6 +355,8 @@ Future<void> _pump(
       if (refuse != null && path == '/api/v1$refuse') {
         return _json({'message': 'No, not $refuse.'}, 403);
       }
+      // Every report sent (2026-11-25): none here.
+      if (path.endsWith('/reports/sent')) return _json({'data': []});
       if (path.endsWith('/reports') && !path.contains('time-clock')) {
         return _json({'data': built});
       }

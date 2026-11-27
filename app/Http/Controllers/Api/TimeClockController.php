@@ -85,6 +85,8 @@ class TimeClockController extends Controller
             $week['correction_requests'] = app(TimeClockCorrectionsController::class)->pendingFor($user);
         }
 
+        $week['day_tags'] = TimeClockDay::tagsFor($user->organization);
+
         return response()->json(['data' => $week]);
     }
 
@@ -271,7 +273,7 @@ class TimeClockController extends Controller
         abort_unless((bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) && strtotime($date) !== false, 404);
 
         $data = $request->validate([
-            'tag' => ['sometimes', 'nullable', Rule::in(TimeClockDay::TAGS)],
+            'tag' => ['sometimes', 'nullable', Rule::in(TimeClockDay::tagValuesFor($request->user()->organization))],
             'extra_minutes' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1440'],
             'note' => ['sometimes', 'nullable', 'string', 'max:2000'],
         ]);

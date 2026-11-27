@@ -46,6 +46,33 @@ void main() {
     );
   });
 
+  // Jose, 2026-11-17: staff move an approved one along; the author sees it.
+  testWidgets('an approved suggestion is moved along with its release', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+    final base = _handler([
+      {..._row(id: 'a', status: 'approved', note: 'Yes.'), 'progress': 'approved'},
+    ]);
+    await _pump(tester, (request) async {
+      if (request.url.path.endsWith('/progress') && request.method == 'POST') {
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return _json({'data': <String, dynamic>{}});
+      }
+      return base(request);
+    });
+
+    await tester.tap(_inRail('A-1 Chimney'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('staff-suggestion-progress')), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('progress-release')), '0.0.0584');
+    await tester.tap(find.byKey(const ValueKey('progress-testing')));
+    await tester.pumpAndSettle();
+
+    expect(sent, {'progress': 'testing', 'release_version': '0.0.0584'});
+  });
+
   testWidgets('status is shown in words, grouped by band', (tester) async {
     await _pump(
       tester,
@@ -317,11 +344,14 @@ void main() {
       // Nothing left to mark in review once it has been decided.
       expect(find.text('Mark in review'), findsNothing);
 
+      // The note box, last: an approved one also has the Release box.
       final field = tester.widget<TextField>(
-        find.descendant(
-          of: find.byKey(const Key('suggestion-detail')),
-          matching: find.byType(TextField),
-        ),
+        find
+            .descendant(
+              of: find.byKey(const Key('suggestion-detail')),
+              matching: find.byType(TextField),
+            )
+            .last,
       );
       expect(
         field.controller?.text,

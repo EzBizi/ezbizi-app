@@ -40,6 +40,9 @@ class SyncWorkizJobsTest extends TestCase
             ]);
             $c->connect(['api_token' => 'api_'.$name, 'refresh_token' => 'api_'.$name]);
             $c->save();
+            // A-1's closed statuses, as its settings say them (Jose 11-04: no status list in code).
+            app(\App\Support\Settings\SettingsResolver::class)->set('jobs.earned_statuses', $tenant['org'], ['Done']);
+            app(\App\Support\Settings\SettingsResolver::class)->set('jobs.cancelled_statuses', $tenant['org'], ['Canceled']);
 
             return $c;
         });

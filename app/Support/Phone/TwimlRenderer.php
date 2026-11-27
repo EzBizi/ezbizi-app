@@ -65,6 +65,24 @@ final class TwimlRenderer
         // actually goes on to connect somebody. The menu's own timeout path
         // says it too — see below — because that path reaches a person or a
         // recording without a second document to say it in.
+        // OVERRIDE THE CALL FLOW (Jose, 2026-11-11): this line does its own
+        // thing, before hours and the menu. Digits and extension entry come
+        // back here from a menu this line no longer plays, so they are ignored.
+        if (! $outbound && $number->override_on && is_array($number->override)) {
+            $this->recordingNotice($response, $number, $language, $outbound);
+            $override = $number->override;
+            if (($override['action'] ?? '') === 'user') {
+                $this->dialExtension($response, $number, (string) PhoneExtension::query()
+                    ->where('connection_id', $number->connection_id)
+                    ->where('user_id', $override['user_id'] ?? '')
+                    ->value('extension'), $language, $context);
+            } else {
+                $this->takeMenuOption($response, $number, $override, $language, $context);
+            }
+
+            return (string) $response;
+        }
+
         $closed = ! $outbound && $this->closed($number, $context);
         $digits = (string) ($context['digits'] ?? '');
 
@@ -435,6 +453,21 @@ final class TwimlRenderer
         };
     }
 
+    /** What an overridden line does, said plainly for the call-flow screens. */
+    private static function overrideSentence(PhoneNumber $number): string
+    {
+        $o = (array) $number->override;
+
+        return match ($o['action'] ?? '') {
+            'forward' => 'forwards to '.self::pretty((string) ($o['number'] ?? '')),
+            'ring_group' => 'rings '.(PhoneRingGroup::query()->whereKey($o['ring_group_id'] ?? '')->value('name') ?? 'a team'),
+            'user' => 'rings '.(User::query()->whereKey($o['user_id'] ?? '')->value('name') ?? 'a person'),
+            'voicemail' => 'goes to voicemail',
+            'hangup' => 'plays a message and hangs up',
+            default => 'does nothing set',
+        };
+    }
+
     /**
      * What an inbound call to this line actually does, step by step.
      *
@@ -484,6 +517,20 @@ final class TwimlRenderer
             // asserts they agree rather than trusting that they do.
             'edit' => ['pane' => 'numbers', 'id' => (string) $number->id],
         ];
+
+        if ($number->override_on && is_array($number->override)) {
+            $steps[] = [
+                'step' => 'override',
+                'from' => 'line',
+                'title' => 'Overridden: '.self::overrideSentence($number),
+                'detail' => 'This line skips the call flow, hours and menu included, until the override is switched off.',
+                'usable' => true,
+                'skipped' => false,
+                'edit' => ['pane' => 'numbers', 'id' => (string) $number->id],
+            ];
+
+            return $steps;
+        }
 
         $schedule = $number->resolved('hours_schedule_id') === null
             ? null
@@ -1809,6 +1856,15 @@ final class TwimlRenderer
         $link('caller', 'arrival');
 
         if (! $pointed) {
+            return ['nodes' => $nodes, 'edges' => $edges];
+        }
+
+        if ($number->override_on && is_array($number->override)) {
+            $add('override', 'override', 'Overridden: '.self::overrideSentence($number),
+                'This line skips the call flow, hours and menu included.',
+                edit: ['pane' => 'numbers', 'id' => (string) $number->id]);
+            $link('arrival', 'override');
+
             return ['nodes' => $nodes, 'edges' => $edges];
         }
 

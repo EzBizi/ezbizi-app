@@ -249,7 +249,7 @@ class WhatsAppWebhookController extends Controller
             /*
              * STATUS ONLY MOVES FORWARD, because Meta does not send them in order.
              *
-             * Measured 2026-09-24 on a real message to +1 786 776-2666: the row
+             * Measured 2026-09-24 on a real message to +1 786 555-0102: the row
              * came to rest with `delivered_at` set and `status` = `sent`.
              * `delivered_at` is written only when a `delivered` status is
              * absorbed, so `delivered` arrived and a LATE `sent` then overwrote

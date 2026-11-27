@@ -182,9 +182,20 @@ class ReportsTabPermissionsTest extends TestCase
      *
      * Changed 2026-10-15. Jose: people assigned to one company "should be
      * able to see it regardless". Reading the pane needs the tab alone; the
-     * two writes (tag, convert) still need organization-level reports.build.
+     * two writes (tag, convert) need their own tick, reports.handles (2026-11-02).
      * Without the tab, nothing opens.
      */
+    /** Jose, 2026-11-02: a Dispatch Supervisor was refused Handles with no tick in Roles to grant it. */
+    public function test_the_handles_tick_allows_tag_and_convert_without_reports_build(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        config(['experimental_reports.ringcentral.client_id' => null, 'experimental_reports.ringcentral.client_secret' => null, 'experimental_reports.ringcentral.jwt' => null]);
+
+        $supervisor = $this->userWithRole($tenant, 'Dispatch Supervisor', ['reports.view', 'reports.experimental.view', 'reports.handles']);
+        $this->signedInAs($supervisor)->putJson('/api/v1/reports/experimental/people/tag', ['person' => 'X', 'tag' => 'new'])->assertOk();
+        $this->signedInAs($supervisor)->postJson('/api/v1/reports/experimental/calls/1/convert')->assertOk();
+    }
+
     public function test_the_tab_alone_opens_the_pane_but_not_its_writes(): void
     {
         $tenant = $this->provisionTenant('Alpha');

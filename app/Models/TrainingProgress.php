@@ -19,6 +19,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class TrainingProgress extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A guide read on is its guide's change on the live feed (the Dashboard counts move). */
+    protected static array $changeParent = ['training', TrainingGuide::class, 'guide_id'];
+
     use HasUuids;
 
     // ── §9 data inventory ────────────────────────────────────────

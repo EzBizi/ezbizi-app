@@ -6,6 +6,7 @@
 /// Tabs are tracked by KEY, never by position — see work_hours_screen.dart.
 library;
 
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -15,6 +16,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/colour_field.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/formatted_notes.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tab_bar_like.dart';
 
@@ -148,7 +150,7 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
     return [
       c['title'],
       c['summary'],
-      c['notes'],
+      NotesMarkup.plain(c['notes'] as String?),
       ...(c['steps'] as List<dynamic>? ?? const []),
     ].whereType<String>().any((s) => s.toLowerCase().contains(q));
   }
@@ -248,15 +250,13 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             sliver: SliverToBoxAdapter(
-              child: TextField(
-                key: const ValueKey('guidelines-search'),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search),
-                  hintText: 'Search guidelines',
-                  isDense: true,
-                  border: OutlineInputBorder(),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: ListSearch(
+                  key: const ValueKey('guidelines-search'),
+                  hint: 'Search guidelines',
+                  onChanged: (v) => setState(() => _query = v),
                 ),
-                onChanged: (v) => setState(() => _query = v),
               ),
             ),
           ),
@@ -317,7 +317,13 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
                   maxCrossAxisExtent: MediaQuery.sizeOf(context).width < 600
                       ? 600
                       : 280,
-                  mainAxisExtent: 220,
+                  // The text part grows with the reader's text size (iOS
+                  // extra-extra-large overflowed the card by 6 px; mobile
+                  // review 11-24); the 102 px picture strip does not. 132
+                  // holds a two-line title AND a two-line summary, which a
+                  // 3-across grid (iPhone on its side) gave 14 px too little.
+                  mainAxisExtent:
+                      102 + MediaQuery.textScalerOf(context).scale(132),
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
                 ),
@@ -444,7 +450,7 @@ class _ReadPanel extends StatelessWidget {
                   for (var i = 0; i < steps.length; i++)
                     '${i + 1}. ${steps[i]}',
                   if ((card['notes'] as String?)?.isNotEmpty ?? false)
-                    card['notes'],
+                    NotesMarkup.plain(card['notes'] as String?),
                 ].join('\n'),
               ),
             );
@@ -536,7 +542,7 @@ class _StepsBody extends StatelessWidget {
               children: [
                 Text('Notes', style: theme.textTheme.titleSmall),
                 const SizedBox(height: 4),
-                SelectableText(notes),
+                FormattedNotesText(notes),
               ],
             ),
           ),
@@ -570,8 +576,8 @@ class _EditPanelState extends State<_EditPanel> {
       TextEditingController(),
   ];
   bool _confirmDelete = false;
-  late final _notes = TextEditingController(
-    text: widget.card?['notes'] as String? ?? '',
+  late final _notes = FormattedNotesController(
+    markup: widget.card?['notes'] as String?,
   );
   late final _position = TextEditingController(
     text: '${widget.card?['position'] ?? 0}',
@@ -601,7 +607,7 @@ class _EditPanelState extends State<_EditPanel> {
         for (final c in _steps)
           if (c.text.trim().isNotEmpty) c.text.trim(),
       ],
-      'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+      'notes': _notes.text.trim().isEmpty ? null : _notes.markup.trim(),
       'position': int.tryParse(_position.text.trim()) ?? 0,
     };
     final id = widget.card?['id'];
@@ -782,7 +788,14 @@ class _EditPanelState extends State<_EditPanel> {
             ),
           ),
           const SizedBox(height: 12),
-          _field(_notes, 'Notes (optional)', lines: 3),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: FormattedNotesField(
+              controller: _notes,
+              label: 'Notes (optional)',
+              fieldKey: const ValueKey('guidelines-notes'),
+            ),
+          ),
           ColourField(
             label: 'Color',
             value: _color ?? '',

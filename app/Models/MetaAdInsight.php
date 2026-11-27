@@ -19,7 +19,7 @@ class MetaAdInsight extends Model implements StatesRetention
 
     protected $fillable = [
         'organization_id', 'connection_id', 'date', 'campaign_id', 'adset_id', 'adset_name',
-        'region', 'spend', 'impressions', 'clicks', 'leads', 'currency',
+        'region', 'spend', 'impressions', 'clicks', 'leads', 'forms', 'currency',
     ];
 
     protected function casts(): array

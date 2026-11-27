@@ -36,6 +36,24 @@ class AdsCostTest extends TestCase
         });
     }
 
+    /** Desk audit, 2026-11-12: an account connected from inside a branch is that branch's, with no mapping. */
+    public function test_an_account_connected_from_a_branch_counts_for_it_and_not_as_unmapped(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->account($t, '4444444444', null);
+        $this->inTenant($t['org'], fn () => $row->forceFill(['scope_type' => SocialConnection::SCOPE_FRANCHISE, 'scope_id' => $t['franchise']->id])->save());
+        config(['services.google_ads.client_id' => 'c', 'services.google_ads.client_secret' => 's', 'services.google_ads.developer_token' => 'd']);
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::response(['results' => []], 200),
+        ]);
+        $from = CarbonImmutable::parse('2026-09-01');
+        $to = CarbonImmutable::parse('2026-09-30');
+
+        $this->assertSame(1, app(AdsCost::class)->forBranch($t['franchise'], $from, $to)['accounts']);
+        $this->assertSame(0, app(AdsCost::class)->unmapped((string) $t['org']->id, null, $from, $to)['accounts']);
+    }
+
     public function test_a_branch_sums_its_accounts_split_lsa_and_ppc_and_asks_google_once(): void
     {
         $t = $this->provisionTenant('A1-Group');

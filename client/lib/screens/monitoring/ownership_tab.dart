@@ -1,8 +1,12 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_table.dart';
+
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
@@ -100,10 +104,21 @@ class _OwnershipTabState extends State<OwnershipTab> {
     super.initState();
     _load();
     _refresh = Timer.periodic(OwnershipTab.refreshEvery, (_) => _load());
+    // Between the timed reads: a machine, a desk or a person changing.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'monitoring_devices', 'monitoring_floor_plans', 'people'},
+      (_) {
+        if (!_loading) return _load();
+      },
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _refresh?.cancel();
     super.dispose();
   }
@@ -144,7 +159,8 @@ class _OwnershipTabState extends State<OwnershipTab> {
     if (!mounted || !response.ok) return;
 
     setState(() {
-      _freeDesks = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
+      _freeDesks = (response.data as List<dynamic>)
+          .cast<Map<String, dynamic>>();
     });
   }
 
@@ -173,16 +189,9 @@ class _OwnershipTabState extends State<OwnershipTab> {
                     // Standard field height, as tall as Leads search (Jose, 2026-10-27).
                     child: SizedBox(
                       width: 240,
-                      child: TextField(
+                      child: ListSearch(
                         key: const Key('ownership-search'),
-                        textAlignVertical: TextAlignVertical.center,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          prefixIconConstraints: BoxConstraints(minWidth: 36),
-                          prefixIcon: Icon(Icons.search, size: 18),
-                          hintText: 'Find a person',
-                          border: OutlineInputBorder(),
-                        ),
+                        hint: 'Find a person',
                         onChanged: (v) => setState(() => _query = v),
                       ),
                     ),
@@ -218,8 +227,7 @@ class _OwnershipTabState extends State<OwnershipTab> {
     // Asked of the payload, not assumed: these two are withheld per viewer.
     final showPc = _rows.any((r) => r.containsKey('computer_name'));
     final showHours = _rows.any((r) => r.containsKey('work_days'));
-    final canRename =
-        widget.session.me?.can('monitoring.map.manage') ?? false;
+    final canRename = widget.session.me?.can('monitoring.map.manage') ?? false;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -231,43 +239,35 @@ class _OwnershipTabState extends State<OwnershipTab> {
       child: SingleChildScrollView(
         child: Card(
           clipBehavior: Clip.antiAlias,
-          child: SingleChildScrollView(
-            // Eight columns do not fit a laptop, let alone a phone. The table
-            // scrolls SIDEWAYS inside its card; the vertical scroll above
-            // carries the rows.
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columns: [
-                const DataColumn(label: Text('User')),
-                const DataColumn(label: Text('Role')),
-                const DataColumn(label: Text('Desk')),
-                if (showPc) const DataColumn(label: Text('PC name')),
-                const DataColumn(label: Text('Status')),
-                if (showHours) const DataColumn(label: Text('Work days')),
-                if (showHours) const DataColumn(label: Text('Shift')),
-                const DataColumn(label: Text('Assignment')),
-                const DataColumn(label: Text('Office')),
-              ],
-              rows: [
-                for (final row in _shown)
-                  DataRow(
-                    cells: [
-                      DataCell(Text(_name(row))),
-                      DataCell(_orDash(context, row['role'])),
-                      DataCell(_deskCell(row, canRename)),
-                      if (showPc)
-                        DataCell(_orDash(context, row['computer_name'])),
-                      DataCell(_StatusCell(online: row['online'] == true)),
-                      if (showHours)
-                        DataCell(_orDash(context, row['work_days'])),
-                      if (showHours) DataCell(_orDash(context, row['shift'])),
-                      DataCell(_orDash(context, row['assignment'])),
-                      DataCell(_orDash(context, row['office'])),
+          child: // ListTable scrolls its columns sideways itself once they do not fit,
+              // and stacks into cards on a narrow pane (mobile review P1).
+              ListTable(
+                columns: [
+                  const ListColumn('User', flex: 3),
+                  const ListColumn('Role'),
+                  const ListColumn('Desk', flex: 3),
+                  if (showPc) const ListColumn('PC name'),
+                  const ListColumn('Status'),
+                  if (showHours) const ListColumn('Work days'),
+                  if (showHours) const ListColumn('Shift'),
+                  const ListColumn('Assignment'),
+                  const ListColumn('Office'),
+                ],
+                rows: [
+                  for (final row in _shown)
+                    [
+                      Text(_name(row)),
+                      _orDash(context, row['role']),
+                      _deskCell(row, canRename),
+                      if (showPc) _orDash(context, row['computer_name']),
+                      _StatusCell(online: row['online'] == true),
+                      if (showHours) _orDash(context, row['work_days']),
+                      if (showHours) _orDash(context, row['shift']),
+                      _orDash(context, row['assignment']),
+                      _orDash(context, row['office']),
                     ],
-                  ),
-              ],
-            ),
-          ),
+                ],
+              ),
         ),
       ),
     );
@@ -630,17 +630,21 @@ class _DeskCellState extends State<_DeskCell> {
             ),
         ],
         onSelected: _seat,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            text,
-            const SizedBox(width: 6),
-            Icon(
-              Icons.add_circle_outline,
-              size: 13,
-              color: theme.colorScheme.outlineVariant,
-            ),
-          ],
+        // 44 px to tap, not the 16 px of its words (phone audit 2026-11-04).
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              text,
+              const SizedBox(width: 6),
+              Icon(
+                Icons.add_circle_outline,
+                size: 18,
+                color: theme.colorScheme.outlineVariant,
+              ),
+            ],
+          ),
         ),
       ),
     );

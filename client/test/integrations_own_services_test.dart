@@ -12,6 +12,7 @@ import 'package:http/testing.dart';
 /// EzBizi's own services on Integrations (UI queue 110): the phone numbers
 /// and the sending server, each only for somebody whose server answers.
 void main() {
+  _healthTests();
   testWidgets('phone numbers show as a tile, grouped by where they belong', (
     tester,
   ) async {
@@ -21,7 +22,14 @@ void main() {
       find.byKey(const ValueKey('provider:phone_numbers')),
       findsOneWidget,
     );
-    expect(find.textContaining('Phone · 1 of 1 connected'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('integrations-category:phone')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('integrations-section:phone')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const ValueKey('provider:phone_numbers')));
     await tester.pumpAndSettle();
@@ -51,7 +59,14 @@ void main() {
       find.byKey(const ValueKey('provider:sending_server')),
       findsOneWidget,
     );
-    expect(find.textContaining('Email · 1 of 1 connected'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('integrations-category:email')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('integrations-section:email')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const ValueKey('provider:sending_server')));
     await tester.pumpAndSettle();
@@ -61,7 +76,46 @@ void main() {
   });
 }
 
-Future<void> _pump(WidgetTester tester, {required bool phone}) async {
+void _healthTests() {
+  // Jose, 2026-11-12: neither card says Connected on its own say-so.
+  testWidgets('a number whose calls reach nobody is not shown as working', (
+    tester,
+  ) async {
+    await _pump(tester, phone: true, answers: false);
+
+    await tester.tap(find.byKey(const ValueKey('provider:phone_numbers')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('1 problem: Calls to this number reach nobody.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a sending server whose last check failed shows the reason', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      phone: false,
+      here: {
+        'host': 'smtp.brightside.example',
+        'from_address': 'office@brightside.example',
+        'state': 'failed',
+        'state_reason': 'The server refused the password.',
+      },
+    );
+
+    expect(find.textContaining('refused the password'), findsWidgets);
+  });
+}
+
+Future<void> _pump(
+  WidgetTester tester, {
+  required bool phone,
+  bool answers = true,
+  Map<String, dynamic>? here,
+}) async {
   tester.view.physicalSize = const Size(1280, 2400);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -82,6 +136,12 @@ Future<void> _pump(WidgetTester tester, {required bool phone}) async {
               'label': 'Brightside main',
               'scope_type': 'franchise',
               'scope_id': 'fr-sp',
+              'health': {
+                'ok': answers,
+                'problems': [
+                  if (!answers) 'Calls to this number reach nobody.',
+                ],
+              },
             },
           ],
         });
@@ -89,7 +149,7 @@ Future<void> _pump(WidgetTester tester, {required bool phone}) async {
       if (path.endsWith('/mail/sending-server')) {
         return _json({
           'data': {
-            'connected_here': null,
+            'connected_here': here,
             'in_effect': {
               'host': 'mail.brightside.example',
               'from_address': 'office@brightside.example',

@@ -90,7 +90,7 @@ void main() {
         );
 
     test('the tenth digit turns it into the readable form', () {
-      expect(typed('305724219', '3057242199').text, '+1 (305) 724-2199');
+      expect(typed('305724219', '3055550107').text, '+1 (305) 555-0107');
     });
 
     test('nine digits are left alone — it is still being typed', () {
@@ -98,14 +98,14 @@ void main() {
     });
 
     test('a leading 1 is the same number with its country code', () {
-      expect(typed('130572421', '13057242199').text, '+1 (305) 724-2199');
+      expect(typed('130572421', '13055550107').text, '+1 (305) 555-0107');
     });
 
     test('deleting can escape the formatting', () {
       // Without this the mask reapplies on every backspace and the caret never
       // moves, so the field looks frozen.
-      final back = typed('+1 (305) 724-2199', '+1 (305) 724-219');
-      expect(back.text, '+1 (305) 724-219');
+      final back = typed('+1 (305) 555-0107', '+1 (305) 555-010');
+      expect(back.text, '+1 (305) 555-010');
     });
 
     test('an international number is left exactly as typed', () {
@@ -119,15 +119,15 @@ void main() {
 
   group('what gets stored', () {
     test('ten digits become E.164', () {
-      expect(toE164('3057242199'), '+13057242199');
+      expect(toE164('3055550107'), '+13055550107');
     });
 
     test('the formatted form round-trips back to what it came from', () {
-      expect(toE164(formatPhoneNumber('+13057242199')), '+13057242199');
+      expect(toE164(formatPhoneNumber('+13055550107')), '+13055550107');
     });
 
     test('eleven digits starting with 1 are the same number', () {
-      expect(toE164('1 305 724 2199'), '+13057242199');
+      expect(toE164('1 305 555 0107'), '+13055550107');
     });
 
     test('an empty field stores null, not an empty string', () {

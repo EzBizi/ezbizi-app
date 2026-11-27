@@ -50,7 +50,8 @@ use Throwable;
 class SyncLeads extends Command
 {
     protected $signature = 'ezbizi:sync-leads
-        {--days= : Re-read this many days back on every account, refreshing what is already held}';
+        {--days= : Re-read this many days back on every account, refreshing what is already held}
+        {--messages : Only the conversations of accounts with a lead in 30 days (the leads lane, every minute)}';
 
     protected $description = 'Fetch Local Services enquiries for every connected Google Ads account';
 
@@ -247,7 +248,17 @@ class SyncLeads extends Command
         $quotaRefusals = 0;
         $abandoned = false;
 
-        foreach ($due as $item) {
+        /*
+         * --messages: the second pass alone, every minute in its own lane
+         * (Jose, 2026-11-23: LS texts "arriving late ... like 4 minutes").
+         * A text on a lead not held yet still brings its lead: the
+         * conversation read fetches an unknown lead by id. The full run,
+         * leads first, stays in the slow lane.
+         */
+        $messagesOnly = (bool) $this->option('messages');
+        $leaveToLane = ! $messagesOnly && ! $forced && config('ezbizi.scheduler.leads_lane');
+
+        foreach ($messagesOnly ? [] : $due as $item) {
             [$connection, $organization] = [$item['connection'], $item['organization']];
 
             try {
@@ -352,7 +363,9 @@ class SyncLeads extends Command
             // Conversations are detail; leads are people nobody has spoken to.
             // If the token had nothing left for the leads it has nothing for
             // these, and asking anyway is 51 more refusals.
-            if ($abandoned || ! $item['conversations']) {
+            // With the leads lane on, messages are its job alone; reading them here too
+            // would race it on the same rows and spend the quota twice.
+            if ($abandoned || ! $item['conversations'] || $leaveToLane) {
                 continue;
             }
 

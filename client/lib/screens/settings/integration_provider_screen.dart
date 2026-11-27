@@ -1,14 +1,18 @@
+import '../../core/timestamps.dart';
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/open_destination.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../widgets/connect_account.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/social_network_mark.dart';
 import '../../widgets/disconnect_panel.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/status_pill.dart';
 import '../../widgets/workiz_session_login.dart';
 
 /// One provider's connections, grouped by who owns them (Jose, 2026-09-22).
@@ -78,6 +82,7 @@ class IntegrationProviderScreen extends StatefulWidget {
     this.purpose,
     this.onEdit,
     this.mayMoveWorkizWeb = false,
+    this.footer,
     required this.onBack,
   });
 
@@ -85,6 +90,9 @@ class IntegrationProviderScreen extends StatefulWidget {
   /// a company: the `workiz_web` connect permission. The server answers the
   /// move in the organization view only; elsewhere the row says so.
   final bool mayMoveWorkizWeb;
+
+  /// Drawn under the list: Workiz's tags (design 191).
+  final Widget? footer;
 
   final ApiClient api;
   final Session session;
@@ -345,14 +353,6 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     );
   }
 
-  static String _ago(DateTime at) {
-    final d = DateTime.now().difference(at.toLocal());
-    if (d.inMinutes < 1) return 'just now';
-    if (d.inHours < 1) return '${d.inMinutes} min ago';
-    if (d.inDays < 1) return '${d.inHours} h ago';
-    return '${d.inDays} d ago';
-  }
-
   /// "Open Marketing" beside a sentence naming it, or null when there is
   /// nowhere to open (outside the shell, or a provider that connects here).
   Widget? _openModule(BuildContext context) {
@@ -367,6 +367,225 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     );
   }
 
+  /// One connection, the same under a place label or a login's section:
+  /// its status as a pill and its actions behind ⋯ (design 184).
+  Widget _row(
+    ThemeData theme,
+    IntegrationConnection row,
+    bool narrow, {
+    String? place,
+  }) => ListTile(
+    key: ValueKey('connection:${row.id}'),
+    contentPadding: EdgeInsets.zero,
+    dense: true,
+    leading: SocialNetworkMark(network: row.provider, size: 26),
+    title: Text(_titleOf(row), maxLines: 1, overflow: TextOverflow.ellipsis),
+    // `appadTMQltMGmGrse` tells nobody anything, so a named
+    // connection leads with its name and still shows the id
+    // underneath — that is what identifies it to the provider
+    // when something is wrong.
+    subtitle: _subtitle(
+      row,
+      Text(
+        [
+          // Under a login's section, where it is (design 167).
+          ?place,
+          if (_legacyWorkizWeb(row)) WorkizSessionLogin.legacyNote,
+          if (row.beneath != null) row.beneath!,
+          if ((row.detail ?? '').isNotEmpty) row.detail!,
+          // When it last synced (UI queue 109).
+          if (row.lastSyncedAt != null)
+            'synced ${formatAgo(row.lastSyncedAt!)}',
+          // The daily token check (Jose, 2026-11-03).
+          if (row.lastCheckedAt != null)
+            'checked ${formatAgo(row.lastCheckedAt!)}',
+          // Connect's pass/fail check: can it post, how long the token lasts.
+          if (row.connected && row.connectCheck != null) row.connectCheck!,
+          if (!row.connected) row.statusReason ?? 'Not working',
+        ].join(' · '),
+        key: ValueKey('connection-detail:${row.id}'),
+        maxLines: _legacyWorkizWeb(row) ? 4 : 2,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: row.connected
+              ? theme.colorScheme.onSurfaceVariant
+              : theme.colorScheme.error,
+        ),
+      ),
+    ),
+    trailing: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!narrow)
+          row.connected
+              ? const StatusPill('Working', tone: Tone.ok)
+              : const StatusPill('Reconnect', tone: Tone.caution),
+        ?_actions(theme, row, narrow),
+      ],
+    ),
+  );
+
+  /// Name, Edit and Disconnect for one row: a ⋯ menu, or on a phone a
+  /// SidePanel (design 184). Null when this person may do none of them.
+  Widget? _actions(ThemeData theme, IntegrationConnection row, bool narrow) {
+    // The Workiz web login is sent again, not edited (UI queue 120).
+    final edit = widget.onEdit != null && row.provider != 'workiz_web';
+    final disconnect = widget.onDisconnect != null;
+    if (!edit && !widget.canName && !disconnect) return null;
+    final items = <(String, String, IconData, VoidCallback, bool)>[
+      if (widget.canName)
+        (
+          'rename:${row.id}',
+          'Name this connection',
+          Icons.edit_outlined,
+          () => _rename(row),
+          false,
+        ),
+      if (edit)
+        (
+          'edit:${row.id}',
+          'Edit',
+          Icons.tune,
+          () => widget.onEdit!(row),
+          false,
+        ),
+      if (disconnect)
+        (
+          'disconnect:${row.id}',
+          'Disconnect…',
+          Icons.link_off,
+          () => _disconnect(row),
+          true,
+        ),
+    ];
+    Color? tint(bool bad) => bad ? theme.colorScheme.error : null;
+
+    if (narrow) {
+      return IconButton(
+        key: ValueKey('actions:${row.id}'),
+        tooltip: 'Actions',
+        icon: const Icon(Icons.more_horiz),
+        onPressed: () => showSidePanel<void>(
+          context,
+          builder: (panel) => SidePanel(
+            title: _titleOf(row),
+            subtitle: widget.providerLabel,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (key, label, icon, run, bad) in items)
+                  ListTile(
+                    key: ValueKey(key),
+                    leading: Icon(icon, color: tint(bad)),
+                    title: Text(label, style: TextStyle(color: tint(bad))),
+                    onTap: () {
+                      Navigator.of(panel).pop();
+                      run();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return PopupMenuButton<VoidCallback>(
+      key: ValueKey('actions:${row.id}'),
+      tooltip: 'Actions',
+      icon: const Icon(Icons.more_horiz),
+      onSelected: (run) => run(),
+      itemBuilder: (_) => [
+        for (final (key, label, icon, run, bad) in items)
+          PopupMenuItem(
+            key: ValueKey(key),
+            value: run,
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: tint(bad)),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: tint(bad)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// The Google providers, grouped by the login they were signed in with
+  /// rather than by place (design 167, Jose 2026-11-02): one login can hold
+  /// dozens of rows, and the login is what reconnecting needs.
+  static const _byLogin = {'google_business_profile', 'google_ads', 'youtube'};
+
+  /// One card per login, the unknown login last.
+  List<Widget> _logins(ThemeData theme, bool narrow) {
+    final byEmail = <String?, List<IntegrationConnection>>{};
+    for (final row in widget.connections) {
+      byEmail.putIfAbsent(row.accountEmail, () => []).add(row);
+    }
+    final emails = byEmail.keys.whereType<String>().toList()..sort();
+    final places = {
+      for (final (heading, rows) in _groups)
+        for (final row in rows) row.id: heading,
+    };
+
+    return [
+      for (final email in [...emails, if (byEmail.containsKey(null)) null])
+        _LoginCard(
+          key: ValueKey('login:${email ?? 'unknown'}'),
+          email: email,
+          rows: byEmail[email]!,
+          row: (r) => _row(theme, r, narrow, place: places[r.id]),
+          reconnect:
+              widget.mayConnect &&
+                  widget.connectsBy == 'sign_in' &&
+                  widget.startPath != null
+              ? ConnectAccount(
+                  key: ValueKey('reconnect:${email ?? 'unknown'}'),
+                  api: widget.api,
+                  label: widget.providerLabel,
+                  action: 'Reconnect',
+                  startPath: widget.startPath!,
+                  onConnected: () async => widget.onChanged?.call(),
+                )
+              : null,
+          onDisconnectAll: widget.onDisconnect == null
+              ? null
+              : () => _disconnectLogin(email, byEmail[email]!.length),
+        ),
+    ];
+  }
+
+  /// Every connection of this provider made by one login, with one code.
+  /// The server revokes the shared grant once, on the last row.
+  Future<void> _disconnectLogin(String? email, int count) async {
+    final done = await confirmDisconnect(
+      context,
+      api: widget.api,
+      title: 'Disconnect all $count?',
+      subtitle: email ?? 'Unknown login',
+      explanation:
+          'EzBizi stops using every ${widget.providerLabel} connection made by '
+          '${email ?? 'this unknown login'}. To use them again, sign in again.',
+      perform: (code) => widget.api.deleteWithBody(
+        '/social/providers/${widget.provider}/connections',
+        {'code': code, 'account_email': email},
+      ),
+    );
+    if (done == null || !mounted) return;
+    final problems =
+        ((done.body['data'] as Map?)?['problems'] as List<dynamic>?) ??
+        const [];
+    setState(() => _error = problems.isEmpty ? null : problems.join(' '));
+    await widget.onChanged?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -379,236 +598,210 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     );
   }
 
+  /// Connect, when it happens on this screen: a sign-in this person may start.
+  bool get _connectsHere =>
+      widget.connectForms == null &&
+      widget.mayConnect &&
+      widget.connectsBy == 'sign_in' &&
+      widget.startPath != null;
+
+  /// A card in the screen's one style (design 184).
+  static Widget _card(BuildContext context, Widget child) => Material(
+    color: Theme.of(context).colorScheme.surface,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(10),
+      side: BorderSide(color: EzBiziTheme.edge(context)),
+    ),
+    child: Padding(padding: const EdgeInsets.all(16), child: child),
+  );
+
+  /// A place or a login, as a small label inside the list (design 184).
+  static Widget _section(ThemeData theme, String text, {Widget? trailing}) =>
+      Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 2),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            ?trailing,
+          ],
+        ),
+      );
+
   Widget _body(
     BuildContext context,
     ThemeData theme,
     List<(String, List<IntegrationConnection>)> groups,
     bool narrow,
   ) {
+    final ok = widget.connections.where((c) => c.connected).length;
+    final bad = widget.connections.length - ok;
+    final connect = _connectsHere
+        ? ConnectAccount(
+            key: ValueKey('connect:${widget.provider}'),
+            api: widget.api,
+            label: widget.providerLabel,
+            startPath: widget.startPath!,
+            onConnected: () async => widget.onChanged?.call(),
+          )
+        : null;
+
+    /*
+       * ONE HEADER, ONE LIST (design 184, Jose 2026-11-05: "something
+       * cohesive, unified, modern").
+       *
+       * A card per place held one row each with Disconnect a window-width
+       * away, and connecting was a second card with a lone button. Now the
+       * header says what this is, how healthy it is, and holds Connect; the
+       * list holds every account with places as labels. The header is in the
+       * body because this pane is in the body (see the class docblock).
+       */
+    final header = _card(
+      context,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                key: const ValueKey('integration-back'),
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back to integrations',
+                onPressed: widget.onBack,
+              ),
+              const SizedBox(width: 4),
+              SocialNetworkMark(network: widget.provider, size: 34),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.providerLabel,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if ((widget.purpose ?? '').isNotEmpty)
+                      Text(
+                        widget.purpose!,
+                        key: const ValueKey('integration-purpose'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    if (widget.connections.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          if (ok > 0) StatusPill('$ok working', tone: Tone.ok),
+                          if (bad > 0)
+                            StatusPill('$bad to reconnect', tone: Tone.caution),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (connect != null && !narrow) ...[
+                const SizedBox(width: 12),
+                connect,
+              ],
+            ],
+          ),
+          if (connect != null && narrow) ...[
+            const SizedBox(height: 12),
+            connect,
+          ],
+        ],
+      ),
+    );
+
+    final byLogin =
+        _byLogin.contains(widget.provider) &&
+        widget.connections.any((c) => c.accountEmail != null);
+
+    /*
+       * WHEN CONNECTING IS NOT A BUTTON HERE, the reason stays (Jose,
+       * 2026-09-23: "The point of the Integration tab by itself is to be able
+       * to connect stuff from here"): a form, who may connect, or which module
+       * does it. It sits at the foot of the same list, not in a card of its
+       * own.
+       *
+       * THE FORM IS ITS OWN GATE, and is asked FIRST: `_formsFor` in the grid
+       * already decides who may see each reporting form (Workiz needs
+       * `reports.build` AND `reports.experimental.view`); asking `mayConnect`
+       * as well would be a second gate over one control.
+       *
+       * Mailchimp connects by api_key and has no endpoint to post one to, so
+       * it gets the sentence rather than a form with nowhere to send.
+       */
+    final elsewhere = connect != null
+        ? const <Widget>[]
+        : [
+            _section(theme, groups.isEmpty ? 'Connect' : 'Connect another'),
+            const SizedBox(height: 6),
+            if (widget.connectForms != null)
+              ...widget.connectForms!()
+            else if (!widget.mayConnect)
+              DashboardNote(
+                'Somebody who can manage ${widget.connectWhere ?? 'this'} '
+                'needs to connect a ${widget.providerLabel} account.',
+              )
+            else
+              DashboardNote(
+                widget.connectWhere == null
+                    ? 'This one cannot be connected from here yet.'
+                    : 'Connect a ${widget.providerLabel} account in '
+                          '${widget.connectWhere}.',
+              ),
+            if (widget.connectForms == null) ?_openModule(context),
+          ];
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        /*
-           * THE HEADER IS IN THE BODY, because this pane is in the body.
-           *
-           * An `AppBar` belongs to a `Scaffold` and a `Scaffold` belongs to a
-           * route; drawing either here is what put this pane over the whole
-           * window. The back control is a row like any other.
-           */
-        Row(
-          children: [
-            IconButton(
-              key: const ValueKey('integration-back'),
-              icon: const Icon(Icons.arrow_back),
-              tooltip: 'Back to integrations',
-              onPressed: widget.onBack,
-            ),
-            const SizedBox(width: 4),
-            SocialNetworkMark(network: widget.provider, size: 22),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                widget.providerLabel,
-                style: theme.textTheme.titleMedium,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        if ((widget.purpose ?? '').isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(left: 52, top: 2),
-            child: Text(
-              widget.purpose!,
-              key: const ValueKey('integration-purpose'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
+        header,
         const SizedBox(height: 12),
         if (_error != null) ...[
           DashboardNote(_error!),
           const SizedBox(height: 12),
         ],
-
-        if (groups.isEmpty)
-          DashboardCard(
-            title: widget.providerLabel,
-            icon: Icons.link_off_outlined,
-            // Only that: the Connect card below says how, once (UI queue 110).
-            child: const DashboardNote('Nothing connected here yet.'),
-          ),
-
-        for (final (heading, rows) in groups) ...[
-          DashboardCard(
-            title: heading,
-            icon: Icons.account_tree_outlined,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final row in rows)
-                  ListTile(
-                    key: ValueKey('connection:${row.id}'),
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    leading: SocialNetworkMark(network: row.provider, size: 24),
-                    title: Text(
-                      _titleOf(row),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    // `appadTMQltMGmGrse` tells nobody anything, so a named
-                    // connection leads with its name and still shows the id
-                    // underneath — that is what identifies it to the provider
-                    // when something is wrong.
-                    subtitle: _subtitle(
-                      row,
-                      Text(
-                        [
-                          if (_legacyWorkizWeb(row))
-                            WorkizSessionLogin.legacyNote,
-                          if (row.beneath != null) row.beneath!,
-                          if ((row.detail ?? '').isNotEmpty) row.detail!,
-                          // When it last synced (UI queue 109).
-                          if (row.lastSyncedAt != null)
-                            'synced ${_ago(row.lastSyncedAt!)}',
-                          if (!row.connected) row.statusReason ?? 'Not working',
-                        ].join(' · '),
-                        key: ValueKey('connection-detail:${row.id}'),
-                        maxLines: _legacyWorkizWeb(row) ? 4 : 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: row.connected
-                              ? theme.colorScheme.onSurfaceVariant
-                              : theme.colorScheme.error,
-                        ),
-                      ),
-                    ),
-                    trailing:
-                        widget.canName ||
-                            widget.onDisconnect != null ||
-                            widget.onEdit != null
-                        ? Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // The Workiz web login is sent again, not
-                              // edited (UI queue 120).
-                              if (widget.onEdit != null &&
-                                  row.provider != 'workiz_web')
-                                TextButton(
-                                  key: ValueKey('edit:${row.id}'),
-                                  onPressed: () => widget.onEdit!(row),
-                                  child: const Text('Edit'),
-                                ),
-                              if (widget.canName)
-                                IconButton(
-                                  tooltip: 'Name this connection',
-                                  icon: const Icon(
-                                    Icons.edit_outlined,
-                                    size: 18,
-                                  ),
-                                  onPressed: () => _rename(row),
-                                ),
-                              if (widget.onDisconnect != null && narrow)
-                                IconButton(
-                                  key: ValueKey('disconnect:${row.id}'),
-                                  tooltip: 'Disconnect',
-                                  color: theme.colorScheme.error,
-                                  icon: const Icon(Icons.link_off, size: 20),
-                                  onPressed: () => _disconnect(row),
-                                )
-                              else if (widget.onDisconnect != null)
-                                TextButton(
-                                  key: ValueKey('disconnect:${row.id}'),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: theme.colorScheme.error,
-                                  ),
-                                  onPressed: () => _disconnect(row),
-                                  child: const Text('Disconnect'),
-                                ),
-                            ],
-                          )
-                        : null,
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-
-        /*
-           * CONNECTING HAPPENS HERE (Jose, 2026-09-23).
-           *
-           * "The point of the Integration tab by itself is to be able to
-           * connect stuff from here, not just list it." This used to be a
-           * sentence pointing at the module that owns the account for three of
-           * the four families, which made the screen an inventory somebody had
-           * to leave in order to act on.
-           *
-           * The pointer survives as a FOOTNOTE rather than as the only route:
-           * the module's own screen is still where connecting is explained,
-           * and somebody who wants the explanation should be able to find it.
-           */
-        DashboardCard(
-          title: groups.isEmpty ? 'Connect' : 'Connect another',
-          icon: Icons.add_link,
-          child: Column(
+        _card(
+          context,
+          Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              /*
-                 * THE FORM IS ITS OWN GATE, and is asked FIRST.
-                 *
-                 * `_formsFor` in the grid already decides who may see each
-                 * reporting form, and it encodes something the catalogue
-                 * cannot: Workiz needs `reports.build` AND
-                 * `reports.experimental.view`, because the pane it connects for
-                 * is behind the tab. Asking `mayConnect` as well would be a
-                 * second gate over one control, and the two disagree by
-                 * construction — measured, it hid a form the first gate had
-                 * already allowed.
-                 */
-              if (widget.connectForms != null)
-                ...widget.connectForms!()
-              else if (!widget.mayConnect)
-                DashboardNote(
-                  'Somebody who can manage ${widget.connectWhere ?? 'this'} '
-                  'needs to connect a ${widget.providerLabel} account.',
-                )
-              else if (widget.connectsBy == 'sign_in' &&
-                  widget.startPath != null)
-                ConnectAccount(
-                  key: ValueKey('connect:${widget.provider}'),
-                  api: widget.api,
-                  label: widget.providerLabel,
-                  startPath: widget.startPath!,
-                  onConnected: () async => widget.onChanged?.call(),
-                )
+              if (groups.isEmpty)
+                // Only that: Connect says how, once (UI queue 110).
+                const DashboardNote('Nothing connected here yet.')
+              // By login once any login is known; with none, a single
+              // "Unknown login" section would only hide the places (167).
+              else if (byLogin)
+                ..._logins(theme, narrow)
               else
-                /*
-                   * NO CONTROL, AND THE REASON RATHER THAN A DEAD BUTTON.
-                   *
-                   * Mailchimp connects by api_key and has no endpoint to post
-                   * one to — measured, `routes/api.php` has `social/airtable`,
-                   * `social/workiz`, `social/bluesky/connect` and the OAuth
-                   * `social/{network}/start`, and nothing else. Drawing a form
-                   * here would be a control with nowhere to send what somebody
-                   * typed.
-                   */
-                DashboardNote(
-                  widget.connectWhere == null
-                      ? 'This one cannot be connected from here yet.'
-                      : 'Connect a ${widget.providerLabel} account in '
-                            '${widget.connectWhere}.',
-                ),
-              if (!widget.mayConnect ||
-                  widget.connectsBy != 'sign_in' ||
-                  widget.startPath == null)
-                ?_openModule(context),
+                for (final (heading, rows) in groups) ...[
+                  _section(theme, heading),
+                  for (final row in rows) _row(theme, row, narrow),
+                ],
+              ...elsewhere,
             ],
           ),
         ),
+        ?widget.footer,
       ],
     );
   }
@@ -633,7 +826,22 @@ class IntegrationConnection {
     this.detail,
     this.method,
     this.lastSyncedAt,
+    this.accountEmail,
+    this.lastCheckedAt,
+    this.lastReachedAt,
+    this.connectCheck,
   });
+
+  /// Connect's pass/fail line (ConnectSetup): "Passed: can post · token …".
+  final String? connectCheck;
+
+  /// When the daily health check last had a verdict on this token, and when
+  /// the provider last answered for it (Jose, 2026-11-03).
+  final DateTime? lastCheckedAt;
+  final DateTime? lastReachedAt;
+
+  /// The Google login it was signed in with; null when not known (design 167).
+  final String? accountEmail;
 
   final String id;
   final String provider;
@@ -672,18 +880,18 @@ class IntegrationConnection {
     'google_business_profile' ||
     'thumbtack' ||
     'facebook_ads' => 'leads',
-    'airtable' || 'workiz' || 'workiz_web' || 'ringcentral' => 'reporting',
+    'airtable' ||
+    'workiz' ||
+    'workiz_web' ||
+    'ringcentral' ||
+    'quickbooks' ||
+    'plaid' => 'reporting',
     'google_workspace' || 'sending_server' => 'email',
     'phone_numbers' => 'phone',
     'whatsapp' || 'telegram' => 'messaging',
+    // Read so the boards brought over from Monday stay in step (11-12).
+    'monday' => 'tasks',
     _ => 'social',
-  };
-
-  String get scopeWord => switch (scopeType) {
-    'organization' => 'the whole organization',
-    'company' => 'this company',
-    'franchise' => 'this branch',
-    _ => scopeType,
   };
 
   /// What to put in front of a person, and what to put under it.
@@ -733,5 +941,126 @@ class IntegrationConnection {
         lastSyncedAt: DateTime.tryParse(
           '${(json['workiz'] as Map?)?['last_synced_at'] ?? ''}',
         ),
+        accountEmail: json['account_email'] as String?,
+        lastCheckedAt: DateTime.tryParse('${json['last_checked_at'] ?? ''}'),
+        lastReachedAt: DateTime.tryParse('${json['last_reached_at'] ?? ''}'),
+        connectCheck:
+            (json['connect_check'] as Map<String, dynamic>?)?['summary']
+                as String?,
       );
+}
+
+/// One Google login's connections (design 167): the login, how many, how many
+/// work and how many need reconnecting, then its rows behind a search, with
+/// Reconnect and Disconnect all. Starts open only when something is broken.
+class _LoginCard extends StatefulWidget {
+  const _LoginCard({
+    super.key,
+    required this.email,
+    required this.rows,
+    required this.row,
+    this.reconnect,
+    this.onDisconnectAll,
+  });
+
+  /// Null is the rows whose login is not known.
+  final String? email;
+  final List<IntegrationConnection> rows;
+  final Widget Function(IntegrationConnection) row;
+  final Widget? reconnect;
+  final VoidCallback? onDisconnectAll;
+
+  @override
+  State<_LoginCard> createState() => _LoginCardState();
+}
+
+class _LoginCardState extends State<_LoginCard> {
+  late bool _open = widget.rows.any((r) => !r.connected);
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final ok = widget.rows.where((r) => r.connected).length;
+    final bad = widget.rows.length - ok;
+    final q = _search.text.trim().toLowerCase();
+    final shown = q.isEmpty
+        ? widget.rows
+        : widget.rows
+              .where(
+                (r) => '${r.title} ${r.displayName}'.toLowerCase().contains(q),
+              )
+              .toList();
+    final key = widget.email ?? 'unknown';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _IntegrationProviderScreenState._section(
+          theme,
+          widget.email ?? 'Unknown login · reconnect to see',
+          trailing: IconButton(
+            key: ValueKey('login-toggle:$key'),
+            tooltip: _open ? 'Collapse' : 'Expand',
+            icon: Icon(_open ? Icons.expand_less : Icons.expand_more),
+            onPressed: () => setState(() => _open = !_open),
+          ),
+        ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  '${widget.rows.length} '
+                  '${widget.rows.length == 1 ? 'connection' : 'connections'}',
+                  style: theme.textTheme.bodySmall,
+                ),
+                if (ok > 0) StatusPill('$ok OK', tone: Tone.ok),
+                if (bad > 0)
+                  StatusPill('$bad need reconnect', tone: Tone.caution),
+              ],
+            ),
+            if (_open) ...[
+              const SizedBox(height: 8),
+              ListSearch(
+                key: ValueKey('login-search:$key'),
+                controller: _search,
+                hint: 'Search these connections',
+                onChanged: (_) => setState(() {}),
+              ),
+              for (final r in shown) widget.row(r),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  ?widget.reconnect,
+                  if (widget.onDisconnectAll != null)
+                    TextButton(
+                      key: ValueKey('disconnect-login:$key'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: theme.colorScheme.error,
+                      ),
+                      onPressed: widget.onDisconnectAll,
+                      child: const Text('Disconnect all'),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
 }

@@ -99,6 +99,34 @@ void main() {
     expect(find.text('Old line'), findsNothing);
   });
 
+  testWidgets('a line with a health check still draws its row', (
+    tester,
+  ) async {
+    // Desktop review 2026-11-13, Top 3: the health pill and each problem were
+    // cells with no column, the table threw, and the list was a grey block.
+    await _pump(
+      tester,
+      (api, session) => NumbersPane(api: api, session: session),
+      routes: {
+        '/phone/connections': [_conn('pc-1', 'co-1', 'connected')],
+        '/phone/numbers': [
+          {
+            ..._line('n-1', 'Main', answers: true, record: true),
+            'health': {
+              'problems': ['Nobody is signed in to take calls.'],
+            },
+          },
+          _line('n-2', 'Hamden', answers: true, record: false),
+        ],
+      },
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Main'), findsOneWidget);
+    expect(find.text('Hamden'), findsOneWidget);
+    expect(find.byKey(const Key('number-health-n-1')), findsOneWidget);
+  });
+
   testWidgets('Porting counts by the carrier status and filters to it', (
     tester,
   ) async {

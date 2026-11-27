@@ -9,7 +9,9 @@ use App\Models\EmploymentEvent;
 use App\Models\Franchise;
 use App\Support\Access\Refusal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -183,7 +185,8 @@ class HrPersonRecordTest extends TestCase
         // The franchise's company takes in the franchise's people.
         $this->assertContains($atFranchise->id, $ids('company_id='.$t['franchise']->company_id));
         $this->assertNotContains($atOther->id, $ids('company_id='.$t['franchise']->company_id));
-        $this->assertSame([$atOther->id], $ids('company_id='.$other->id));
+        // The reader is always in their own list (Jose, 2026-11-25); nobody else from outside.
+        $this->assertEqualsCanonicalizing([$atOther->id, $t['admin']->id], $ids('company_id='.$other->id));
         $this->assertContains($atFranchise->id, $ids('franchise_id='.$t['franchise']->id));
         $this->assertNotContains($atOther->id, $ids('franchise_id='.$t['franchise']->id));
         $this->assertSame([], $ids('company_id='.$other->id.'&role_id='.$atFranchise->role_id), 'The filters did not combine.');
@@ -315,6 +318,43 @@ class HrPersonRecordTest extends TestCase
         // `name` is recomposed from the parts, the rule Your account keeps: every
         // list and every audit entry reads it, so it cannot drift from them.
         $this->assertSame('Jonathan Ames', $fresh->name);
+    }
+
+    /** Gender is a pick from hr.gender_options (Jose, 2026-11-06); the record carries the choices. */
+    public function test_gender_is_one_of_the_organization_choices(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($t, 'Technician', ['customers.view']);
+        $url = "/api/v1/hr/people/{$person->id}";
+
+        $this->signedInAs($t['admin'])->patchJson($url, ['gender' => 'Prefer_Not_To_Answer'])->assertOk();
+        $this->assertSame('prefer_not_to_answer', $person->fresh()->gender);
+        $this->signedInAs($t['admin'])->patchJson($url, ['gender' => 'Female'])->assertOk();
+        $this->assertSame('female', $person->fresh()->gender);
+        $this->signedInAs($t['admin'])->patchJson($url, ['gender' => 'Prefers not to answer'])->assertOk();
+        $this->assertSame('prefer_not_to_answer', $person->fresh()->gender);
+        $this->signedInAs($t['admin'])->patchJson($url, ['gender' => 'Genderfluid'])->assertUnprocessable();
+
+        $this->assertSame(['male', 'female', 'prefer_not_to_answer'],
+            array_column($this->signedInAs($t['admin'])->getJson($url)->assertOk()->json('data.gender_options'), 'value'));
+    }
+
+    /** HR sets and removes someone's picture; someone without hr.edit cannot. */
+    public function test_hr_uploads_a_persons_picture(): void
+    {
+        Storage::fake('local');
+        $t = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($t, 'Technician', ['customers.view']);
+        $photo = fn () => UploadedFile::fake()->image('me.png', 200, 200);
+
+        $this->signedInAs($person)->postJson("/api/v1/hr/people/{$t['admin']->id}/avatar", ['photo' => $photo()])->assertForbidden();
+        $this->signedInAs($t['admin'])->postJson("/api/v1/hr/people/{$person->id}/avatar", ['photo' => $photo()])
+            ->assertOk()->assertExactJson(['avatar' => true]);
+        $this->assertNotNull($person->fresh()->avatar_path);
+        $this->assertTrue($this->signedInAs($t['admin'])->getJson("/api/v1/hr/people/{$person->id}")->json('data.has_avatar'));
+
+        $this->signedInAs($t['admin'])->deleteJson("/api/v1/hr/people/{$person->id}/avatar")->assertOk();
+        $this->assertNull($person->fresh()->avatar_path);
     }
 
     /**
@@ -469,5 +509,137 @@ class HrPersonRecordTest extends TestCase
             ->getJson("/api/v1/hr/people/{$person->id}")
             ->assertOk()
             ->json('data');
+    }
+
+    /** Several places at once (Jose, 2026-11-06); never zero, audited, reach-checked. */
+    public function test_a_person_works_at_several_places(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($t, 'Technician', ['customers.view'], onlyAt: $t['franchise']);
+        $second = $this->extraFranchise($t, 'Second');
+        $url = "/api/v1/hr/people/{$person->id}/places";
+
+        $places = $this->signedInAs($t['admin'])->postJson($url, ['scope_type' => 'franchise', 'scope_id' => $second->id])
+            ->assertOk()->json('data.assignments');
+        $this->assertCount(2, $places);
+        $this->assertSame($t['company']->name, collect($places)->firstWhere('scope_id', $second->id)['company']);
+        // What they reach is the union of both places.
+        $this->assertEqualsCanonicalizing([$t['franchise']->id, $second->id], $this->inTenant($t['org'], fn () => $person->fresh()->reachableFranchises()->pluck('id')->all()));
+
+        // Adding the same place twice writes nothing.
+        $this->signedInAs($t['admin'])->postJson($url, ['scope_type' => 'franchise', 'scope_id' => $second->id])
+            ->assertOk()->assertJsonCount(2, 'data.assignments');
+
+        $first = collect($places)->firstWhere('scope_id', $t['franchise']->id)['id'];
+        $this->signedInAs($t['admin'])->deleteJson("$url/$first")->assertOk()->assertJsonCount(1, 'data.assignments');
+        $last = $this->inTenant($t['org'], fn () => $person->fresh()->assignments()->value('id'));
+        $this->signedInAs($t['admin'])->deleteJson("$url/$last")->assertUnprocessable();
+
+        // Someone without hr edit cannot add places.
+        $this->signedInAs($person)->postJson("/api/v1/hr/people/{$t['admin']->id}/places",
+            ['scope_type' => 'franchise', 'scope_id' => $second->id])->assertForbidden();
+
+        $this->assertDatabaseHas('audit_events', ['action' => 'user.assignment_added']);
+        $this->assertDatabaseHas('audit_events', ['action' => 'user.assignment_removed']);
+    }
+
+    /** Everyone view: active A-Z, then inactive A-Z (Jose, 2026-11-09). */
+    public function test_inactive_people_sort_after_active_ones(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $aaron = $this->userWithRole($t, 'Aaron', ['customers.view']);
+        $zed = $this->userWithRole($t, 'Zed', ['customers.view']);
+        $this->inTenant($t['org'], function () use ($aaron, $zed) {
+            $aaron->forceFill(['name' => 'Aaron Gone', 'is_active' => false])->save();
+            $zed->forceFill(['name' => 'Zed Here'])->save();
+        });
+
+        $names = array_column($this->signedInAs($t['admin'])->getJson('/api/v1/hr/people')->assertOk()->json('data'), 'name');
+        $this->assertLessThan(array_search('Aaron Gone', $names), array_search('Zed Here', $names));
+        $this->assertSame('Aaron Gone', end($names));
+    }
+
+    /** Inactive finds an inactive person past the first page (Jose, 2026-11-10). */
+    public function test_status_filters_on_the_server_across_pages(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $gone = $this->userWithRole($t, 'Gone', ['customers.view']);
+        $this->inTenant($t['org'], fn () => $gone->forceFill(['is_active' => false])->save());
+        $this->userWithRole($t, 'Here', ['customers.view']);
+
+        // One per page: the inactive one sorts last, so it is not on page 1.
+        $this->assertNotContains($gone->id, array_column($this->signedInAs($t['admin'])
+            ->getJson('/api/v1/hr/people?per_page=1')->json('data'), 'id'));
+
+        $this->assertSame([$gone->id], array_column($this->signedInAs($t['admin'])
+            ->getJson('/api/v1/hr/people?per_page=1&status=inactive')->assertOk()->json('data'), 'id'));
+        $this->assertNotContains($gone->id, array_column($this->signedInAs($t['admin'])
+            ->getJson('/api/v1/hr/people?status=active')->json('data'), 'id'));
+    }
+
+    /** Removed (deleted) people are off Records unless asked for (Jose, 2026-11-12). */
+    public function test_removed_people_are_off_records(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $gone = $this->userWithRole($t, 'Gone', ['customers.view']);
+        $this->signedInAs($t['admin'])->deleteJson("/api/v1/hr/people/{$gone->id}", ['confirm' => $gone->name])->assertOk();
+
+        foreach (['', '?status=inactive', '?status=active'] as $q) {
+            $this->assertNotContains($gone->id, array_column($this->signedInAs($t['admin'])
+                ->getJson("/api/v1/hr/people{$q}")->assertOk()->json('data'), 'id'));
+        }
+        $this->assertSame([$gone->id], array_column($this->signedInAs($t['admin'])
+            ->getJson('/api/v1/hr/people?removed=1')->json('data'), 'id'));
+    }
+
+    /** An unknown key is refused, not dropped (desk, 2026-11-23: PATCH {"name"} said 200). */
+    public function test_an_unknown_field_is_refused_rather_than_ignored(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($t, 'Technician', ['customers.view']);
+        $url = "/api/v1/hr/people/{$person->id}";
+        $before = $person->fresh()->name;
+
+        $this->signedInAs($t['admin'])->patchJson($url, ['name' => 'Nicholas Frias'])
+            ->assertUnprocessable()->assertJsonValidationErrors('fields');
+        $this->assertSame($before, $person->fresh()->name);
+
+        $this->signedInAs($t['admin'])->patchJson($url, ['first_name' => 'Nicholas', 'last_name' => 'Frias'])->assertOk();
+        $this->assertSame('Nicholas Frias', $person->fresh()->name);
+    }
+
+    /** You are always in your own list, whatever place is picked (Jose, 2026-11-25). */
+    public function test_a_place_filter_that_excludes_you_still_finds_you_by_name(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $elsewhere = $this->extraFranchise($t, 'Elsewhere');
+        $me = $this->userWithRole($t, 'Branch HR', ['hr.view', 'hr.records.view'], 'me@alpha.test', onlyAt: $t['franchise']);
+        $this->inTenant($t['org'], fn () => $me->forceFill(['first_name' => 'Zelda', 'last_name' => 'Quill', 'name' => 'Zelda Quill'])->save());
+
+        $ids = fn (string $q) => array_column($this->signedInAs($t['admin'])->getJson("/api/v1/hr/people?{$q}")->assertOk()->json('data'), 'id');
+        // The control: someone else filtered to a branch they are not at is gone.
+        $this->assertNotContains($me->id, $ids("franchise_id={$elsewhere->id}&search=Zelda"));
+
+        $mine = fn (string $q) => array_column($this->signedInAs($me)->getJson("/api/v1/hr/people?{$q}")->assertOk()->json('data'), 'id');
+        $this->assertContains($me->id, $mine("franchise_id={$elsewhere->id}&search=Zelda"));
+        $this->assertContains($me->id, $mine("company_id={$t['company']->id}&search=Quill"));
+        // Search still applies to you.
+        $this->assertNotContains($me->id, $mine("franchise_id={$elsewhere->id}&search=Nobody"));
+    }
+
+    /** Full or part time, chosen by HR; null goes back to the schedule (Eric, 2026-11-25). */
+    public function test_full_or_part_time_is_set_and_cleared(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($t, 'Technician', ['customers.view']);
+        $url = "/api/v1/hr/people/{$person->id}";
+        $hr = $this->signedInAs($t['admin']);
+
+        $this->assertNull($hr->getJson($url)->assertOk()->json('data.hours_type'));
+        $hr->patchJson($url, ['hours_type' => 'sometimes'])->assertUnprocessable()->assertJsonValidationErrors('hours_type');
+        $hr->patchJson($url, ['hours_type' => 'part_time'])->assertOk();
+        $this->assertSame('part_time', $hr->getJson($url)->json('data.hours_type'));
+        $hr->patchJson($url, ['hours_type' => null])->assertOk();
+        $this->assertNull($person->fresh()->hours_type);
     }
 }

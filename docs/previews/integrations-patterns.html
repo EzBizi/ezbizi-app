@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Integrations patterns</title>
+<style>
+:root{--bg:#f6f8f9;--paper:#fff;--ink:#14191c;--muted:#5d6970;--line:#dde3e6;
+--ok:#1e7a46;--okc:#e3f4ea;--cau:#9a6400;--cauc:#fdf1d8;--bad:#b3261e;--badc:#fbe4e2;--pri:#00739a;--pric:#dff1f8;--off:#6b767c;--offc:#eceff1}
+.dark{--bg:#0c1014;--paper:#151b20;--ink:#e8eef1;--muted:#93a1a8;--line:#26313a;
+--ok:#6fd49a;--okc:#173626;--cau:#f2c063;--cauc:#3a2d10;--bad:#ff8a80;--badc:#3d1614;--pri:#5fc8ea;--pric:#0f3443;--off:#93a1a8;--offc:#222b32}
+body{margin:0;font:14px/1.4 Inter,Segoe UI,Roboto,sans-serif;background:#e9edef;color:#14191c}
+.wrap{max-width:1240px;margin:0 auto;padding:24px 16px}
+h1{margin:0 0 4px}h2{margin:36px 0 6px;font-size:18px}.cap{color:#4c575d;margin:0 0 12px;max-width:860px}
+.rec{background:#00739a;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle}
+.trio{display:grid;grid-template-columns:2fr 1fr;gap:12px}@media(max-width:900px){.trio{grid-template-columns:1fr}}
+.frame{background:var(--bg);color:var(--ink);border-radius:10px;padding:14px;border:1px solid #cfd6da;overflow:hidden}
+.frame.phone{max-width:390px}.lbl{font-size:11px;color:#4c575d;margin:0 0 4px;font-weight:600}
+.muted{color:var(--muted)}.sm{font-size:12px}
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:99px;padding:2px 9px;font-size:12px;font-weight:600;white-space:nowrap}
+.ok{background:var(--okc);color:var(--ok)}.cau{background:var(--cauc);color:var(--cau)}.bad{background:var(--badc);color:var(--bad)}.pri{background:var(--pric);color:var(--pri)}.off{background:var(--offc);color:var(--off)}
+.btn{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;padding:4px 10px;font:600 12px inherit;cursor:pointer}
+.btn.fix{background:var(--pri);color:var(--paper);border-color:var(--pri)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.logo{width:28px;height:28px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;background:var(--offc);color:var(--ink);flex:0 0 auto}
+.banner{border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.filters .chip{border:1px solid var(--line);background:var(--paper);color:var(--ink)}.filters .on{background:var(--ink);color:var(--paper)}
+.search{flex:1;min-width:140px;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;padding:5px 10px;font:inherit}
+/* 1 grouped list */
+.grp{margin-bottom:8px}.grp>.hd{padding:10px 12px;display:flex;align-items:center;gap:10px}
+.acc{border-top:1px solid var(--line);padding:9px 12px 9px 50px}
+.acc .why{font-size:12px;color:var(--bad);margin-top:3px}
+.picker{display:inline-flex;gap:4px;flex-wrap:wrap}.picker .chip{border:1px dashed var(--line);background:transparent;color:var(--ink)}
+/* 2 grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.grid .card{padding:12px;display:flex;flex-direction:column;gap:8px}.grid .card.broken{border-color:var(--bad)}
+/* 3 matrix */
+table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;font-size:11px;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle}td.c{text-align:center}
+.dot{display:inline-block;width:18px;height:18px;border-radius:50%;line-height:18px;text-align:center;font-size:11px;font-weight:800}
+/* 4 split */
+.split{display:grid;grid-template-columns:220px 1fr;gap:10px}.side .it{padding:8px 10px;border-radius:8px;display:flex;justify-content:space-between;align-items:center}.side .it.sel{background:var(--pric);color:var(--pri);font-weight:600}
+.panel{padding:14px}.check{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:start;padding:8px 0;border-bottom:1px solid var(--line)}
+.phone .split{grid-template-columns:1fr}.phone .side{display:none}.phone .acc{padding-left:12px}
+.phone .hidep{display:none}.phone .grid{grid-template-columns:1fr}
+</style><style>.exp{background:var(--bg);border-radius:8px;padding:10px;margin-top:8px;font-size:12px}.exp pre{margin:6px 0 0;white-space:pre-wrap;font:11px ui-monospace,Consolas,monospace;color:var(--muted)}.src{font-size:12px;color:#4c575d;margin:-6px 0 12px}.src a{color:#00739a}
+.ov{display:grid;grid-template-columns:1fr 300px;gap:10px}.phone .ov{grid-template-columns:1fr}.sp{border-left:3px solid var(--pri)}</style>
+</head><body><div class="wrap">
+<h1>Integrations · patterns from other apps</h1>
+<p class="cap">Four layouts, each copying a pattern that a well-known app actually ships (sources linked). Same data in all four: checks with their reason and last-checked time, branch, choices made at connect, and Fix / Re-run. Red only for broken.</p>
+
+<template id="a">
+<div class="card" style="padding:10px 12px;margin-bottom:10px;border-color:var(--bad)"><div class="row"><b>Needs your attention</b><span class="chip bad">3</span></div>
+ <div class="row" style="margin-top:8px"><span class="logo">W</span><b>WhatsApp</b> <span class="muted sm">+1 786…0100 · A1 · Miami</span><span class="chip bad">✗ Send</span><span class="muted sm hidep">template rejected · 4 min</span><span style="margin-left:auto"><button class="btn fix">Fix</button></span></div>
+ <div class="row" style="margin-top:6px"><span class="logo">G</span><b>Google Ads</b> <span class="muted sm">2 accounts</span><span class="chip cau">No branch</span><span style="margin-left:auto"><button class="btn">Set branch</button></span></div></div>
+<div class="filters"><input class="search" placeholder="Search"><span class="chip on">Apps</span><span class="chip">Accounts</span></div>
+<div class="card" style="overflow:auto"><table>
+<tr><th>App</th><th>Accounts</th><th class="hidep">Status</th><th class="hidep">Last check</th><th></th></tr>
+<tr><td><span class="row"><span class="logo">G</span><b>Google Ads / LSA</b></span></td><td>52</td><td class="hidep"><span class="chip ok">50 ok</span> <span class="chip cau">2 setup</span></td><td class="hidep muted sm">1 h</td><td>▾</td></tr>
+<tr><td colspan="5" style="padding:0 0 0 44px"><table><tr><td>A1 – Tampa</td><td><span class="chip cau">Pick branch</span></td><td class="muted sm">used by 3 automations</td></tr><tr><td>A1 – Naples</td><td class="muted sm">A1 · Naples</td><td class="muted sm">used by 5 automations</td></tr><tr><td colspan="3" class="muted sm">+ 50 more · search</td></tr></table></td></tr>
+<tr><td><span class="row"><span class="logo">@</span><b>Email inboxes</b></span></td><td>6</td><td class="hidep"><span class="chip ok">6 ok</span></td><td class="hidep muted sm">6 min</td><td>▸</td></tr>
+<tr><td><span class="row"><span class="logo">W</span><b>WhatsApp</b></span></td><td>1</td><td class="hidep"><span class="chip bad">1 broken</span></td><td class="hidep muted sm">4 min</td><td>▸</td></tr>
+</table></div>
+</template>
+
+<template id="b">
+<div class="filters"><input class="search" placeholder="Search apps"><span class="chip on">Connected</span><span class="chip">All apps</span></div>
+<div class="ov"><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">
+ <div class="card" style="padding:12px;border-color:var(--bad)"><div class="row"><span class="logo">W</span><b>WhatsApp</b></div><div class="muted sm" style="margin:6px 0">Messages with customers</div><div class="row"><span class="chip bad">1 issue</span><span style="margin-left:auto"><button class="btn">Manage</button></span></div></div>
+ <div class="card" style="padding:12px"><div class="row"><span class="logo">G</span><b>Google Ads</b></div><div class="muted sm" style="margin:6px 0">Spend &amp; leads</div><div class="row"><span class="chip cau">52 · 2 setup</span><span style="margin-left:auto"><button class="btn">Manage</button></span></div></div>
+ <div class="card" style="padding:12px"><div class="row"><span class="logo">S</span><b>Stripe</b></div><div class="muted sm" style="margin:6px 0">Card payments</div><button class="btn fix">Connect</button></div></div>
+ <div class="card sp" style="padding:12px"><div class="row"><b>Google Ads · 52 accounts</b><span style="margin-left:auto" class="muted">✕</span></div><input class="search" style="margin:8px 0;width:100%;box-sizing:border-box" placeholder="Search accounts">
+ <div class="check" style="grid-template-columns:1fr auto"><div><b>A1 – Tampa</b> <span class="chip pri">Default for Tampa</span><div class="muted sm">A1 · Tampa · ✓ Spend ✓ Leads</div></div><span class="muted">⋮</span></div>
+ <div class="check" style="grid-template-columns:1fr auto"><div><b>A1 – Ocala</b><div class="sm"><span class="chip cau">Pick branch</span></div></div><span class="muted">⋮</span></div>
+ <button class="btn" style="margin-top:8px">+ Add another account</button></div></div>
+<p class="muted sm">⋮ = Reconnect · Rename · Make default · Remove. Manage opens a SidePanel (GoHighLevel uses a modal).</p>
+</template>
+
+<template id="c">
+<div class="card" style="padding:12px"><div class="row"><span class="logo">W</span><b>+1 786 555 0100</b><span class="chip bad">1 of 3 checks failing</span><span style="margin-left:auto"><button class="btn">Verify all</button></span></div>
+<div class="muted sm" style="margin:4px 0 8px">A1 · Miami · Purpose: Customer chat · connected by Jose, 10-27</div>
+<div class="check"><span class="dot ok">✓</span><div><b>Receive</b> <span class="muted sm">last message 12 min ago</span></div><span class="muted sm">4 min</span></div>
+<div class="check"><span class="dot bad">✗</span><div><b>Send</b> <span class="sm" style="color:var(--bad)">Template rejected</span>
+ <div class="exp"><b>Why:</b> Meta rejected template "booking_confirm" (132001: parameter count mismatch).<br><b>Fix:</b> re-sync templates from Meta, then re-run.<br><b>Next auto-retry:</b> in 26 min<pre>POST /messages → 400 {"code":132001}</pre><div class="row" style="margin-top:6px"><button class="btn fix">Re-sync and re-run</button></div></div></div><span class="muted sm">4 min</span></div>
+<div class="check"><span class="dot ok">✓</span><div><b>Webhook</b> <span class="muted sm">subscribed: messages, statuses</span></div><span class="muted sm">4 min</span></div></div>
+</template>
+
+<template id="d">
+<div class="row" style="margin-bottom:8px"><span class="chip bad">2 errors</span><span class="chip cau">3 warnings</span><span class="muted sm">errors stop data; warnings don't</span></div>
+<div class="filters"><span class="chip on">Errors</span><span class="chip">Warnings</span><span class="chip">Branch ▸</span><span class="chip">Provider ▸</span><span style="margin-left:auto" class="row"><button class="btn fix">Re-run (2)</button><button class="btn">Ignore (2)</button></span></div>
+<div class="card"><div class="acc" style="padding-left:12px;border-top:0"><div class="row"><span class="dot bad">✗</span><b>WhatsApp · Send</b><span class="muted sm">+1 786…0100 · A1 · Miami</span><span style="margin-left:auto"><button class="btn fix">Retry</button></span></div><div class="muted sm" style="margin:4px 0 0 26px">Template rejected by Meta → re-sync templates. 4 min ago</div></div>
+<div class="acc" style="padding-left:12px"><div class="row"><span class="dot bad">✗</span><b>Email · Receive</b><span class="muted sm">service@… · A1 · Tampa</span><span class="chip off">Waiting to sync</span></div><div class="muted sm" style="margin:4px 0 0 26px">Password changed → reconnect. 2 h ago</div></div></div>
+<p class="muted sm">A header icon shows the error count and opens this page from anywhere (Housecall Pro).</p>
+</template>
+
+<h2>A · Attention block plus per-app rollup <span class="rec">RECOMMENDED</span></h2>
+<p class="src">Borrows HubSpot's "Needs your attention" block and Zapier's Apps tab ("N connections · M expired", expands into the account list, "used by" counts). <a href="https://knowledge.hubspot.com/integrations/manage-your-connected-apps">HubSpot</a> · <a href="https://help.zapier.com/hc/en-us/articles/8496290788109">Zapier</a></p><div data-o="a"></div>
+<h2>B · App cards plus a Manage panel</h2>
+<p class="src">Borrows GoHighLevel's Integrations revamp: cards that roll up status, Manage lists every account, and a Default account per branch. <a href="https://gohighlevelassist.freshdesk.com/support/solutions/articles/155000007810-integration-ui-ux-revamp">GoHighLevel</a></p><div data-o="b"></div>
+<h2>C · Account page: checks with reason, fix and next retry</h2>
+<p class="src">Borrows Stripe's webhook deliveries (error → fix table, next retry) and Segment's expandable error rows (sample request/response). This is the detail page that A or B opens. <a href="https://docs.stripe.com/events/manage-webhook-endpoints">Stripe</a> · <a href="https://www.twilio.com/docs/segment/connections/event-delivery">Segment</a></p><div data-o="c"></div>
+<h2>D · Problems queue with bulk Re-run</h2>
+<p class="src">Borrows Jobber's sync dashboard (errors vs warnings, "Resolve (#)" on the filtered set, "Waiting to sync") and Housecall Pro's header alert. <a href="https://help.getjobber.com/hc/en-us/articles/10466688449431">Jobber</a> · <a href="https://help.housecallpro.com/en/articles/975825-quickbooks-online-sync-alerts">Housecall Pro</a></p><div data-o="d"></div>
+<p class="cap" style="margin-top:28px">Not copied: ServiceTitan and Workiz (no documented health screen; Workiz has you paste tokens by hand). Shopify, Slack and Notion show no health at all.</p>
+</div>
+<script>
+document.querySelectorAll('[data-o]').forEach(h=>{const t=document.getElementById(h.dataset.o).innerHTML;
+h.innerHTML=`<div class="trio"><div><p class="lbl">Desktop · dark</p><div class="frame dark">${t}</div><p class="lbl" style="margin-top:10px">Desktop · light</p><div class="frame">${t}</div></div><div><p class="lbl">Phone · dark</p><div class="frame dark phone">${t}</div><p class="lbl" style="margin-top:10px">Phone · light</p><div class="frame phone">${t}</div></div></div>`});
+</script></body></html>

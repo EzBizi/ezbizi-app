@@ -13,6 +13,9 @@ return [
     |
     */
 
+    // Automation events a person waits on (DeliverAutomationEvent::REALTIME): "realtime" once a worker listens there.
+    'automations_realtime' => env('AUTOMATIONS_REALTIME_QUEUE', 'default'),
+
     'default' => env('QUEUE_CONNECTION', 'database'),
 
     /*

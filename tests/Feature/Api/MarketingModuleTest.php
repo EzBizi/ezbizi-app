@@ -54,7 +54,7 @@ class MarketingModuleTest extends TestCase
         // grantable "like all the others"), in the order the strip draws;
         // Posts became Dashboard, Compose and Calendar on 2026-10-12.
         $this->assertSame(
-            ['marketing.view', 'marketing.edit', 'marketing.dashboard.view', 'marketing.compose.view', 'marketing.calendar.view', 'marketing.accounts.view', 'marketing.qr_codes.view'],
+            ['marketing.view', 'marketing.edit', 'marketing.dashboard.view', 'marketing.compose.view', 'marketing.calendar.view', 'marketing.accounts.view', 'marketing.comments.view', 'marketing.qr_codes.view'],
             $module->permissionKeys(),
         );
 
@@ -200,7 +200,8 @@ class MarketingModuleTest extends TestCase
         // drafting a mailing and putting it in front of twelve hundred
         // customers are different acts, and only a module can express that.
         $this->assertSame(
-            ['newsletter', 'web_management'],
+            // Ads (running Google and Meta campaigns) since 2026-11-09; Google's report is Reports.
+            ['newsletter', 'web_management', 'ads_manager'],
             array_map(fn ($m) => $m->key, $registry->childrenOf(self::MODULE)),
             'Registry order is the tab order, so this is the order of the strip.',
         );

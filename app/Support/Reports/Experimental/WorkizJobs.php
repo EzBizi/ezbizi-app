@@ -171,12 +171,20 @@ final class WorkizJobs
             ->values()->all();
     }
 
-    /** The accounts the reader counts: their unticked ones left out. */
-    public function storedAll(string $since): array
+    /**
+     * The accounts the reader counts: their unticked ones left out. $branches:
+     * only those branches' accounts (a rule's place: A-1's dispatchers, not
+     * the organization's 417 jobs, 2026-11-10).
+     *
+     * @param  list<string>|null  $branches
+     */
+    public function storedAll(string $since, ?array $branches = null): array
     {
         $excluded = self::excluded();
 
-        return $this->storedFrom($this->inView()->reject(fn (SocialConnection $c) => in_array((string) $c->getKey(), $excluded, true)), $since);
+        return $this->storedFrom($this->inView()->reject(fn (SocialConnection $c) => in_array((string) $c->getKey(), $excluded, true))
+            ->when($branches !== null, fn ($all) => $all->filter(fn (SocialConnection $c) => $c->scope_type === SocialConnection::SCOPE_FRANCHISE
+                && in_array((string) $c->scope_id, $branches, true))), $since);
     }
 
     /** User preference key: the Workiz accounts this person leaves out of Reports. */
@@ -535,6 +543,26 @@ final class WorkizJobs
             }
         }
 
+        // A job booked today with a date weeks back is outside a date window
+        // (DMV 800020991, IL 400595749, 11-10): v2 also lists by created date.
+        if (WorkizV2::uses($connection) && $since !== null) {
+            for ($page = 0; $page < 20; $page++) {
+                $read = $this->page($connection, $since, $page, by: 'created');
+
+                if ($read['failed'] !== null) {
+                    return ['jobs' => $jobs, 'failed' => $read['failed']];
+                }
+
+                array_push($jobs, ...$read['jobs']);
+
+                if (count($read['jobs']) < self::PAGE) {
+                    break;
+                }
+            }
+
+            $jobs = array_values(collect($jobs)->unique(fn ($j) => $j['UUID'] ?? $j['id'] ?? json_encode($j))->all());
+        }
+
         return ['jobs' => array_slice($jobs, 0, $limit), 'failed' => null];
     }
 
@@ -552,7 +580,7 @@ final class WorkizJobs
      *
      * @return array{jobs: list<array<string, mixed>>, failed: ?string}
      */
-    public function page(SocialConnection $connection, string $since, int $page, int $timeout = 30): array
+    public function page(SocialConnection $connection, string $since, int $page, int $timeout = 30, string $by = 'date'): array
     {
         $token = (string) ($connection->credentials['api_token'] ?? '');
 
@@ -561,7 +589,7 @@ final class WorkizJobs
         }
 
         if (WorkizV2::uses($connection)) {
-            $read = WorkizV2::send($connection, 'GET', '/jobs', self::v2Page($since, $page), $timeout);
+            $read = WorkizV2::send($connection, 'GET', '/jobs', ['dateProperty' => $by] + self::v2Page($since, $page), $timeout);
 
             if ($read['status'] >= 500) {
                 return $this->v2Around($connection, $since, $page, $timeout);
@@ -834,6 +862,9 @@ final class WorkizJobs
                 // first 900 live rows, so "nobody recorded" is a real bucket
                 // and not an impossible case to skip.
                 'phone' => $job['Phone'] ?? null,
+                // A client's other number: 10 of 43 "AI heard a booking, no job"
+                // calls (Oct 27 - Nov 2) came from it (Trey, 2026-11-03).
+                'second_phone' => $job['SecondPhone'] ?? null,
                 'created_by' => $job['CreatedBy'] ?? null,
 
                 // CreatedDate is when the job was BOOKED; JobDateTime is when
@@ -845,6 +876,9 @@ final class WorkizJobs
                 'scheduled_for' => $job['JobDateTime'] ?? null,
 
                 'status' => $job['Status'] ?? null,
+                'tags' => $job['Tags'] ?? [],
+                // So ReportJobs::created knows Workiz's $0 copy of a finished job.
+                'total' => isset($job['JobTotalPrice']) && is_numeric($job['JobTotalPrice']) ? (float) $job['JobTotalPrice'] : null,
             ];
         }
 

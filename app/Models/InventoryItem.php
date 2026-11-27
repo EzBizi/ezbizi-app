@@ -40,6 +40,10 @@ class InventoryItem extends Model implements StatesRetention
     }
 
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'inventory';
 
     use HasAttachments;
     /** @use HasFactory<InventoryItemFactory> */

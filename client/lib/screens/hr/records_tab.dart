@@ -1,14 +1,21 @@
+import '../../widgets/formatted_notes.dart';
+import '../../widgets/work_schedule_card.dart';
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/contracts.dart';
+import '../../core/deep_links.dart';
+import '../../core/files.dart';
 import '../../core/hr.dart';
 import '../../core/onboarding.dart';
 import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../core/ui_strings.dart';
 import '../../widgets/address_fields.dart';
@@ -16,11 +23,13 @@ import '../../widgets/async_body.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/load_more.dart';
+import '../../widgets/logo_cropper.dart';
 import '../../widgets/not_filled_in.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
+import '../../widgets/user_avatar.dart';
 import '../../widgets/work_schedule_panel.dart';
 import 'onboarding_form.dart';
 import 'training_card.dart';
@@ -60,10 +69,18 @@ import 'training_card.dart';
 /// and its absence is a decision: payroll, the audit trail (§10) and every job
 /// somebody ever ran point at this row.
 class RecordsTab extends StatefulWidget {
-  const RecordsTab({super.key, required this.api, required this.session});
+  const RecordsTab({
+    super.key,
+    required this.api,
+    required this.session,
+    this.link,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// A person to open (`DeepLink` type `person`, id = their user id).
+  final DeepLink? link;
 
   /// The open record's own section strip, for a test to find by NAME. Found
   /// by position (`.last`) it would silently re-aim the day any other strip
@@ -112,6 +129,10 @@ class _RecordsTabState extends State<RecordsTab> {
   /// role"): `company:<id>` or `franchise:<id>`. Asked of the server too.
   String? _place;
 
+  /// Who is missing a start date or a contract (Jose, 2026-11-03: Eve fills
+  /// the gaps by hand). One at a time: the server takes one `missing` value.
+  String? _missing;
+
   /// What a role may be changed TO, and which of those this person may hand
   /// out. The same answer the invite form uses, from the same endpoint: §4's
   /// escalation bound is one rule and it should have one source.
@@ -138,11 +159,31 @@ class _RecordsTabState extends State<RecordsTab> {
   @override
   void initState() {
     super.initState();
+    _selected = widget.link?.id;
     _load();
+    // A person hired, edited or switched off elsewhere: page one re-read
+    // quietly; the open record keeps what is being typed.
+    _live = LiveChanges.of(widget.api).subscribe({'people'}, (_) {
+      if (_page == 1 && !_fetching) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
+  }
+
+  LiveSubscription? _live;
+
+  @override
+  void didUpdateWidget(RecordsTab old) {
+    super.didUpdateWidget(old);
+    if (widget.link != null && !identical(widget.link, old.link)) {
+      setState(() {
+        _selected = widget.link!.id;
+        _reading = null;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _live?.cancel();
     _searchDelay?.cancel();
     super.dispose();
   }
@@ -166,22 +207,24 @@ class _RecordsTabState extends State<RecordsTab> {
       return names.join(' › ');
     }
 
+    // Switched-off ones are not offered (Jose, 2026-11-10).
     final rows = [
-      for (final c in me.companies)
+      for (final c in me.switchableCompanies)
         SearchOption(value: 'company:${c.id}', label: pathOf(c.id)),
-      for (final f in me.franchises)
+      for (final f in me.switchableFranchises)
         SearchOption(
           value: 'franchise:${f.id}',
           label: [
             pathOf(f.companyId),
             f.name,
-          ].where((part) => part.isNotEmpty).join(' › '),
+          ].where((part) => part.isNotEmpty).join(' · '),
         ),
     ]..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
     return rows;
   }
 
-  Future<void> _load({int page = 1}) async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     if (page > 1 && _fetching) return;
 
     final request = ++_request;
@@ -190,8 +233,10 @@ class _RecordsTabState extends State<RecordsTab> {
       // A spinner only when there is nothing to keep — see AsyncBody.
       _loading = page == 1 && _people.isEmpty;
       _fetching = true;
-      _error = null;
-      _pageError = null;
+      if (!quiet) {
+        _error = null;
+        _pageError = null;
+      }
     });
 
     final answers = await Future.wait([
@@ -200,6 +245,10 @@ class _RecordsTabState extends State<RecordsTab> {
         if (_search.isNotEmpty) 'search': _search,
         'role_id': ?_roleId,
         if (_place?.split(':') case [final kind, final id]) '${kind}_id': id,
+        'missing': ?_missing,
+        // Server-side, so Inactive finds people past the first page (Jose, 2026-11-10).
+        if (_showing != _Showing.everyone)
+          'status': _showing == _Showing.active ? 'active' : 'inactive',
       }),
       widget.api.get('/hr/people/scope-options'),
     ]);
@@ -207,6 +256,10 @@ class _RecordsTabState extends State<RecordsTab> {
     if (!mounted || request != _request) return;
 
     final people = answers[0];
+    if (quiet && !people.ok) {
+      setState(() => _fetching = false);
+      return;
+    }
     final options = answers[1];
 
     setState(() {
@@ -274,17 +327,8 @@ class _RecordsTabState extends State<RecordsTab> {
     });
   }
 
-  List<Map<String, dynamic>> get _shown => switch (_showing) {
-    _Showing.everyone => _people,
-    _Showing.active => [
-      for (final p in _people)
-        if (p['is_active'] != false) p,
-    ],
-    _Showing.deactivated => [
-      for (final p in _people)
-        if (p['is_active'] == false) p,
-    ],
-  };
+  // The server filters by status; see _load.
+  List<Map<String, dynamic>> get _shown => _people;
 
   Map<String, dynamic>? get _selectedPerson {
     for (final person in _people) {
@@ -326,10 +370,12 @@ class _RecordsTabState extends State<RecordsTab> {
       // The PANE's width, not the window's: this sits inside the HR shell, and a
       // window measurement would put a sidebar into a column too narrow for it.
       builder: (context, constraints) {
-        if (constraints.maxWidth >= 760) {
-          // At least 240 for the list and 420 for the record, whatever the
-          // window: the handle cannot squeeze either of them out.
-          final widest = constraints.maxWidth - 420;
+        // From 600 (design 206: the open iPhone Duo, an iPad mini).
+        if (constraints.maxWidth >= 600) {
+          // At least 240 for the list and 420 for the record (360 below 760),
+          // whatever the window: the handle cannot squeeze either out.
+          final widest =
+              constraints.maxWidth - (constraints.maxWidth >= 760 ? 420 : 360);
           final width = _listWidth.clamp(240.0, widest);
 
           return Row(
@@ -378,21 +424,17 @@ class _RecordsTabState extends State<RecordsTab> {
   Widget _sidebar(BuildContext context) {
     final shown = _shown;
 
-    return Column(
+    // The filters scroll with the list where the window is short (Android on
+    // its side: they left the list -2 px) and are capped elsewhere.
+    return HeaderAboveList(
+      header: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
           key: const ValueKey('tour-hr-records-search'),
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-          child: TextField(
-            decoration: const InputDecoration(
-              hintText: 'Search people',
-              prefixIcon: Icon(Icons.search),
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            onChanged: _typed,
-          ),
+          child: ListSearch(hint: 'Search people', onChanged: _typed),
         ),
         Padding(
           key: const ValueKey('tour-hr-records-showing'),
@@ -409,7 +451,10 @@ class _RecordsTabState extends State<RecordsTab> {
                   label: Text(label),
                   selected: _showing == value,
                   visualDensity: VisualDensity.compact,
-                  onSelected: (_) => setState(() => _showing = value),
+                  onSelected: (_) {
+                    setState(() => _showing = value);
+                    _load();
+                  },
                 ),
             ],
           ),
@@ -451,9 +496,32 @@ class _RecordsTabState extends State<RecordsTab> {
               },
             ),
           ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final (value, label) in const [
+                ('start_date', 'No start date'),
+                ('contract', 'No contract'),
+              ])
+                FilterChip(
+                  label: Text(label),
+                  selected: _missing == value,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (on) {
+                    setState(() => _missing = on ? value : null);
+                    _load();
+                  },
+                ),
+            ],
+          ),
+        ),
         const Divider(height: 1),
-        Expanded(
-          child: AsyncBody(
+      ],
+      ),
+      list: AsyncBody(
             key: const ValueKey('tour-hr-records-list'),
             loading: _loading,
             error: _error,
@@ -488,8 +556,6 @@ class _RecordsTabState extends State<RecordsTab> {
                         : _row(context, shown[i]),
                   ),
           ),
-        ),
-      ],
     );
   }
 
@@ -510,7 +576,14 @@ class _RecordsTabState extends State<RecordsTab> {
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           child: Row(
             children: [
-              _Initials(person['name'] as String? ?? ''),
+              UserAvatar(
+                api: widget.api,
+                userId: id ?? '',
+                name: person['name'] as String? ?? '',
+                radius: 17,
+                hasAvatar: id != null && person['has_avatar'] == true,
+                version: person['avatar_version']?.toString() ?? '',
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -640,28 +713,6 @@ class _RecordsTabState extends State<RecordsTab> {
           .join(' · ');
 }
 
-class _Initials extends StatelessWidget {
-  const _Initials(this.name, {this.size = 34});
-
-  final String name;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final letters = name
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .take(2)
-        .map((part) => part[0].toUpperCase())
-        .join();
-
-    return CircleAvatar(
-      radius: size / 2,
-      child: Text(letters, style: TextStyle(fontSize: size * 0.36)),
-    );
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // One person's record
 // ─────────────────────────────────────────────────────────────────────────────
@@ -699,6 +750,7 @@ List<(String, String, IconData)> _sectionsFor(Map<String, dynamic> person) => [
   if (person['pay_rates'] != null) ('pay', 'Pay', Icons.payments_outlined),
   ('work', 'Work', Icons.schedule_outlined),
   ('equipment', 'Equipment', Icons.handyman_outlined),
+  ('certifications', 'Certifications', Icons.workspace_premium_outlined),
   ('onboarding', 'Onboarding', Icons.how_to_reg_outlined),
   ('timeoff', 'Time off', Icons.beach_access_outlined),
   ('training', 'Training', Icons.school_outlined),
@@ -752,18 +804,40 @@ class _PersonRecordState extends State<_PersonRecord> {
 
   bool _busy = false;
 
+  /// Somebody went into a box on this record since it was last read: a live
+  /// re-read waits until they save (which reads it again) or change section.
+  bool _typing = false;
+
   @override
   void initState() {
     super.initState();
     _reload();
+    // Live: this person changed elsewhere (HR, Work Hours, a sync) re-reads
+    // in place, never over a draft.
+    _live = LiveChanges.of(widget.api).subscribe({'people'}, (batch) {
+      if (batch.reload || batch.changedOf('people').contains(widget.personId)) {
+        if (!_loading && !_busy && !_typing) return _reload(quiet: true);
+      }
+    }, active: LiveChanges.visible(this));
   }
 
-  Future<void> _reload() async {
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the record on screen.
+  Future<void> _reload({bool quiet = false}) async {
     final response = await widget.api.get('/hr/people/${widget.personId}');
 
     if (!mounted) return;
+    if (quiet && (!response.ok || _busy || _typing)) return;
 
     setState(() {
+      _typing = false;
       _loading = false;
       if (!response.ok) {
         _error = response.reason;
@@ -858,6 +932,31 @@ class _PersonRecordState extends State<_PersonRecord> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _header(context),
+            // Their unfinished onboarding, and what it still needs (Merav,
+            // 2026-11-19: "Missing Information Warning").
+            if ((_person['onboarding_missing'] as List?)?.isNotEmpty ?? false)
+              Padding(
+                key: const ValueKey('record-onboarding-missing'),
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: StateColour.of(context).caution,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Onboarding not finished. Missing: '
+                        '${(_person['onboarding_missing'] as List).join(', ')}.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Material(
               color: Theme.of(context).colorScheme.surface,
               child: TabBarLike(
@@ -868,7 +967,10 @@ class _PersonRecordState extends State<_PersonRecord> {
                 labels: [for (final s in _shown) (s.$2, s.$3)],
                 missing: [for (final s in _shown) _emptyIn(s.$1)],
                 selected: _shown.indexWhere((s) => s.$1 == _active),
-                onSelected: (i) => setState(() => _section = _shown[i].$1),
+                onSelected: (i) => setState(() {
+                  _section = _shown[i].$1;
+                  _typing = false;
+                }),
               ),
             ),
             const Divider(height: 1),
@@ -882,7 +984,14 @@ class _PersonRecordState extends State<_PersonRecord> {
             child: ConstrainedBox(
               key: const ValueKey('tour-hr-record-section'),
               constraints: const BoxConstraints(maxWidth: 760),
-              child: _body(context),
+              child: Focus(
+                canRequestFocus: false,
+                skipTraversal: true,
+                onFocusChange: (has) {
+                  if (has) _typing = true;
+                },
+                child: _body(context),
+              ),
             ),
           ),
         ),
@@ -905,6 +1014,25 @@ class _PersonRecordState extends State<_PersonRecord> {
 
   static bool _isEmptyList(Object? value) => value is List && value.isEmpty;
 
+  /// Change photo: a SidePanel to upload or remove, then the record reloads
+  /// for the new avatar_version.
+  Future<void> _changePhoto() async {
+    final changed = await showSidePanel<bool>(
+      context,
+      builder: (_) => _PhotoPanel(
+        api: widget.api,
+        personId: widget.personId,
+        name: _person['name'] as String? ?? '',
+        hasAvatar: _person['has_avatar'] == true,
+        version: _person['avatar_version']?.toString() ?? '',
+      ),
+    );
+    if (changed == true && mounted) {
+      await _reload();
+      widget.onChanged();
+    }
+  }
+
   Widget _header(BuildContext context) {
     final theme = Theme.of(context);
     final roleName = (_person['role'] as Map<String, dynamic>?)?['name'];
@@ -922,7 +1050,23 @@ class _PersonRecordState extends State<_PersonRecord> {
               icon: const Icon(Icons.arrow_back),
               onPressed: widget.onBack,
             ),
-          _Initials(_person['name'] as String? ?? '', size: 48),
+          // Their photo, which HR can set (design 186, Jose 2026-11-06).
+          Tooltip(
+            message: _noEdit == null ? 'Change photo' : '',
+            child: InkWell(
+              key: const ValueKey('hr-photo'),
+              customBorder: const CircleBorder(),
+              onTap: _noEdit == null ? _changePhoto : null,
+              child: UserAvatar(
+                api: widget.api,
+                userId: widget.personId,
+                name: _person['name'] as String? ?? '',
+                radius: 24,
+                hasAvatar: _person['has_avatar'] == true,
+                version: _person['avatar_version']?.toString() ?? '',
+              ),
+            ),
+          ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -980,7 +1124,19 @@ class _PersonRecordState extends State<_PersonRecord> {
     'pay' => _DetailList(
       key: ValueKey('pay-$_version'),
       kind: _DetailKind.pay,
-      rows: _rows('pay_rates'),
+      // Which rate applies today and which stage comes next (Merav,
+      // 2026-11-17), named by the server; said on the row.
+      rows: [
+        for (final row in _rows('pay_rates'))
+          {
+            ...row,
+            '_when': row['id'] == _person['pay_rate_now']
+                ? 'Current rate'
+                : row['id'] == _person['pay_rate_next']
+                ? 'Next stage'
+                : null,
+          },
+      ],
       personId: widget.personId,
       api: widget.api,
       formats: widget.formats,
@@ -995,6 +1151,22 @@ class _PersonRecordState extends State<_PersonRecord> {
       key: ValueKey('equipment-$_version'),
       kind: _DetailKind.equipment,
       rows: _rows('equipment'),
+      personId: widget.personId,
+      api: widget.api,
+      formats: widget.formats,
+      refused: _noEdit,
+      onChanged: _reload,
+    ),
+    'certifications' => _DetailList(
+      key: ValueKey('certifications-$_version'),
+      kind: _DetailKind.certifications,
+      rows: [
+        for (final row in _rows('certifications'))
+          {
+            ...row,
+            '_warn_days': (_person['certification_warn_days'] as num?) ?? 60,
+          },
+      ],
       personId: widget.personId,
       api: widget.api,
       formats: widget.formats,
@@ -1021,6 +1193,14 @@ class _PersonRecordState extends State<_PersonRecord> {
     ),
     'employment' => _EmploymentSection(
       key: ValueKey('employment-$_version'),
+      api: widget.api,
+      personId: widget.personId,
+      // The record changes, the section stays: re-keying it threw away
+      // unsaved Employment edits (full-code audit, 2026-11-27).
+      onPlaces: (record) {
+        setState(() => _person = record);
+        widget.onChanged();
+      },
       person: _person,
       options: widget.options,
       cannotChangeRole: widget.cannotChangeRole,
@@ -1047,7 +1227,6 @@ class _PersonRecordState extends State<_PersonRecord> {
   // ── Work: saved as it is changed ─────────────────────────────────
 
   Widget _work(BuildContext context) {
-    final theme = Theme.of(context);
     final noEdit = _noEdit;
     final schedule = _person['work_schedule'];
     final days = schedule is Map && schedule['days'] is Map
@@ -1059,14 +1238,20 @@ class _PersonRecordState extends State<_PersonRecord> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (noEdit != null) ...[ErrorNote(noEdit), const SizedBox(height: 12)],
-        _Field(
-          label: UiStrings.t('time_clock.work_schedule'),
-          empty: schedule == null,
-          child: Text(
-            _describeSchedule(days),
-            style: theme.textTheme.bodyMedium,
+        // The same card as Your account and Work Hours (design 189).
+        if (schedule is Map)
+          WorkScheduleCard(
+            schedule: Map<String, dynamic>.from(schedule),
+            canEdit: false,
+            onEdit: () {},
+          )
+        else
+          // None written: amber "Not filled in", as an empty Personal box is.
+          _Field(
+            label: UiStrings.t('time_clock.work_schedule'),
+            empty: true,
+            child: const SizedBox(),
           ),
-        ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
           key: const ValueKey('tour-hr-record-schedule'),
@@ -1094,29 +1279,6 @@ class _PersonRecordState extends State<_PersonRecord> {
         ),
       ],
     );
-  }
-
-  static String _describeSchedule(Map<String, dynamic>? days) {
-    if (days == null) return 'No schedule set.';
-
-    const names = {
-      'monday': 'Monday',
-      'tuesday': 'Tuesday',
-      'wednesday': 'Wednesday',
-      'thursday': 'Thursday',
-      'friday': 'Friday',
-      'saturday': 'Saturday',
-      'sunday': 'Sunday',
-    };
-
-    final lines = [
-      for (final entry in names.entries)
-        if (days[entry.key] is Map)
-          '${entry.value}  ${(days[entry.key] as Map)['start']} – '
-              '${(days[entry.key] as Map)['end']}',
-    ];
-
-    return lines.isEmpty ? 'Every day off.' : lines.join('\n');
   }
 
   Future<void> _editSchedule(Map<String, dynamic>? days) async {
@@ -1171,7 +1333,10 @@ class _PersonRecordState extends State<_PersonRecord> {
       return v == 1 ? '1 day' : '$text days';
     }
 
-    final from = DateTime.tryParse(pto['eligible_from']?.toString() ?? '');
+    // The first day they have one to take (Jose, 2026-11-23).
+    final from = DateTime.tryParse(
+      (pto['usable_from'] ?? pto['eligible_from'])?.toString() ?? '',
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1182,7 +1347,7 @@ class _PersonRecordState extends State<_PersonRecord> {
         ),
         const SizedBox(height: 8),
         Text(
-          pto['eligible'] == true
+          (pto['usable'] ?? pto['eligible']) == true
               ? 'They can use it now.'
               : from == null
               ? 'When they can use it depends on their start date, which is '
@@ -1310,7 +1475,7 @@ class _PersonRecordState extends State<_PersonRecord> {
                   refusedDelete ??
                       'Erases them and their personal data everywhere, so '
                           'their email and phone can be used for a new account. '
-                          'Unlike Deactivate, it cannot be undone.',
+                          'This cannot be undone.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -1447,7 +1612,11 @@ class _Field extends StatelessWidget {
     required this.child,
     this.why,
     this.empty = false,
+    this.suffix,
   });
+
+  /// Inside the box, as a text field's suffix, so the box keeps its height.
+  final Widget? suffix;
 
   final String label;
   final Widget child;
@@ -1466,6 +1635,7 @@ class _Field extends StatelessWidget {
         helperText: why,
         helperMaxLines: 3,
         border: const OutlineInputBorder(),
+        suffixIcon: suffix,
         // Enabled while empty: a disabled box draws no amber border.
         enabled: empty,
       ),
@@ -1564,7 +1734,7 @@ class _PersonalSectionState extends State<_PersonalSection> {
     return noParts ? widget.person['address']?.toString() ?? '' : value;
   }
 
-  /// What a box shows for what is stored: a phone as `+1 (214) 968-9819`,
+  /// What a box shows for what is stored: a phone as `+1 (214) 555-0102`,
   /// even one saved as bare digits before this was formatted.
   String _shown(String key) {
     final value = _stored(key);
@@ -1630,9 +1800,64 @@ class _PersonalSectionState extends State<_PersonalSection> {
     _bornDay.text = _born ?? '';
   }
 
+  /// Gender is picked, not typed (Jose, 2026-11-06). A value saved before the
+  /// picker stays selectable so opening a record never rewrites it.
+  static const _fallbackGenders = [
+    ('male', 'Male'),
+    ('female', 'Female'),
+    ('prefer_not_to_answer', 'Prefers not to answer'),
+  ];
+
+  /// The organization's choices from `gender_options`; a stored value that is
+  /// none of them is offered as itself, so it shows as is.
+  List<(String, String)> _genderOptions(String stored) {
+    final raw = widget.person['gender_options'];
+    final options = raw is List && raw.isNotEmpty
+        ? [
+            for (final o in raw)
+              if (o is Map)
+                ('${o['value'] ?? ''}', '${o['label'] ?? o['value'] ?? ''}'),
+          ]
+        : _fallbackGenders;
+    final known = _genderValue(stored, options) != null;
+
+    return [...options, if (stored.isNotEmpty && !known) (stored, stored)];
+  }
+
+  /// The option a stored value is, matched case-insensitively on value or
+  /// label: older rows hold "Male", newer ones "male".
+  String? _genderValue(String stored, [List<(String, String)>? options]) {
+    if (stored.isEmpty) return null;
+    final lower = stored.toLowerCase();
+    for (final o in options ?? _genderOptions(stored)) {
+      if (o.$1.toLowerCase() == lower || o.$2.toLowerCase() == lower) {
+        return o.$1;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _copy(String value) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(const SnackBar(content: Text('Copied.')));
+  }
+
+  /// The copy button every field ends in (design 186).
+  Widget _copyButton(String key, String Function() value) => IconButton(
+    key: ValueKey('hr-copy:$key'),
+    tooltip: 'Copy',
+    icon: const Icon(Icons.copy_outlined, size: 18),
+    onPressed: () => _copy(value()),
+  );
+
   @override
   Widget build(BuildContext context) {
     final editable = widget.noEdit == null;
+    final gender = _fields['gender']!.text.trim();
 
     Widget text(String key, String label, {int lines = 1}) => TextField(
       controller: _fields[key],
@@ -1647,7 +1872,11 @@ class _PersonalSectionState extends State<_PersonalSection> {
       // fields (Jose, 2026-09-29, "like we do on marketing SEO").
       decoration: notFilledIn(
         context,
-        InputDecoration(labelText: label, border: const OutlineInputBorder()),
+        InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+          suffixIcon: _copyButton(key, () => _fields[key]!.text.trim()),
+        ),
         empty: _personalBoxes.contains(key) && _blank(_fields[key]!.text),
       ),
     );
@@ -1678,6 +1907,7 @@ class _PersonalSectionState extends State<_PersonalSection> {
           country: _fields['country']!,
           enabled: editable,
           flagEmpty: true,
+          copy: (field, box) => _copyButton(field, () => box.text.trim()),
         ),
         const SizedBox(height: 14),
         _Pair(
@@ -1692,9 +1922,26 @@ class _PersonalSectionState extends State<_PersonalSection> {
             firstDate: DateTime(1900),
             lastDate: DateTime.now().subtract(const Duration(days: 1)),
             flagEmpty: true,
+            // Full width, so the row has no gap (Jose, 2026-11-06).
+            fill: true,
+            trailing: _copyButton('date_of_birth', () => _bornDay.text),
             onChanged: (v) => setState(() => _born = v.isEmpty ? null : v),
           ),
-          text('gender', 'Gender'),
+          SearchPickerField<String>(
+            key: const ValueKey('hr-gender'),
+            label: 'Gender',
+            hint: 'Not filled in',
+            border: const OutlineInputBorder(),
+            value: _genderValue(gender),
+            options: [
+              for (final o in _genderOptions(gender))
+                SearchOption(value: o.$1, label: o.$2),
+            ],
+            allowClear: true,
+            onChanged: editable
+                ? (v) => setState(() => _fields['gender']!.text = v ?? '')
+                : null,
+          ),
         ),
         const SizedBox(height: 14),
         _Field(
@@ -1702,6 +1949,10 @@ class _PersonalSectionState extends State<_PersonalSection> {
           why:
               'They sign in with this, so it is theirs to change under Your '
               'account — changing it from here could lock them out.',
+          suffix: _copyButton(
+            'email',
+            () => widget.person['email']?.toString() ?? '',
+          ),
           child: Text(widget.person['email']?.toString() ?? ''),
         ),
         if (editable)
@@ -1719,6 +1970,9 @@ class _PersonalSectionState extends State<_PersonalSection> {
 class _EmploymentSection extends StatefulWidget {
   const _EmploymentSection({
     super.key,
+    required this.api,
+    required this.personId,
+    required this.onPlaces,
     required this.person,
     required this.options,
     required this.cannotChangeRole,
@@ -1727,6 +1981,11 @@ class _EmploymentSection extends StatefulWidget {
     required this.onSave,
   });
 
+  final ApiClient api;
+  final String personId;
+
+  /// The record the places endpoints answer with (design 188).
+  final ValueChanged<Map<String, dynamic>> onPlaces;
   final Map<String, dynamic> person;
   final AssignmentOptions options;
   final String? cannotChangeRole;
@@ -1744,21 +2003,12 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
   bool get _savedActive => widget.person['is_active'] != false;
   String? get _savedStart => widget.person['started_on']?.toString();
 
-  /// Where they work as `type:id`, when it is one place; null for none or
-  /// several, which the picker shows as text until somebody picks one.
-  String? get _savedPlace {
-    final rows = (widget.person['assignments'] as List<dynamic>? ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .toList();
-    return rows.length == 1
-        ? '${rows.single['type']}:${rows.single['scope_id']}'
-        : null;
-  }
-
   late String? _role = _savedRole;
-  late String? _place = _savedPlace;
   late bool _active = _savedActive;
   late String? _start = _savedStart;
+  // Full or part time; '' is "from their schedule" (Eric, 2026-11-25).
+  String get _savedHours => widget.person['hours_type']?.toString() ?? '';
+  late String _hours = _savedHours;
   late final _startDay = TextEditingController(text: _savedStart ?? '');
 
   @override
@@ -1771,10 +2021,7 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
     if (_role != _savedRole && _role != null) 'role_id': _role,
     if (_active != _savedActive) 'is_active': _active,
     if (_start != _savedStart && _start != null) 'started_on': _start,
-    if (_place != _savedPlace && _place != null) ...{
-      'scope_type': _place!.split(':').first,
-      'scope_id': _place!.split(':').last,
-    },
+    if (_hours != _savedHours) 'hours_type': _hours.isEmpty ? null : _hours,
   };
 
   @override
@@ -1837,6 +2084,26 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
               : null,
         ),
         const SizedBox(height: 16),
+        Text('Hours', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 6),
+        SegmentedButton<String>(
+          key: const ValueKey('hr-record-hours-type'),
+          segments: const [
+            ButtonSegment(value: 'full_time', label: Text('Full time')),
+            ButtonSegment(value: 'part_time', label: Text('Part time')),
+            ButtonSegment(value: '', label: Text('From schedule')),
+          ],
+          selected: {_hours},
+          onSelectionChanged: editable
+              ? (value) => setState(() => _hours = value.first)
+              : null,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'From schedule: 30 hours a week or more counts as full time.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 16),
         _Pair(
           CalendarDayField(
             key: const ValueKey('hr-start-date'),
@@ -1857,45 +2124,15 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
           ),
         ),
         const SizedBox(height: 14),
-        // Editable (Mia, 2026-10-02: "assigning andy to A1-Group instead so
-        // she has full access"). Only places the editor reaches are offered,
-        // the same list the invitation uses, and the server checks it again.
-        if (editable && widget.options.scopes.isNotEmpty)
-          SearchPickerField<String>(
-            key: const ValueKey('hr-works-at'),
-            value: _place,
-            label: 'Works at',
-            hint: _RecordsTabState._where(widget.person).isEmpty
-                ? null
-                : _RecordsTabState._where(widget.person),
-            helperText:
-                'Everything beneath it comes with it: a company covers its '
-                'franchises, the organization covers every company. Moving '
-                'them replaces where they were.',
-            helperMaxLines: 3,
-            border: const OutlineInputBorder(),
-            options: [
-              for (final scope in widget.options.scopes)
-                SearchOption(
-                  value: scope.value,
-                  label: scope.isActive
-                      ? scope.pathLabel
-                      : '${scope.pathLabel} — deactivated',
-                  enabled: scope.isActive,
-                ),
-            ],
-            onChanged: (value) => setState(() => _place = value),
-          )
-        else
-          _Field(
-            label: 'Works at',
-            why: 'Set when they were invited.',
-            child: Text(
-              _RecordsTabState._where(widget.person).isEmpty
-                  ? '—'
-                  : _RecordsTabState._where(widget.person),
-            ),
-          ),
+        // Several places, added and removed one at a time (design 188).
+        _WorksAt(
+          api: widget.api,
+          personId: widget.personId,
+          person: widget.person,
+          options: widget.options,
+          editable: editable,
+          onPlaces: widget.onPlaces,
+        ),
         if (editable)
           _SaveBar(
             label: 'Save employment',
@@ -1903,8 +2140,8 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
             onSave: () => widget.onSave(_change),
             onDiscard: () => setState(() {
               _role = _savedRole;
-              _place = _savedPlace;
               _active = _savedActive;
+              _hours = _savedHours;
               _start = _savedStart;
               _startDay.text = _savedStart ?? '';
             }),
@@ -1915,6 +2152,358 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
 }
 
 /// Two fields side by side when there is room, stacked when there is not.
+/// Where somebody works, one row per place (design 188): Add place and an
+/// inline two-step remove. The server refuses their last place with its own
+/// sentence, so that row says it instead of offering ×.
+class _WorksAt extends StatefulWidget {
+  const _WorksAt({
+    required this.api,
+    required this.personId,
+    required this.person,
+    required this.options,
+    required this.editable,
+    required this.onPlaces,
+  });
+
+  final ApiClient api;
+  final String personId;
+  final Map<String, dynamic> person;
+  final AssignmentOptions options;
+  final bool editable;
+  final ValueChanged<Map<String, dynamic>> onPlaces;
+
+  static const lastPlace =
+      'This is the only place they work. Add another first.';
+
+  @override
+  State<_WorksAt> createState() => _WorksAtState();
+}
+
+class _WorksAtState extends State<_WorksAt> {
+  String? _confirming;
+  bool _busy = false;
+  String? _error;
+
+  List<Map<String, dynamic>> get _places =>
+      (widget.person['assignments'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+
+  static String _label(Map<String, dynamic> place) {
+    final name = place['name']?.toString() ?? '';
+    final company = place['company']?.toString() ?? '';
+    return company.isEmpty ? name : '$company · $name';
+  }
+
+  static String _kind(Map<String, dynamic> place) => switch (place['type']) {
+    'organization' => 'Organization · covers every company',
+    'company' => 'Company · covers its branches',
+    _ => 'Branch',
+  };
+
+  Future<void> _send(Future<ApiResponse> call) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final response = await call;
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _confirming = null;
+      if (!response.ok) _error = response.reason;
+    });
+    if (response.ok) {
+      widget.onPlaces(Map<String, dynamic>.from(response.data as Map));
+    }
+  }
+
+  Future<void> _add() async {
+    final have = {for (final p in _places) '${p['type']}:${p['scope_id']}'};
+    final picked = await showSearchPicker<String>(
+      context,
+      title: 'Add place',
+      options: [
+        // Switched-off places are not offered (Jose, 2026-11-10).
+        for (final scope in widget.options.scopes)
+          if (!have.contains(scope.value) && scope.isActive)
+            SearchOption(value: scope.value, label: scope.pathLabel),
+      ],
+    );
+    if (picked == null || !mounted) return;
+    await _send(
+      widget.api.post('/hr/people/${widget.personId}/places', {
+        'scope_type': picked.split(':').first,
+        'scope_id': picked.split(':').last,
+      }),
+    );
+  }
+
+  Widget? _trailing(ThemeData theme, Map<String, dynamic> place, int count) {
+    if (!widget.editable || count == 1) return null;
+    final id = place['id']?.toString();
+    if (_confirming != id) {
+      return IconButton(
+        key: ValueKey('hr-place-x:$id'),
+        tooltip: 'Remove this place',
+        icon: const Icon(Icons.close, size: 18),
+        onPressed: _busy ? null : () => setState(() => _confirming = id),
+      );
+    }
+
+    return Wrap(
+      spacing: 4,
+      children: [
+        FilledButton(
+          key: ValueKey('hr-place-remove:$id'),
+          style: FilledButton.styleFrom(
+            backgroundColor: theme.colorScheme.error,
+            foregroundColor: theme.colorScheme.onError,
+          ),
+          onPressed: _busy
+              ? null
+              : () => _send(
+                  widget.api.delete('/hr/people/${widget.personId}/places/$id'),
+                ),
+          child: const Text('Remove'),
+        ),
+        TextButton(
+          onPressed: () => setState(() => _confirming = null),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final places = _places;
+    final role = (widget.person['role'] as Map<String, dynamic>?)?['name'];
+
+    return Card(
+      key: const ValueKey('hr-works-at'),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Works at', style: theme.textTheme.titleSmall),
+                ),
+                if (widget.editable && widget.options.scopes.isNotEmpty)
+                  TextButton.icon(
+                    key: const ValueKey('hr-add-place'),
+                    onPressed: _busy ? null : _add,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add place'),
+                  ),
+              ],
+            ),
+            if (places.isEmpty) const Text('—'),
+            for (final place in places)
+              ListTile(
+                key: ValueKey('hr-place:${place['id']}'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  place['type'] == 'franchise'
+                      ? Icons.storefront_outlined
+                      : Icons.account_tree_outlined,
+                  size: 20,
+                ),
+                title: Text(
+                  _label(place),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  places.length == 1 && widget.editable
+                      ? _WorksAt.lastPlace
+                      : _kind(place),
+                ),
+                trailing: _trailing(theme, place, places.length),
+              ),
+            if (_error != null) ErrorNote(_error!),
+            if (role != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, right: 8),
+                child: Text(
+                  'Their role, $role, applies at every place above. A company '
+                  'covers its branches; the organization covers every company.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Upload or remove somebody's photo (design 186). Pops true on a change.
+class _PhotoPanel extends StatefulWidget {
+  const _PhotoPanel({
+    required this.api,
+    required this.personId,
+    required this.name,
+    required this.hasAvatar,
+    required this.version,
+  });
+
+  final ApiClient api;
+  final String personId;
+  final String name;
+  final bool hasAvatar;
+  final String version;
+
+  @override
+  State<_PhotoPanel> createState() => _PhotoPanelState();
+}
+
+class _PhotoPanelState extends State<_PhotoPanel> {
+  String? _error;
+  bool _busy = false;
+  bool _confirmRemove = false;
+
+  String get _path => '/hr/people/${widget.personId}/avatar';
+
+  /// Pick, crop to the circle, upload, as Your account does.
+  Future<void> _upload() async {
+    final picked = await Files.pickImage();
+    if (picked == null || !mounted) return;
+    final cropped = await showSidePanel<Uint8List>(
+      context,
+      builder: (_) => LogoCropper(
+        bytes: Uint8List.fromList(picked.bytes),
+        shapes: const {
+          'square': {
+            'width': 512,
+            'height': 512,
+            'label': 'Photo',
+            'help': 'Drag to choose what sits inside the circle.',
+          },
+        },
+      ),
+    );
+    if (cropped == null || !mounted) return;
+    setState(() => _busy = true);
+    final response = await widget.api.postFile(
+      _path,
+      'photo',
+      'avatar.png',
+      cropped,
+    );
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() {
+        _busy = false;
+        _error = response.reason;
+      });
+      return;
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  Future<void> _remove() async {
+    setState(() => _busy = true);
+    final response = await widget.api.delete(_path);
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() {
+        _busy = false;
+        _error = response.message;
+      });
+      return;
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return SidePanel(
+      title: '${widget.name}’s photo',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: UserAvatar(
+              api: widget.api,
+              userId: widget.personId,
+              name: widget.name,
+              radius: 60,
+              hasAvatar: widget.hasAvatar,
+              version: widget.version,
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (_error != null) ...[
+            ErrorNote(_error!),
+            const SizedBox(height: 12),
+          ],
+          FilledButton.icon(
+            key: const ValueKey('hr-photo-upload'),
+            onPressed: _busy ? null : _upload,
+            icon: const Icon(Icons.upload_outlined),
+            label: Text(
+              widget.hasAvatar ? 'Upload a new photo' : 'Upload a photo',
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'JPG, PNG or WebP, up to 5 MB.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          if (widget.hasAvatar) ...[
+            const SizedBox(height: 16),
+            // An inline two-step; red only here.
+            if (!_confirmRemove)
+              TextButton(
+                key: const ValueKey('hr-photo-remove'),
+                style: TextButton.styleFrom(foregroundColor: scheme.error),
+                onPressed: _busy
+                    ? null
+                    : () => setState(() => _confirmRemove = true),
+                child: const Text('Remove photo'),
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Remove it? Their initials show instead.',
+                      style: TextStyle(color: scheme.error),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _confirmRemove = false),
+                    child: const Text('Keep'),
+                  ),
+                  FilledButton(
+                    key: const ValueKey('hr-photo-remove-confirm'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: scheme.error,
+                      foregroundColor: scheme.onError,
+                    ),
+                    onPressed: _busy ? null : _remove,
+                    child: const Text('Remove'),
+                  ),
+                ],
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _Pair extends StatelessWidget {
   const _Pair(this.left, this.right);
 
@@ -2104,7 +2693,11 @@ class _DetailKind {
     this.intro,
     this.returnable = false,
     this.counted = false,
+    this.tag,
   });
+
+  /// A state beside the title (a certification's Expired / Expires soon).
+  final Widget? Function(Map<String, dynamic> row)? tag;
 
   /// The `{kind}` in `hr/people/{user}/details/{kind}`.
   final String path;
@@ -2127,7 +2720,9 @@ class _DetailKind {
 
   static String _date(Object? iso, DisplayFormats formats) {
     final at = DateTime.tryParse(iso?.toString() ?? '');
-    return at == null ? '' : formats.formatDate(at);
+    // An instant (a note's time) is UTC: shown on the reader's day. A plain
+    // date parses as local and stays as it is (full-code audit, 2026-11-27).
+    return at == null ? '' : formats.formatDate(at.isUtc ? at.toLocal() : at);
   }
 
   static String _join(List<String?> parts) =>
@@ -2190,9 +2785,10 @@ class _DetailKind {
     title: (row, _) =>
         '${row['amount']} ${_periods[row['period']] ?? row['period']}',
     subtitle: (row, formats) => _join([
+      row['_when']?.toString(),
       row['basis'] == 'salary' ? 'Salary' : 'Hourly',
       'from ${_date(row['effective_on'], formats)}',
-      row['note']?.toString(),
+      NotesMarkup.plain(row['note']?.toString()),
     ]),
   );
 
@@ -2230,6 +2826,50 @@ class _DetailKind {
     ]),
   );
 
+  /// Jose, 2026-11-20 (server b8a197b15): soonest expiry first.
+  static final certifications = _DetailKind(
+    path: 'certifications',
+    noun: 'certification',
+    empty: 'No certifications recorded.',
+    fields: const [
+      _FieldSpec('name', 'Certification', _FieldType.text, required: true),
+      _FieldSpec('issuer', 'Issued by', _FieldType.text),
+      _FieldSpec('number', 'Number', _FieldType.text),
+      _FieldSpec('issued_on', 'Issued', _FieldType.date),
+      _FieldSpec('expires_on', 'Expires', _FieldType.date),
+      _FieldSpec('note', 'Note', _FieldType.multiline),
+    ],
+    title: (row, _) => row['name']?.toString() ?? '',
+    subtitle: (row, formats) => _join([
+      row['issuer']?.toString(),
+      if ('${row['number'] ?? ''}'.isNotEmpty) '#${row['number']}',
+      if (row['expires_on'] != null)
+        'expires ${_date(row['expires_on'], formats)}',
+    ]),
+    tag: (row) {
+      final expires = DateTime.tryParse('${row['expires_on'] ?? ''}');
+      if (expires == null) return null;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final day = DateTime(expires.year, expires.month, expires.day);
+      if (day.isBefore(today)) {
+        return Tag(
+          'Expired',
+          key: ValueKey('cert-expired-${row['id']}'),
+          bad: true,
+        );
+      }
+      final warn = (row['_warn_days'] as num?)?.toInt() ?? 60;
+      return day.difference(today).inDays <= warn
+          ? Tag(
+              'Expires soon',
+              key: ValueKey('cert-expiring-${row['id']}'),
+              warn: true,
+            )
+          : null;
+    },
+  );
+
   static final ptoUsed = _DetailKind(
     path: 'pto-used',
     noun: 'days used',
@@ -2248,7 +2888,7 @@ class _DetailKind {
     },
     subtitle: (row, formats) => _join([
       row['used_on'] == null ? 'before EzBizi' : _date(row['used_on'], formats),
-      row['note']?.toString(),
+      NotesMarkup.plain(row['note']?.toString()),
     ]),
   );
 
@@ -2365,7 +3005,7 @@ class _DetailListState extends State<_DetailList> {
 
   Future<void> _returned(Map<String, dynamic> row) => _write(
     () => widget.api.patch('$_base/${row['id']}', {
-      'returned_on': _DetailForm.ymd(DateTime.now()),
+      'returned_on': formatCalendarDay(DateTime.now()),
     }),
   );
 
@@ -2404,7 +3044,18 @@ class _DetailListState extends State<_DetailList> {
         for (final row in widget.rows)
           Card(
             child: ListTile(
-              title: Text(widget.kind.title(row, widget.formats)),
+              title: switch (widget.kind.tag?.call(row)) {
+                final Widget tag => Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [Text(widget.kind.title(row, widget.formats)), tag],
+                ),
+                // A note keeps its bold, italic and underline (Jose, 2026-11-25).
+                _ when widget.kind == _DetailKind.notes => FormattedNotesText(
+                  row['body']?.toString(),
+                ),
+                _ => Text(widget.kind.title(row, widget.formats)),
+              },
               subtitle: Text(widget.kind.subtitle(row, widget.formats)),
               trailing: widget.refused != null
                   ? null
@@ -2462,11 +3113,6 @@ class _DetailForm extends StatefulWidget {
   final Map<String, dynamic>? initial;
   final DisplayFormats formats;
 
-  static String ymd(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
-
   @override
   State<_DetailForm> createState() => _DetailFormState();
 }
@@ -2477,9 +3123,15 @@ class _DetailFormState extends State<_DetailForm> {
       if (f.type == _FieldType.text ||
           f.type == _FieldType.multiline ||
           f.type == _FieldType.number)
-        f.key: TextEditingController(
-          text: widget.initial?[f.key]?.toString() ?? '',
-        )..addListener(() => setState(() {})),
+        f.key:
+            (f.type == _FieldType.multiline
+                  ? FormattedNotesController(
+                      markup: widget.initial?[f.key]?.toString(),
+                    )
+                  : TextEditingController(
+                      text: widget.initial?[f.key]?.toString() ?? '',
+                    ))
+              ..addListener(() => setState(() {})),
   };
 
   late final Map<String, String?> _picked = {
@@ -2507,8 +3159,11 @@ class _DetailFormState extends State<_DetailForm> {
 
   Object? _value(_FieldSpec f) {
     if (_text.containsKey(f.key)) {
-      final text = _text[f.key]!.text.trim();
+      final box = _text[f.key]!;
+      final text = box.text.trim();
       if (text.isEmpty) return null;
+      // Notes keep their <b>/<i>/<u> (Jose, 2026-11-25).
+      if (box is FormattedNotesController) return box.markup.trim();
       return f.key == 'quantity' ? int.tryParse(text) : text;
     }
     return _picked[f.key];
@@ -2547,12 +3202,16 @@ class _DetailFormState extends State<_DetailForm> {
           onChanged: (v) =>
               setState(() => _picked[f.key] = v.isEmpty ? null : v),
         );
-      case _FieldType.text:
       case _FieldType.multiline:
+        return FormattedNotesField(
+          controller: _text[f.key]! as FormattedNotesController,
+          label: f.label,
+        );
+      case _FieldType.text:
       case _FieldType.number:
         return TextField(
           controller: _text[f.key],
-          maxLines: f.type == _FieldType.multiline ? 4 : 1,
+          maxLines: 1,
           keyboardType: f.type == _FieldType.number
               ? const TextInputType.numberWithOptions(decimal: true)
               : null,
@@ -2720,7 +3379,7 @@ class _DeletePanelState extends State<_DeletePanel> {
             'personal data is erased in every module, and their email and '
             'phone become free for a new account. Jobs, invoices, payroll '
             'totals and the audit log stay, with their name replaced by '
-            '"Removed account".',
+            '"Former staff".',
           ),
           const SizedBox(height: 16),
           if (_error != null) ...[

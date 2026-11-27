@@ -37,3 +37,6 @@ bool reload() {
     return false;
   }
 }
+
+/// No phone operating system in a browser. See client_platform.dart.
+String? osVersion() => null;

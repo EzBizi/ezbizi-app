@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Availability › Calendar View (Jose, 2026-09-25, from A1 Tools' calendar):
+/// Availability › Calendar view (Jose, 2026-09-25, from A1 Tools' calendar):
 /// a franchise's or an area's month, spots left of what each day takes.
 void main() {
   testWidgets('a franchise month shows each day left of capacity', (
@@ -17,7 +17,7 @@ void main() {
     final asked = <Uri>[];
     await _pump(tester, asked);
 
-    await tester.tap(find.text('DMV'));
+    await _choose(tester, 'DMV');
     await tester.pumpAndSettle();
 
     Finder inDay(String date, String text) => find.descendant(
@@ -66,7 +66,7 @@ void main() {
     final asked = <Uri>[];
     await _pump(tester, asked);
 
-    await tester.tap(find.text('DMV'));
+    await _choose(tester, 'DMV');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Maryland'));
     await tester.pumpAndSettle();
@@ -86,7 +86,7 @@ void main() {
     final asked = <Uri>[];
     await _pump(tester, asked);
 
-    await tester.tap(find.text('All areas'));
+    await _choose(tester, 'All areas');
     await tester.pumpAndSettle();
 
     expect(asked.last.queryParameters.containsKey('franchise_id'), isFalse);
@@ -104,7 +104,7 @@ void main() {
     addTearDown(() => FlutterError.onError = previous);
 
     await _pump(tester, <Uri>[], width: 360);
-    await tester.tap(find.text('DMV'));
+    await _choose(tester, 'DMV');
     await tester.pumpAndSettle();
 
     expect(
@@ -198,4 +198,11 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// The branch is one searchable picker (deep dive 2026-11-02), not a chip each.
+Future<void> _choose(WidgetTester tester, String label) async {
+  await tester.tap(find.byKey(const ValueKey('calendar-franchise-picker')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label).last);
 }

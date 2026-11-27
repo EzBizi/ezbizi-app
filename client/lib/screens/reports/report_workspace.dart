@@ -1,4 +1,7 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
+
+import '../../widgets/list_table.dart';
 
 import '../../core/api_client.dart';
 import '../../core/files.dart';
@@ -260,18 +263,18 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
       children: [
         Padding(
           padding: const EdgeInsets.all(8),
-          child: TextField(
+          child: ListSearch(
             key: const Key('workspace-search'),
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Find a report',
-              border: OutlineInputBorder(),
-            ),
+            hint: 'Find a report',
             onChanged: (v) => setState(() => _query = v),
           ),
         ),
-        ...group('Tables', ReportWorkspace.tables),
+        // Meta ad spend is the Meta report's numbers, read on its grant
+        // (roles audit 2026-11-24); without it the entry only refused.
+        ...group('Tables', [
+          for (final t in ReportWorkspace.tables)
+            if (t.key != 'meta' || (_me?.can('reports.meta.view') ?? false)) t,
+        ]),
         ...group('Daily texts', ReportWorkspace.texts),
       ],
     );
@@ -349,8 +352,22 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
     if (data == null) return const SizedBox.shrink();
 
     if (_open!.text) {
-      return SelectableText(
-        '${data['text'] ?? ''}',
+      // The daily text is WhatsApp's: *bold* drawn bold, not with its
+      // asterisks (phone audit 2026-11-04, Section 4 #9).
+      final text = '${data['text'] ?? ''}';
+      return SelectableText.rich(
+        TextSpan(
+          children: [
+            for (final (i, part)
+                in text.split(RegExp(r'\*(?=\S)|(?<=\S)\*')).indexed)
+              TextSpan(
+                text: part,
+                style: i.isOdd
+                    ? const TextStyle(fontWeight: FontWeight.w700)
+                    : null,
+              ),
+          ],
+        ),
         key: const ValueKey('workspace-text'),
         style: theme.textTheme.bodyMedium,
       );
@@ -411,22 +428,16 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              for (final h in rows.first) DataColumn(label: Text(cell(h))),
-            ],
-            rows: [
-              for (final r in shown)
-                DataRow(
-                  cells: [
-                    for (var i = 0; i < rows.first.length; i++)
-                      DataCell(Text(i < r.length ? cell(r[i]) : '')),
-                  ],
-                ),
-            ],
-          ),
+        ListTable(
+          key: const Key('report-workspace-table'),
+          columns: [for (final h in rows.first) ListColumn(cell(h))],
+          rows: [
+            for (final r in shown)
+              [
+                for (var i = 0; i < rows.first.length; i++)
+                  Text(i < r.length ? cell(r[i]) : ''),
+              ],
+          ],
         ),
         if (pages > 1)
           Row(

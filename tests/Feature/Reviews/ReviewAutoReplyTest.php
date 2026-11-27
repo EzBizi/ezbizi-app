@@ -110,6 +110,22 @@ class ReviewAutoReplyTest extends TestCase
         Http::assertSentCount(2); // one token, one reply
     }
 
+    /** Sweep 2026-11-04: Jose's saved view was A-1, and his rule refused every Everdoors review. */
+    public function test_the_authors_saved_view_does_not_narrow_where_the_rule_publishes(): void
+    {
+        $this->signedInAs($this->t['admin'])->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();
+        $this->inTenant($this->t['org'], function () {
+            $other = \App\Models\Company::create(['organization_id' => $this->t['org']->id, 'name' => 'Other Co']);
+            $this->review->forceFill(['company_id' => $this->t['company']->id])->save();
+            $this->t['admin']->forceFill(['preferences' => ['navigation.scope' => 'company:'.$other->id]])->save();
+        });
+
+        $result = $this->fire($this->t['admin']->fresh());
+
+        $this->assertTrue($result['ok'], $result['detail'] ?? '');
+        $this->assertSame(1, $this->published());
+    }
+
     public function test_an_author_who_may_not_publish_posts_nothing(): void
     {
         $this->signedInAs($this->t['admin'])->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();
@@ -171,14 +187,42 @@ class ReviewAutoReplyTest extends TestCase
         $this->assertSame(\App\Support\Reviews\ReviewAutoReplyRule::REPLIES['2'], ReviewReply::withoutGlobalScopes()->first()->body);
     }
 
-    public function test_the_backfill_makes_the_rule_for_listings_switched_on_before(): void
+    /** Health sweep 11-09 and 11-12: Google 404s a review it has not indexed yet; the reply is retried an hour later. */
+    public function test_a_google_404_keeps_the_draft_and_retries_an_hour_later(): void
     {
+        \Illuminate\Support\Facades\Queue::fake();
+        Http::swap(new \Illuminate\Http\Client\Factory);   // setUp's fakes stack ahead of new ones
+        Http::fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'at', 'expires_in' => 3600]),
+            '*/reply' => Http::response(['error' => ['code' => 404]], 404),
+        ]);
         $this->signedInAs($this->t['admin'])->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();
-        $this->inTenant($this->t['org'], fn () => Automation::query()->where('name', \App\Support\Reviews\ReviewAutoReplyRule::NAME)->get()
-            ->each(fn ($a) => $a->versions()->delete() + $a->forceDelete()));
 
-        $this->artisan('ezbizi:review-auto-reply-rule')->assertSuccessful();
+        $result = $this->fire();
 
-        $this->assertSame(1, $this->inTenant($this->t['org'], fn () => Automation::query()->where('name', \App\Support\Reviews\ReviewAutoReplyRule::NAME)->count()));
+        $this->assertTrue($result['ok'], $result['detail'] ?? '');
+        $this->assertTrue($result['skipped'] ?? false);
+        $this->assertSame(ReviewReply::STATUS_DRAFT, ReviewReply::withoutGlobalScopes()->first()->status);
+        \Illuminate\Support\Facades\Queue::assertPushed(\Illuminate\Queue\CallQueuedClosure::class, fn ($job) => $job->delay !== null);
+    }
+
+    /** Health sweep 2026-11-23: Google's reason is kept, and an unclaimed listing is a skip, not a failure. */
+    public function test_an_unclaimed_listing_keeps_the_draft_with_googles_reason(): void
+    {
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'at', 'expires_in' => 3600]),
+            '*/reply' => Http::response(['error' => ['code' => 400, 'status' => 'FAILED_PRECONDITION',
+                'message' => 'This operation is not supported for unclaimed locations.']], 400),
+        ]);
+        $this->signedInAs($this->t['admin'])->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();
+
+        $result = $this->fire();
+
+        $this->assertTrue($result['ok']);
+        $this->assertTrue($result['skipped'] ?? false);
+        $reply = ReviewReply::withoutGlobalScopes()->first();
+        $this->assertSame(ReviewReply::STATUS_DRAFT, $reply->status);
+        $this->assertStringContainsString('unclaimed locations', $reply->failure_reason);
     }
 }

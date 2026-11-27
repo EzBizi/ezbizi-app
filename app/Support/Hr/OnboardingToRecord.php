@@ -6,6 +6,7 @@ use App\Models\HeldEquipment;
 use App\Models\Onboarding;
 use App\Models\PayRate;
 use App\Models\User;
+use App\Support\Contracts\RateSteps;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
 use App\Support\TimeClock\WorkSchedule;
@@ -67,6 +68,21 @@ final class OnboardingToRecord
                 'note' => 'From the signed contract',
             ]);
             $written[] = 'pay_rate';
+        }
+
+        // Hourly rate stages (Merav, 2026-11-17): each one a pay rate dated N
+        // days after the start, so it applies itself on that day and the
+        // pay_rates rows are the history. Needs the real start date.
+        [$steps] = RateSteps::parse($a['hourly_rate_steps'] ?? '[]');
+        foreach ($hired === null ? [] : ($steps ?? []) as $step) {
+            $from = Carbon::parse($hired)->addDays($step['after_days'])->toDateString();
+            if (! PayRate::query()->where('user_id', $user->id)->where('basis', 'hourly')->whereDate('effective_on', $from)->exists()) {
+                PayRate::create([
+                    'user_id' => $user->id, 'basis' => 'hourly', 'amount' => $step['rate'], 'period' => 'hour',
+                    'effective_on' => $from, 'note' => "Rate stage: after {$step['after_days']} days",
+                ]);
+                $written[] = 'pay_rate_stages';
+            }
         }
 
         foreach (['tools' => 'tool', 'equipment' => 'equipment'] as $key => $category) {

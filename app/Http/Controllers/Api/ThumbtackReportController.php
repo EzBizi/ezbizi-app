@@ -33,7 +33,10 @@ class ThumbtackReportController extends Controller
             ->where('leads.organization_id', app(TenantContext::class)->idOrFail())
             ->where('leads.source', 'thumbtack')
             ->where('leads.is_test', false)
-            ->when(ReportView::franchiseIds(), fn ($w, $ids) => $w->whereIn('leads.franchise_id', $ids));
+            // A lead no branch has claimed yet stays in every view, under "No
+            // branch": all 19 of A-1's had none, so a company view showed
+            // nothing (2026-11-04).
+            ->when(ReportView::franchiseIds(), fn ($w, $ids) => $w->where(fn ($w) => $w->whereIn('leads.franchise_id', $ids)->orWhereNull('leads.franchise_id')));
 
         $rows = $leads()
             ->leftJoin('franchises as f', 'f.id', '=', 'leads.franchise_id')

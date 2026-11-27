@@ -25,20 +25,23 @@ class AirtableSnapshotCommand extends Command
 
         $ok = true;
         foreach ($orgs as $orgId) {
-            // An Airtable personal access token reaches every base it was
-            // granted, so the organization's connection is the credential.
-            $token = (string) (SocialConnection::query()->withoutGlobalScopes()->where('organization_id', $orgId)
-                ->where('provider', SocialProvider::Airtable->value)->first()?->credentials['api_token'] ?? '');
+            // One connection per base (remote_id is the base id): each base is
+            // read with its own connection's token, not the first row's.
+            $tokens = SocialConnection::query()->withoutGlobalScopes()->where('organization_id', $orgId)
+                ->where('provider', SocialProvider::Airtable->value)
+                ->where('status', SocialConnection::STATUS_CONNECTED)->get()
+                ->mapWithKeys(fn (SocialConnection $c) => [(string) $c->remote_id => (string) ($c->credentials['api_token'] ?? '')])
+                ->filter()->all();
             $organization = Organization::query()->find($orgId);
 
-            if ($token === '' || $organization === null) {
+            if ($tokens === [] || $organization === null) {
                 $this->warn("{$orgId}: tables are mapped but Airtable is not connected.");
                 $ok = false;
 
                 continue;
             }
 
-            $done = $tenant->run($organization, fn () => $snapshot->sync((string) $orgId, $token));
+            $done = $tenant->run($organization, fn () => $snapshot->sync((string) $orgId, $tokens));
 
             $this->info("{$organization->name}: tables {$done['tables']}, rows {$done['rows']}, changed {$done['changed']}, gone {$done['gone']}.");
             foreach ($done['failed'] as $line) {

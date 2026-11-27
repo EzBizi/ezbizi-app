@@ -116,6 +116,8 @@ class PhoneQueueCallbackTest extends TestCase
     public function test_going_available_queues_the_attempt(): void
     {
         Queue::fake();
+        // On the realtime queue, so a backfill never holds a waiting caller (11-18).
+        config(['queue.automations_realtime' => 'realtime']);
 
         [$t, $connection, , $desk] = $this->deskWithACallbackOwed();
 
@@ -126,7 +128,7 @@ class PhoneQueueCallbackTest extends TestCase
             ])
             ->assertOk();
 
-        Queue::assertPushed(PlaceQueueCallback::class);
+        Queue::assertPushedOn('realtime', PlaceQueueCallback::class);
     }
 
     /**
@@ -166,7 +168,7 @@ class PhoneQueueCallbackTest extends TestCase
                 'connection_id' => $connection->id,
                 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
-                'e164' => '+13057249401',
+                'e164' => '+13055550113',
             ]);
 
             PhoneDeviceRegistration::query()->create([

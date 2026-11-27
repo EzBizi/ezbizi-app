@@ -41,7 +41,26 @@ void main() {
       tester,
     ) async {
       final module = (registry[entry.key] as Map?)?.cast<String, dynamic>();
-      final declared = ((module?['tabs'] as List?) ?? const []).cast<String>();
+      // A tab drawn inside another tab is checked in that tab's own strip
+      // (Marketing › Social Media Management › Compose).
+      final within =
+          (module?['within'] as Map?)?.cast<String, String>() ?? const {};
+      final allTabs = ((module?['tabs'] as List?) ?? const []).cast<String>();
+      // A group with no grant of its own (Reports › Jobs: Overview ·
+      // Cancelled · Pending, design 199) is one chip in the strip, at its
+      // first member's place, and holds its members' strip.
+      final groups = {
+        for (final v in within.values)
+          if (!allTabs.contains(v)) v,
+      };
+      final declared = [
+        for (final tab in allTabs)
+          if (!within.containsKey(tab))
+            tab
+          else if (groups.contains(within[tab]) &&
+              allTabs.firstWhere((t) => within[t] == within[tab]) == tab)
+            within[tab]!,
+      ];
 
       // A parent screen draws its child modules (Jobs › Estimates) in the same
       // strip. Those are granted as modules, not tabs, so they are set aside.
@@ -85,12 +104,16 @@ void main() {
       final inner = <String, List<String>>{};
       if (first.any(children.contains)) {
         for (final pane in first) {
-          await tester.tap(
-            find.descendant(
-              of: find.byType(TabBarLike).first,
-              matching: find.widgetWithText(ChoiceChip, pane),
-            ),
-          );
+          // A long strip scrolls under its arrows, where a tap can miss:
+          // the chip is chosen as a tap would choose it.
+          tester
+              .widget<ChoiceChip>(
+                find.descendant(
+                  of: find.byType(TabBarLike).first,
+                  matching: find.widgetWithText(ChoiceChip, pane),
+                ),
+              )
+              .onSelected!(true);
           await tester.pump(const Duration(seconds: 1));
           // A pane that loads before drawing its strip needs the second frame
           // (Marketing opens on Social Media since 2026-10-21, so Newsletter
@@ -115,15 +138,57 @@ void main() {
       }
 
       // A one-chip strip is a screen, not a choice; the registry has no tab
-      // to grant for it either way. A parent's one pane of its own is the
-      // module itself when it carries the module's strip (Marketing › Social
-      // Media) or its name (Customers); otherwise it is a tab of the parent,
+      // to grant for it either way. A parent's one pane of its own is a tab
+      // holding tabs when the registry nests them in it (Marketing › Social
+      // Media Management), the module itself when it carries the module's
+      // strip or its name (Customers); otherwise it is a tab of the parent,
       // a choice beside the child chips (Customer Experience › Complaints).
       final String? pane = own.length == 1 && inner.containsKey(own.single)
           ? own.single
           : null;
+      // A pane whose grants are drawn as tools beside its page rather than
+      // as a strip (Marketing › Social, UI queue 199): every grant inside it
+      // must still draw the control it opens, or the roles editor grants a
+      // thing nobody can reach.
+      final tools = _paneTools[pane];
+      if (pane != null && tools != null) {
+        expect(inner[pane], isEmpty, reason: '$pane draws no strip now.');
+        // Back on the pane: the loop above left the last one in front.
+        await tester.tap(
+          find.descendant(
+            of: find.byType(TabBarLike).first,
+            matching: find.widgetWithText(ChoiceChip, pane),
+          ),
+        );
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump(const Duration(seconds: 1));
+        for (final MapEntry(:key, :value) in within.entries) {
+          if (value != pane) continue;
+          expect(
+            tools[key],
+            isNotNull,
+            reason: 'Grant $key inside $pane opens nothing on screen.',
+          );
+          expect(
+            find.byKey(ValueKey(tools[key]!)),
+            findsWidgets,
+            reason: 'Grant $key inside $pane: ${tools[key]} is not drawn.',
+          );
+        }
+      } else if (pane != null && within.containsValue(pane)) {
+        expect(
+          _asTabs(inner[pane]!),
+          [
+            for (final MapEntry(:key, :value) in within.entries)
+              if (value == pane) key,
+          ],
+          reason: 'Tabs inside $pane and their TabDefinitions disagree.',
+        );
+      }
       final shown = pane == null
           ? _asTabs(own)
+          : within.containsValue(pane)
+          ? own
           : inner[pane]!.length >= 2 || pane == module?['label']
           ? _asTabs(inner[pane]!)
           : own;
@@ -139,6 +204,34 @@ void main() {
               '_knownDrift.',
         );
         return;
+      }
+
+      for (final group in groups) {
+        if (!shown.contains(group)) continue;
+        // Read when every pane was opened above; else opened here.
+        var strip = inner[group];
+        if (strip == null) {
+          tester
+              .widget<ChoiceChip>(
+                find.descendant(
+                  of: find.byType(TabBarLike).first,
+                  matching: find.widgetWithText(ChoiceChip, group),
+                ),
+              )
+              .onSelected!(true);
+          await tester.pump(const Duration(seconds: 1));
+          await tester.pump(const Duration(seconds: 1));
+          strip = _strip(tester, 1);
+        }
+        expect(
+          strip,
+          [
+            for (final MapEntry(:key, :value) in within.entries)
+              if (value == group) key,
+          ],
+          reason:
+              'Tabs inside the $group group and their TabDefinitions disagree.',
+        );
       }
 
       expect(
@@ -163,6 +256,19 @@ List<String> _strip(WidgetTester tester, int index) {
       label.$1,
   ];
 }
+
+/// Panes whose grants are tools beside the page, not tabs: grant key to the
+/// key of the control it draws (labels, as the fixture's `within` has them).
+const _paneTools = {
+  'Social Media Management': {
+    'Dashboard': 'tour-marketing-month',
+    'Calendar': 'tour-marketing-month',
+    'Compose': 'tour-marketing-new-post',
+    'Accounts': 'social-connections',
+    'Comments': 'social-comments',
+    'QR Codes': 'social-qr',
+  },
+};
 
 /// A strip of fewer than two is a screen, not a choice of tabs.
 List<String> _asTabs(List<String> strip) => strip.length < 2 ? const [] : strip;

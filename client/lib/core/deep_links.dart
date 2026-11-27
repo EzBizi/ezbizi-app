@@ -25,7 +25,16 @@ class DeepLink {
     required this.id,
     this.mailbox,
     this.date,
+    this.update,
+    this.label,
   });
+
+  /// For a `tab` link (a phone bottom-bar slot, design 208): the tab's label,
+  /// for a screen whose tabs are keyed by their words.
+  final String? label;
+
+  /// For a `task` mention or reply: the update to scroll into view.
+  final String? update;
 
   /// The module key that should open it, e.g. `email`.
   final String module;
@@ -58,6 +67,12 @@ class DeepLinks {
   /// Hand a link to whichever screen owns [link.module].
   static void open(DeepLink link) => pending.value = link;
 
+  /// A module the shell should switch to (a dashboard card was clicked).
+  /// The shell listens and clears it.
+  static final ValueNotifier<String?> module = ValueNotifier<String?>(null);
+
+  static void openModule(String key) => module.value = key;
+
   /// The pending link for [module], consumed — or null when the waiting link
   /// belongs to another module (it stays for that one) or there is none.
   ///
@@ -74,8 +89,75 @@ class DeepLinks {
   /// date=Y-m-d` is the link in the day-before under-filled email
   /// (SchedulingWarnUnderfilled): Scheduling › Re-Scheduling › Rescheduling
   /// Availability on that day. The path stays as sent in old emails. Takes the URI so a test can hand it one.
+  static const _records = {
+    'jobs': 'job',
+    'leads': 'lead',
+    'customers': 'customer',
+    'tasks': 'task',
+  };
+
+  /// Jose 11-24: an EzBizi address in a cell ("https://app.ezbizi.com/app/#/
+  /// customer_experience/complaints/{id}") opens here, not in a browser tab.
+  /// The place inside the app it names, as a path, or null for any other
+  /// address.
+  static String? appPath(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || !uri.hasScheme) return null;
+    final host = uri.host.toLowerCase();
+    if (host != 'app.ezbizi.com' && host != Uri.base.host.toLowerCase()) {
+      return null;
+    }
+    final inner = uri.fragment.startsWith('/')
+        ? uri.fragment
+        : uri.path.replaceFirst(RegExp(r'^/app(?=/|$)'), '');
+    final path = inner.isEmpty ? '/' : inner;
+    return path == '/' ? null : path;
+  }
+
+  /// Opens [path] (from [appPath]): its record when it names one, else its
+  /// module.
+  static void openPath(String path) {
+    final uri = Uri.parse(path);
+    final link = fromUri(uri);
+    final module =
+        link?.module ??
+        uri.pathSegments.firstWhere((s) => s.isNotEmpty, orElse: () => '');
+    if (link != null) open(link);
+    if (module.isNotEmpty) openModule(module);
+  }
+
   static DeepLink? fromUri(Uri uri) {
     final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    // /customer_experience/complaints/{id}: the Reviews & Complaints board's links.
+    if (segments.length == 3 &&
+        segments[0] == 'customer_experience' &&
+        segments[1] == 'complaints') {
+      return DeepLink(
+        module: 'customer_experience',
+        type: 'complaint',
+        id: segments[2],
+      );
+    }
+    // /jobs/{id}, /leads/{id}, /customers/{id}: one record, opened in its
+    // module's panel (monday port, 2026-11-09).
+    if (segments.length == 2 && _records.containsKey(segments[0])) {
+      return DeepLink(
+        module: segments[0],
+        type: _records[segments[0]]!,
+        id: segments[1],
+      );
+    }
+    // /hr?tab=records: one of a module's tabs, as "Open in new window" opens
+    // it (AppWindow.pathFor), taken the way a bottom-bar slot's link is.
+    final tab = uri.queryParameters['tab'];
+    if (segments.length == 1 && tab != null && tab.isNotEmpty) {
+      return DeepLink(
+        module: segments[0],
+        type: 'tab',
+        id: tab,
+        label: uri.queryParameters['label'],
+      );
+    }
     if (segments.length != 2 ||
         segments[0] != 'scheduling' ||
         segments[1] != 'overbooking') {

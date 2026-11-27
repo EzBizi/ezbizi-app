@@ -199,8 +199,8 @@ void main() {
     await tester.tap(find.text('Add a text field'));
     await tester.pumpAndSettle();
 
-    expect(find.text('[ezbizi_about_us_field_4]'), findsOneWidget);
-    expect(find.text('[ezbizi_about_us_field_2]'), findsNothing);
+    expect(find.byTooltip('Copies [ezbizi_about_us_field_4]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_about_us_field_2]'), findsNothing);
   });
 
   /// The shortcode is the only reason the field is worth filling in, so it is
@@ -222,7 +222,7 @@ void main() {
       ],
     );
 
-    expect(find.text('[ezbizi_about_us_field_1]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_about_us_field_1]'), findsOneWidget);
     expect(find.text('We have swept since 1974.'), findsOneWidget);
   });
 
@@ -295,8 +295,8 @@ void main() {
   ) async {
     await pump(tester);
 
-    expect(find.text('[ezbizi_phone]'), findsOneWidget);
-    expect(find.text('[ezbizi_group]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_phone]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_group]'), findsOneWidget);
 
     // Copyable, not printed: the control is the point.
     expect(find.byType(ShortcodeButton), findsWidgets);

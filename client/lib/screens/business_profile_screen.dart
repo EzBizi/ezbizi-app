@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
 import '../widgets/search_picker.dart';
+import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
 import 'business_profile/listing_copy.dart';
@@ -18,7 +20,7 @@ import 'business_profile/listing_media.dart';
 import 'business_profile/listing_services.dart';
 import 'business_profile/performance_view.dart';
 import 'business_profile/phone_check_view.dart';
-import 'business_profile/whatsapp_bulk_view.dart';
+import 'business_profile/whatsapp_links.dart';
 import 'business_profile/whatsapp_row.dart';
 import 'monitoring/device_display.dart' show relativeAge;
 
@@ -105,11 +107,12 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   /// Phone check in the tab's place (design 154 #10).
   bool _phoneCheck = false;
 
-  /// WhatsApp links in bulk in the tab's place (UI queue 163).
-  bool _waBulk = false;
+  /// Each listing's WhatsApp link, inline in the table (UI queue 164).
+  late final _wa = WhatsAppLinks(widget.api)..addListener(_waChanged);
 
-  /// With [_waBulk]: the one listing being set, or null for every listing.
-  String? _waOnly;
+  void _waChanged() {
+    if (mounted) setState(() {});
+  }
 
   /// Every listing but [id], as "Company · Branch", for copying to.
   List<ListingTarget> _othersThan(String id) => [
@@ -123,10 +126,12 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   void initState() {
     super.initState();
     _load();
+    if (!_performance) _wa.load();
   }
 
   @override
   void dispose() {
+    _wa.dispose();
     _syncPoll?.cancel();
     _searchController.dispose();
     super.dispose();
@@ -165,6 +170,13 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       );
       // Look again until the connect-time sync has read the listings.
       _serverSyncing = meta['syncing'] == true;
+      // A read that failed says so on the card instead of looking idle (2026-11-12).
+      final failed = [
+        for (final e
+            in (meta['sync_errors'] as List? ?? const []).whereType<Map>())
+          '${e['connection']}: ${e['message']}',
+      ];
+      if (failed.isNotEmpty) _notice = failed.join(' · ');
       _syncPoll?.cancel();
       _syncPoll = _serverSyncing
           ? Timer(const Duration(seconds: 10), _load)
@@ -386,17 +398,6 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         final open = _open;
         final paneBeside = box.maxWidth >= _paneBesideFrom;
 
-        if (_waBulk) {
-          return WhatsAppBulkView(
-            api: widget.api,
-            only: _waOnly,
-            onBack: () => setState(() {
-              _waBulk = false;
-              _waOnly = null;
-            }),
-          );
-        }
-
         if (_phoneCheck) {
           return PhoneCheckView(
             api: widget.api,
@@ -436,6 +437,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                 ),
               ),
             if (_locations.isNotEmpty) _filters(theme, cards),
+            WhatsAppBar(links: _wa),
             const Divider(height: 1),
             Expanded(
               child: AsyncBody(
@@ -518,54 +520,78 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       ),
     );
 
-    final phoneCheck = IconButton(
-      key: const ValueKey('cx-open-phone-check'),
-      tooltip: 'Phone check',
-      icon: const Icon(Icons.phone_in_talk_outlined),
-      onPressed: () => setState(() => _phoneCheck = true),
+    final profile = _profile;
+    // Design 164: the connection is a chip; who it is and how to change it
+    // are one tap away under the more menu, with Phone check.
+    final google = profile == null
+        ? null
+        : Tooltip(
+            message: '${profile['display_name'] ?? profile['name'] ?? ''}',
+            child: StatusPill(
+              key: const ValueKey('tour-business-profile-account'),
+              profile['status'] == 'connected' ? 'Google ✓' : 'Google',
+              tone: profile['status'] == 'connected' ? Tone.ok : Tone.caution,
+            ),
+          );
+    final more = PopupMenuButton<String>(
+      key: const ValueKey('gbp-more'),
+      tooltip: 'More',
+      icon: const Icon(Icons.more_horiz),
+      onSelected: (v) {
+        if (v == 'phone') setState(() => _phoneCheck = true);
+        if (v == 'google' && profile != null) {
+          showSidePanel<void>(
+            context,
+            builder: (context) => SidePanel(
+              title: 'Google connection',
+              child: ConnectedAccount(connection: profile),
+            ),
+          );
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          key: ValueKey('cx-open-phone-check'),
+          value: 'phone',
+          child: ListTile(
+            leading: Icon(Icons.phone_in_talk_outlined),
+            title: Text('Phone check'),
+          ),
+        ),
+        if (profile != null)
+          const PopupMenuItem(
+            key: ValueKey('gbp-google-connection'),
+            value: 'google',
+            child: ListTile(
+              leading: Icon(Icons.settings_outlined),
+              title: Text('Google connection…'),
+            ),
+          ),
+      ],
     );
 
-    void openWaBulk() => setState(() => _waBulk = true);
-    final Widget waBulk = narrow
-        ? IconButton(
-            key: const ValueKey('cx-open-wa-bulk'),
-            tooltip: 'WhatsApp links in bulk',
-            icon: const Icon(Icons.chat_outlined),
-            onPressed: openWaBulk,
-          )
-        : TextButton.icon(
-            key: const ValueKey('cx-open-wa-bulk'),
-            icon: const Icon(Icons.chat_outlined, size: 18),
-            label: const Text('WhatsApp links in bulk'),
-            onPressed: openWaBulk,
-          );
-
-    final profile = _profile == null
-        ? null
-        : ConnectedAccount(
-            key: const ValueKey('tour-business-profile-account'),
-            connection: _profile!,
-          );
-
+    // Mobile review 2026-11-13: beside the actions the counts wrapped to
+    // "3 not sho…". On a phone they get the line to themselves, and the
+    // chip, more and Check Google go under them.
     if (narrow) {
       return Padding(
-        padding: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Row(
-                children: [
-                  Expanded(child: counts),
-                  waBulk,
-                  phoneCheck,
-                  const SizedBox(width: 4),
-                  check,
-                ],
-              ),
+            counts,
+            const SizedBox(height: 6),
+            // A Wrap, so a long label or a large text size puts the chip on
+            // its own line rather than past the edge.
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              runSpacing: 4,
+              children: [
+                ?google,
+                Row(mainAxisSize: MainAxisSize.min, children: [more, check]),
+              ],
             ),
-            ?profile,
           ],
         ),
       );
@@ -576,17 +602,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       child: Row(
         children: [
           Expanded(child: counts),
-          if (profile != null)
-            // ConnectedAccount carries its own 16 px sides and 8 px bottom.
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: profile,
-              ),
-            ),
-          waBulk,
-          phoneCheck,
-          const SizedBox(width: 8),
+          if (google != null) ...[google, const SizedBox(width: 4)],
+          more,
+          const SizedBox(width: 4),
           check,
         ],
       ),
@@ -596,21 +614,34 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   // ── The filters: segment, branch, search ─────────────────────
 
   Widget _filters(ThemeData theme, bool narrow) {
+    // One line per segment on a phone: "Not showing · 3" wrapped to two
+    // (mobile review 2026-11-13). Scaled down rather than cut, so the count
+    // is never lost.
+    Widget fit(Widget label) =>
+        narrow ? FittedBox(fit: BoxFit.scaleDown, child: label) : label;
     final segment = SegmentedButton<_Show>(
       key: const ValueKey('tour-business-profile-not-showing'),
       segments: [
         ButtonSegment(
           value: _Show.showing,
-          label: Text(
-            'Showing · $_showingCount',
-            key: const ValueKey('gbp-show-showing'),
+          label: fit(
+            Text(
+              'Showing · $_showingCount',
+              maxLines: 1,
+              softWrap: false,
+              key: const ValueKey('gbp-show-showing'),
+            ),
           ),
         ),
         ButtonSegment(
           value: _Show.notShowing,
-          label: Text(
-            'Not showing · $_notShowingCount',
-            key: const ValueKey('gbp-show-not-showing'),
+          label: fit(
+            Text(
+              'Not showing · $_notShowingCount',
+              maxLines: 1,
+              softWrap: false,
+              key: const ValueKey('gbp-show-not-showing'),
+            ),
           ),
         ),
         const ButtonSegment(
@@ -643,14 +674,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
     final search = SizedBox(
       width: narrow ? double.infinity : 240,
-      child: TextField(
+      child: ListSearch(
         key: const ValueKey('gbp-search'),
         controller: _searchController,
-        decoration: const InputDecoration(
-          isDense: true,
-          prefixIcon: Icon(Icons.search, size: 18),
-          hintText: 'City or address',
-        ),
+        hint: 'City or address',
         onChanged: (v) => setState(() => _search = v),
       ),
     );
@@ -666,13 +693,17 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                 branch,
                 const SizedBox(height: 8),
                 search,
+                if (whatsAppPickChips(_wa).isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 6, children: whatsAppPickChips(_wa)),
+                ],
               ],
             )
           : Wrap(
               spacing: 10,
               runSpacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
-              children: [segment, branch, search],
+              children: [segment, branch, search, ...whatsAppPickChips(_wa)],
             ),
     );
   }
@@ -799,8 +830,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     ('Branch', 4),
     ('City', 3),
     ('Phone', 3),
-    ('Category', 3),
     ('Google', 2),
+    ('WhatsApp', 3),
     ('Auto-reply', 2),
     ('Checked', 2),
   ];
@@ -859,11 +890,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         for (final l in rows)
           Material(
             key: ValueKey('gbp-row-${l['id']}'),
-            color: _live(l)
-                ? (l['id'] == _openId
-                      ? theme.colorScheme.primaryContainer
-                      : Colors.transparent)
-                : ToneColours.of(context, Tone.bad).fill,
+            // Neutral: the red pill names the problem; a whole red row read
+            // as an alarm (desktop review 2026-11-13, Top 7).
+            color: l['id'] == _openId
+                ? theme.colorScheme.primaryContainer
+                : Colors.transparent,
             child: InkWell(
               onTap: () => setState(
                 () => _openId = l['id'] == _openId ? null : l['id'] as String?,
@@ -881,8 +912,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                   _branchCell(theme, l),
                   text(_city(l)),
                   text(formatPhoneNumber(l['phone'] as String?)),
-                  text(l['primary_category'] as String? ?? ''),
                   _pill(l),
+                  WhatsAppCell(links: _wa, id: '${l['id']}'),
                   _autoReply(theme, l, where: 'row'),
                   text(_checked(l), style: muted),
                 ]),
@@ -937,9 +968,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Material(
               key: ValueKey('gbp-card-${l['id']}'),
-              color: _live(l)
-                  ? theme.colorScheme.surface
-                  : ToneColours.of(context, Tone.bad).fill,
+              color: theme.colorScheme.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
                 side: BorderSide(color: EzBiziTheme.edge(context)),
@@ -971,6 +1000,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      if (_wa.rows.isNotEmpty)
+                        WhatsAppCell(links: _wa, id: '${l['id']}'),
                     ],
                   ),
                 ),
@@ -1097,11 +1128,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       if (whatsapp != null && whatsapp.isNotEmpty)
         WhatsAppRow(
           link: whatsapp,
-          onBulk: () => setState(() => _waBulk = true),
-          onSet: () => setState(() {
-            _waBulk = true;
-            _waOnly = '${l['id']}';
-          }),
+          onSet: _wa.tickable('${l['id']}')
+              ? () => _wa.pickOnly('${l['id']}')
+              : null,
         ),
       fact(
         'Category',

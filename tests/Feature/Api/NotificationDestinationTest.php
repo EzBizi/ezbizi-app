@@ -4,8 +4,16 @@ namespace Tests\Feature\Api;
 
 use App\Http\Controllers\Api\NotificationsController;
 use App\Models\AutomationEvent;
+use App\Models\Franchise;
+use App\Models\Mailbox;
 use App\Models\Notification;
+use App\Models\Review;
+use App\Models\Task;
+use App\Models\TaskGroup;
+use App\Models\TaskUpdate;
+use App\Models\TimeClockCorrectionRequest;
 use App\Support\Modules\ModuleRegistry;
+use App\Support\Tasks\TaskBoards;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use ReflectionClassConstant;
@@ -35,7 +43,7 @@ class NotificationDestinationTest extends TestCase
             Notification::forceCreate([
                 'id' => (string) Str::uuid7(), 'organization_id' => $tenant['org']->id,
                 'user_id' => $tenant['admin']->id, 'source' => $row['source'] ?? 'automation',
-                'title' => 'T', 'subject_type' => $row['subject_type'] ?? null,
+                'title' => 'T', 'kind' => $row['kind'] ?? null, 'subject_type' => $row['subject_type'] ?? null,
                 'subject_id' => $row['subject_id'] ?? null, 'event_id' => $eventId, 'created_at' => now(),
             ]);
         });
@@ -48,12 +56,23 @@ class NotificationDestinationTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $meta = $this->metaFor($tenant,
-            ['subject_type' => \App\Models\Mailbox::class, 'subject_id' => (string) Str::uuid7()],
+            ['subject_type' => Mailbox::class, 'subject_id' => (string) Str::uuid7()],
             ['key' => 'email.received', 'payload' => ['message_id' => 'msg-123', 'address' => 'info@alpha.test']],
         );
 
         $this->assertSame('email', $meta['module']);
         $this->assertSame(['type' => 'email_message', 'id' => 'msg-123', 'mailbox' => 'info@alpha.test'], $meta['record']);
+    }
+
+    public function test_an_assignment_is_kind_assigned_and_anything_else_is_not(): void
+    {
+        $tenant = $this->provisionTenant('Gamma');
+        $this->metaFor($tenant, [], ['key' => 'job.assigned', 'payload' => []]);
+        $this->assertSame('assigned', $this->signedInAs($tenant['admin'])->getJson('/api/v1/notifications')->json('data.0.kind'));
+
+        $other = $this->provisionTenant('Delta');
+        $this->metaFor($other, [], ['key' => 'vehicle.unassigned', 'payload' => []]);
+        $this->assertNull($this->signedInAs($other['admin'])->getJson('/api/v1/notifications')->json('data.0.kind'));
     }
 
     public function test_a_missed_call_opens_that_call(): void
@@ -71,7 +90,7 @@ class NotificationDestinationTest extends TestCase
         $id = (string) Str::uuid7();
         $meta = $this->metaFor($tenant, [
             'source' => 'system',
-            'subject_type' => \App\Models\TimeClockCorrectionRequest::class, 'subject_id' => $id,
+            'subject_type' => TimeClockCorrectionRequest::class, 'subject_id' => $id,
         ]);
 
         // Before: module null, so a tap went nowhere.
@@ -84,7 +103,7 @@ class NotificationDestinationTest extends TestCase
         $tenant = $this->provisionTenant('Delta');
         $id = (string) Str::uuid7();
         $meta = $this->metaFor($tenant,
-            ['subject_type' => \App\Models\Review::class, 'subject_id' => $id],
+            ['subject_type' => Review::class, 'subject_id' => $id],
             ['key' => 'review.removed', 'payload' => []],
         );
 
@@ -99,11 +118,61 @@ class NotificationDestinationTest extends TestCase
         $tenant = $this->provisionTenant('Epsilon');
         $this->metaFor($tenant, [
             'source' => 'system',
-            'subject_type' => \App\Models\Franchise::class, 'subject_id' => $tenant['franchise']->id,
+            'subject_type' => Franchise::class, 'subject_id' => $tenant['franchise']->id,
         ]);
 
         $this->signedInAs($tenant['admin'])->getJson('/api/v1/notifications')
             ->assertJsonPath('data.0.header', 'EzBizi - '.$tenant['company']->name.' - '.$tenant['franchise']->name);
+    }
+
+    public function test_a_task_mention_opens_its_task_at_that_update(): void
+    {
+        // Jose, 2026-11-17: a task notification leads to the board and task.
+        $tenant = $this->provisionTenant('Zeta');
+        [$taskId, $update] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $board = app(TaskBoards::class)->ensureFor($tenant['admin']);
+            $task = Task::query()->create([
+                'board_id' => $board->id,
+                'group_id' => TaskGroup::query()->where('board_id', $board->id)->value('id'),
+                'franchise_id' => $board->franchise_id,
+                'title' => 'Call back',
+            ]);
+
+            return [(string) $task->id, TaskUpdate::query()->forceCreate([
+                'id' => (string) Str::uuid7(), 'organization_id' => $tenant['org']->id,
+                'task_id' => $task->id, 'user_id' => $tenant['admin']->id, 'body' => '@you look',
+            ])];
+        });
+
+        $meta = $this->metaFor($tenant, ['source' => 'system', 'subject_type' => TaskUpdate::class, 'subject_id' => $update->id]);
+
+        $this->assertSame('tasks', $meta['module']);
+        $this->assertSame(['type' => 'task', 'id' => $taskId, 'update' => $update->id], $meta['record']);
+    }
+
+    /** Jennine 11-24: a Mentioned bell about the task opens its thread at the update that named you. */
+    public function test_a_mentioned_bell_on_a_task_points_at_the_update_naming_you(): void
+    {
+        $tenant = $this->provisionTenant('Eta');
+        $other = $this->userWithRole($tenant, 'Tech', ['tasks.view']);
+        [$taskId, $named] = $this->inTenant($tenant['org'], function () use ($tenant, $other) {
+            $board = app(TaskBoards::class)->ensureFor($tenant['admin']);
+            $task = Task::query()->create([
+                'board_id' => $board->id, 'group_id' => TaskGroup::query()->where('board_id', $board->id)->value('id'),
+                'franchise_id' => $board->franchise_id, 'title' => 'Spot left?',
+            ]);
+            $make = fn (string $body, ?array $mentions, string $at) => TaskUpdate::query()->forceCreate([
+                'id' => (string) Str::uuid7(), 'organization_id' => $tenant['org']->id, 'task_id' => $task->id,
+                'user_id' => $other->id, 'body' => $body, 'mentions' => $mentions, 'created_at' => $at,
+            ]);
+            $named = $make('@you any spot left?', [(string) $tenant['admin']->id], now()->subMinutes(2)->toDateTimeString());
+            $make('another note', null, now()->subMinute()->toDateTimeString());
+
+            return [(string) $task->id, (string) $named->id];
+        });
+
+        $meta = $this->metaFor($tenant, ['source' => 'mention', 'kind' => 'task.mentioned', 'subject_type' => Task::class, 'subject_id' => $taskId]);
+        $this->assertSame(['type' => 'task', 'id' => $taskId, 'update' => $named], $meta['record']);
     }
 
     public function test_every_subject_module_is_a_real_module(): void

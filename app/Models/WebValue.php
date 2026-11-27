@@ -23,6 +23,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class WebValue extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A value saved is its site's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['web_sites', WebSite::class, 'site_id'];
+
     use HasUuids;
 
     protected $table = 'web_values';

@@ -1,8 +1,10 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
@@ -10,6 +12,7 @@ import '../../widgets/side_panel.dart';
 import 'floor_plan_canvas.dart';
 import 'floor_plan_summary.dart';
 import 'note_card.dart';
+import '../../core/soft_keyboard.dart';
 
 /// Monitoring — General: an organization's machines laid out on a floor plan
 /// (spec docs/superpowers/specs/2026-09-09-monitoring-general-map-design.md).
@@ -274,11 +277,27 @@ class _GeneralTabState extends State<GeneralTab> {
   @override
   void initState() {
     super.initState();
-    if (_canView) _loadPlans();
+    if (_canView) {
+      _loadPlans();
+      // A plan drawn or assigned elsewhere, or a desk's machine changing:
+      // the plans and the open one re-read; never while it is being edited.
+      _live = LiveChanges.of(widget.api).subscribe(
+        {'monitoring_floor_plans', 'monitoring_devices'},
+        (_) async {
+          if (_editing || _loadingPlans) return;
+          final id = _selectedPlanId;
+          await Future.wait([_loadPlans(), if (id != null) _loadPlan(id)]);
+        },
+        active: LiveChanges.visible(this),
+      );
+    }
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _pollTimer?.cancel();
     super.dispose();
   }
@@ -1668,7 +1687,7 @@ class _PlanFormPanelState extends State<_PlanFormPanel> {
           TextField(
             key: const Key('plan-name'),
             controller: _name,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(
               labelText: 'Plan name',
               hintText: 'Main office',
@@ -1787,12 +1806,9 @@ class _AssignPanelState extends State<_AssignPanel> {
             ErrorNote(widget.error!),
             const SizedBox(height: 12),
           ],
-          TextField(
+          ListSearch(
             key: const Key('assign-search'),
-            decoration: const InputDecoration(
-              labelText: 'Search people',
-              prefixIcon: Icon(Icons.search),
-            ),
+            hint: 'Search people',
             onChanged: (value) => setState(() => _query = value),
           ),
           const SizedBox(height: 12),

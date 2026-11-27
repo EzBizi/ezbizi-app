@@ -190,4 +190,26 @@ class HrSecurityResetTest extends TestCase
 
         $this->assertSame(0, DB::table('password_resets')->count());
     }
+
+    /**
+     * Never on somebody whose role you could not give (full-code audit,
+     * 2026-11-27): a non-administrator with the permission cannot clear an
+     * Administrator's authenticator or fetch their reset link.
+     */
+    public function test_a_non_administrator_cannot_reset_an_administrator(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $target = $t['admin'];
+        $this->inTenant($t['org'], fn () => $target->forceFill([
+            'totp_secret' => 'JBSWY3DPEHPK3PXP', 'totp_confirmed_at' => now(),
+        ])->save());
+        $resetter = $this->userWithRole($t, 'Resetter', ['hr.view', 'hr.security.reset']);
+
+        $this->signedInAs($resetter)->postJson("/api/v1/hr/people/{$target->id}/totp/reset")->assertForbidden();
+        $this->signedInAs($resetter)->postJson("/api/v1/hr/people/{$target->id}/reset-link")->assertForbidden();
+        $this->assertTrue($this->inTenant($t['org'], fn () => $target->fresh()->hasTotp()), 'An administrator lost their second factor.');
+
+        // The control: the same person still resets someone they could have hired.
+        $this->signedInAs($resetter)->postJson("/api/v1/hr/people/{$this->personWithTotp($t)->id}/totp/reset")->assertOk();
+    }
 }

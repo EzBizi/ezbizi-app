@@ -42,6 +42,11 @@ class EmptyState extends StatelessWidget {
 
     return Center(
       child: SingleChildScrollView(
+        // Never the page's scroller: inside HeaderAboveList's NestedScrollView
+        // on iOS, taking the shared controller overflowed the stack and the
+        // list read "could not be drawn" (Inventory > Orders, iPhone Duo,
+        // mobile review 11-24).
+        primary: false,
         padding: const EdgeInsets.all(24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 440),

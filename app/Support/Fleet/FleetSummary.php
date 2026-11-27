@@ -8,6 +8,7 @@ use App\Models\VehiclePayment;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Time\ViewTimezone;
 use Illuminate\Support\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,14 +23,22 @@ use Illuminate\Database\Eloquent\Builder;
  * caller holding `fleet_management.financials`: an aggregate over payments is
  * still an answer about payments.
  *
- * "Soon" is 30 days and 500 miles, the same window the list's Due soon chip
+ * "Soon" is the fleet.soon_days and fleet.soon_miles settings, the same window the list's Due soon chip
  * and the Dashboard box use.
  */
 final class FleetSummary
 {
-    public const SOON_DAYS = 30;
+    /** The organization's due-soon window in days (setting fleet.soon_days). */
+    public static function soonDays(User $user): int
+    {
+        return max(0, (int) app(SettingsResolver::class)->get('fleet.soon_days', $user->organization));
+    }
 
-    public const SOON_MILES = 500;
+    /** The organization's due-soon margin in miles (setting fleet.soon_miles). */
+    public static function soonMiles(User $user): int
+    {
+        return max(0, (int) app(SettingsResolver::class)->get('fleet.soon_miles', $user->organization));
+    }
 
     /** @return array<string, mixed> */
     public static function health(User $user, ViewScope $scope): array
@@ -84,7 +93,7 @@ final class FleetSummary
     public static function warnings(User $user, ViewScope $scope): array
     {
         $today = Carbon::now(ViewTimezone::forUser($user))->toDateString();
-        $soon = Carbon::now(ViewTimezone::forUser($user))->addDays(self::SOON_DAYS)->toDateString();
+        $soon = Carbon::now(ViewTimezone::forUser($user))->addDays(self::soonDays($user))->toDateString();
         $onRoad = fn () => self::onRoad($user, $scope);
 
         $serviceOverdue = $onRoad()->where(fn (Builder $q) => $q
@@ -97,7 +106,7 @@ final class FleetSummary
         $serviceDue = $onRoad()->where(fn (Builder $q) => $q
             ->where(fn (Builder $d) => $d->whereNotNull('next_service_on')->whereDate('next_service_on', '<=', $soon))
             ->orWhere(fn (Builder $m) => $m->whereNotNull('next_service_miles')->whereNotNull('odometer_miles')
-                ->whereRaw('odometer_miles >= next_service_miles - ?', [self::SOON_MILES])))
+                ->whereRaw('odometer_miles >= next_service_miles - ?', [self::soonMiles($user)])))
             ->count() - $serviceOverdue;
 
         $openPolicy = fn (Builder $p) => $p->whereNull('ended_on');
@@ -114,11 +123,12 @@ final class FleetSummary
 
         $unassignedActive = self::unassigned($onRoad()->where('status', VehicleStatus::Active->value))->count();
 
+        $days = self::soonDays($user);
         $rows = [
             ['service_overdue', $serviceOverdue, 'is past its service date or mileage', 'are past their service date or mileage', 'due_soon=1'],
             ['insurance_expired', $insuranceExpired, 'has insurance that has expired', 'have insurance that has expired', null],
-            ['service_due_soon', $serviceDue, 'needs service within 30 days', 'need service within 30 days', 'due_soon=1'],
-            ['insurance_expiring', $insuranceExpiring, 'has insurance expiring within 30 days', 'have insurance expiring within 30 days', null],
+            ['service_due_soon', $serviceDue, "needs service within {$days} days", "need service within {$days} days", 'due_soon=1'],
+            ['insurance_expiring', $insuranceExpiring, "has insurance expiring within {$days} days", "have insurance expiring within {$days} days", null],
             ['no_insurance', $uninsured, 'has no insurance on file', 'have no insurance on file', 'uninsured=1'],
             ['out_of_service', $outOfService, 'is out of service', 'are out of service', 'status=out_of_service'],
             ['active_unassigned', $unassignedActive, 'is in use with nobody holding the keys', 'are in use with nobody holding the keys', 'unassigned=1'],
@@ -210,7 +220,7 @@ final class FleetSummary
     }
 
     /**
-     * Every date falling due in the next 30 days or already past, soonest
+     * Every date falling due in the due-soon window or already past, soonest
      * first: registration, inspection, the open policy's expiry, and service
      * by date. Service by mileage has no date, so it comes after them with
      * `miles_left` (negative when past). Read straight from the register so
@@ -222,7 +232,8 @@ final class FleetSummary
     {
         $tz = ViewTimezone::forUser($user);
         $today = Carbon::now($tz)->toDateString();
-        $soon = Carbon::now($tz)->addDays(self::SOON_DAYS)->toDateString();
+        $soon = Carbon::now($tz)->addDays(self::soonDays($user))->toDateString();
+        $soonMiles = self::soonMiles($user);
 
         $vehicles = self::onRoad($user, $scope)
             ->with(['insurancePolicies' => fn ($p) => $p->whereNull('ended_on')])
@@ -249,7 +260,7 @@ final class FleetSummary
 
             if ($v->next_service_miles !== null && $v->odometer_miles !== null) {
                 $left = $v->next_service_miles - $v->odometer_miles;
-                if ($left <= self::SOON_MILES) {
+                if ($left <= $soonMiles) {
                     $miles[] = ['vehicle_id' => $v->id, 'label' => $v->label, 'kind' => 'service_miles',
                         'miles_left' => $left, 'overdue' => $left <= 0];
                 }

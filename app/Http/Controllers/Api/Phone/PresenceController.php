@@ -47,6 +47,9 @@ class PresenceController extends Controller
 
         $rows = PhonePresence::query()
             ->where('connection_id', $connection->id)
+            // A deactivated or erased person keeps their row ("Removed account"
+            // in Team, Jose 11-09); they are nobody's teammate any more.
+            ->whereHas('user', fn ($q) => $q->where('is_active', true))
             ->with('user')
             ->orderBy('updated_at')
             ->get()
@@ -223,7 +226,7 @@ class PresenceController extends Controller
         $connection = PhoneConnection::query()->findOrFail($input['connection_id']);
         $user = $request->user();
 
-        if (! $this->access->hasLineOn($user, $connection)) {
+        if (! $this->access->takesCallsOn($user, $connection)) {
             return response()->json(['message' => self::NO_LINE], Response::HTTP_FORBIDDEN);
         }
 

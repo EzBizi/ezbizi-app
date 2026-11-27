@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
@@ -24,7 +26,6 @@ class ChargeSheetsTab extends StatefulWidget {
     required this.me,
     required this.onMade,
     required this.onOpenInvoice,
-    this.saveDelay = const Duration(milliseconds: 700),
   });
 
   final ApiClient api;
@@ -37,7 +38,7 @@ class ChargeSheetsTab extends StatefulWidget {
   final ValueChanged<String> onOpenInvoice;
 
   /// How long after the last keystroke a cell is saved.
-  final Duration saveDelay;
+  static const saveDelay = Duration(milliseconds: 700);
 
   @override
   State<ChargeSheetsTab> createState() => _ChargeSheetsTabState();
@@ -234,7 +235,7 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
 
   void _schedule() {
     _debounce?.cancel();
-    _debounce = Timer(widget.saveDelay, _flush);
+    _debounce = Timer(ChargeSheetsTab.saveDelay, _flush);
   }
 
   Future<void> _flush() async {
@@ -388,21 +389,11 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
       children: [
         SizedBox(
           width: phone ? double.infinity : 240,
-          child: TextField(
+          child: ListSearch(
             key: const Key('charge-sheets-search'),
             controller: _search,
+            hint: 'Sheet title or period',
             onChanged: _searched,
-            // bodyMedium for the text and the hint, as the dense pickers draw:
-            // 53 points tall, as they are; the theme's 16-point hint makes 56.
-            style: Theme.of(context).textTheme.bodyMedium,
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: 'Sheet title or period',
-              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
-              ),
-            ),
           ),
         ),
         if (sheets.isNotEmpty)
@@ -836,10 +827,10 @@ class _NewSheetPanel extends StatefulWidget {
 class _NewSheetPanelState extends State<_NewSheetPanel> {
   static DateTime get _now => DateTime.now();
   final _from = TextEditingController(
-    text: isoDay(DateTime(_now.year, _now.month - 1, 1)),
+    text: formatCalendarDay(DateTime(_now.year, _now.month - 1, 1)),
   );
   final _to = TextEditingController(
-    text: isoDay(DateTime(_now.year, _now.month, 0)),
+    text: formatCalendarDay(DateTime(_now.year, _now.month, 0)),
   );
   final _title = TextEditingController();
   String? _error;

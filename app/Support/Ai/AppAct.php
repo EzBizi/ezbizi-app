@@ -37,11 +37,11 @@ final class AppAct
     /** @return array{method: string, path: string, body: array, summary: string}|null */
     public static function plan(string $request, int $timeout = 60): ?array
     {
-        $today = now('America/New_York');
+        $today = now(\App\Support\Settings\OrgTimezone::of());
         $p = GrokCli::ask(
             'You have NO tools and cannot read code or files: only choose from the ENDPOINTS list below. '
             .'A staff member of a home-services business asked their CRM, EzBizi, to DO something. '
-            ."Today is {$today->toDateString()} ({$today->format('l')}), America/New_York. Pick the ONE "
+            ."Today is {$today->toDateString()} ({$today->format('l')}), {$today->getTimezone()->getName()}. Pick the ONE "
             .'endpoint (method, path relative to api/v1 with {placeholders} filled in, JSON body) that '
             .'does it, and a one-line summary in plain words of exactly what will change. If no endpoint '
             .'does it, or you would have to guess an id or a value, return method "".'
@@ -107,13 +107,15 @@ final class AppAct
             return ['ok' => false, 'status' => 403, 'message' => 'That is not something you can do from WhatsApp.'];
         }
 
-        $token = $viewer->createToken('WhatsApp command', ['*'], now()->addMinutes(2));
+        // Marked as the AI's: a sensitive task is never reached by it (SensitiveTasks).
+        $token = $viewer->createToken('WhatsApp command', ['*', \App\Support\Tasks\SensitiveTasks::AI_READER], now()->addMinutes(2));
         $as = Request::create('/');
         $as->headers->set('Authorization', 'Bearer '.$token->plainTextToken);
         $as->setUserResolver(fn () => $viewer);
 
         try {
-            $response = InternalRequest::send($as, $plan['method'], '/api/v1/'.$plan['path'], $plan['body']);
+            $response = InternalRequest::send($as, $plan['method'], '/api/v1/'.$plan['path'], $plan['body'],
+                attributes: [\App\Support\Tasks\SensitiveTasks::AI_READER => true]);
         } finally {
             $token->accessToken->delete();
         }

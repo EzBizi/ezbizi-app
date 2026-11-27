@@ -47,6 +47,8 @@
 /// average, and none of them can be worked out here.
 library;
 
+import '../../widgets/formatted_notes.dart';
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -255,17 +257,10 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
   /// hours for that weekday when they have them, 9 to 5 when not.
   _Shift _blankShift(String personId, String date) {
     final person = _week?.people.where((p) => p.id == personId).firstOrNull;
-    const names = [
-      'monday',
-      'tuesday',
-      'wednesday',
-      'thursday',
-      'friday',
-      'saturday',
-      'sunday',
-    ];
     final day = DateTime.tryParse(date);
-    final hours = day == null ? null : person?.schedule[names[day.weekday - 1]];
+    final hours = day == null
+        ? null
+        : person?.schedule[weekdayKeys[day.weekday - 1]];
     final start = hours is Map ? '${hours['start'] ?? '09:00'}' : '09:00';
     final end = hours is Map ? '${hours['end'] ?? '17:00'}' : '17:00';
 
@@ -491,15 +486,22 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     );
     if (_requests.isEmpty) return week;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Requests(
-          requests: _requests,
-          onDecide: (request, verb) => _decide(context, request, verb),
-        ),
-        Expanded(child: week),
-      ],
+    // At most ~45% of the pane, scrolling inside: on a phone two requests
+    // pushed the week 21 px past the bottom (mobile review 11-24).
+    return LayoutBuilder(
+      builder: (context, box) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: box.maxHeight * 0.45),
+            child: _Requests(
+              requests: _requests,
+              onDecide: (request, verb) => _decide(context, request, verb),
+            ),
+          ),
+          Expanded(child: week),
+        ],
+      ),
     );
   }
 
@@ -633,87 +635,87 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     final theme = Theme.of(context);
     final people = _visible;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-          child: TextField(
-            key: const ValueKey('tour-work_hours-search'),
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: UiStrings.t('time_clock.search_people'),
-            ),
-            onChanged: (value) => setState(() => _search = value),
-          ),
-        ),
-        if (_roles.length > 1)
+    // On a phone the search and filters scroll away with the people (and
+    // float back): on an iPhone Duo's cover screen they overflowed the
+    // list by 20 px (mobile review 11-24).
+    return HeaderAboveList(
+      header: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-            child: SearchPickerField<String?>(
-              key: const ValueKey('tour-work_hours-role'),
-              isDense: true,
-              value: _roles.containsKey(_roleId) ? _roleId : null,
-              options: [
-                SearchOption(
-                  value: null,
-                  label: UiStrings.t('time_clock.all_roles'),
-                ),
-                for (final role in _roles.entries)
-                  SearchOption(value: role.key, label: role.value),
-              ],
-              onChanged: (id) => setState(() => _roleId = id),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            child: ListSearch(
+              key: const ValueKey('tour-work_hours-search'),
+              hint: UiStrings.t('time_clock.search_people'),
+              onChanged: (value) => setState(() => _search = value),
             ),
           ),
-        if (_idleCount > 0)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 12, 4),
-              child: TextButton(
-                key: const ValueKey('tour-work_hours-everyone'),
-                onPressed: () => setState(() => _everyone = !_everyone),
-                child: Text(
-                  _everyone
-                      ? UiStrings.t('time_clock.only_clocked_in')
-                      : UiStrings.t(
-                          'time_clock.show_everyone',
-                        ).replaceAll('{count}', '$_idleCount'),
+          if (_roles.length > 1)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+              child: SearchPickerField<String?>(
+                key: const ValueKey('tour-work_hours-role'),
+                isDense: true,
+                value: _roles.containsKey(_roleId) ? _roleId : null,
+                options: [
+                  SearchOption(
+                    value: null,
+                    label: UiStrings.t('time_clock.all_roles'),
+                  ),
+                  for (final role in _roles.entries)
+                    SearchOption(value: role.key, label: role.value),
+                ],
+                onChanged: (id) => setState(() => _roleId = id),
+              ),
+            ),
+          if (_idleCount > 0)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 12, 4),
+                child: TextButton(
+                  key: const ValueKey('tour-work_hours-everyone'),
+                  onPressed: () => setState(() => _everyone = !_everyone),
+                  child: Text(
+                    _everyone
+                        ? UiStrings.t('time_clock.only_clocked_in')
+                        : UiStrings.t(
+                            'time_clock.show_everyone',
+                          ).replaceAll('{count}', '$_idleCount'),
+                  ),
                 ),
               ),
             ),
-          ),
-        Expanded(
-          child: people.isEmpty
-              ? Center(
-                  child: Text(
-                    UiStrings.t('time_clock.no_hours'),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                )
-              : ListView.builder(
-                  key: const ValueKey('tour-work_hours-people'),
-                  itemCount: people.length,
-                  itemBuilder: (context, i) => _PersonRow(
-                    api: widget.api,
-                    person: people[i],
-                    selected: !tappable && people[i].id == _personId,
-                    trailing: tappable,
-                    onTap: () {
-                      if (!tappable) {
-                        setState(() => _personId = people[i].id);
+        ],
+      ),
+      list: people.isEmpty
+          ? Center(
+              child: Text(
+                UiStrings.t('time_clock.no_hours'),
+                style: theme.textTheme.bodySmall,
+              ),
+            )
+          : ListView.builder(
+              key: const ValueKey('tour-work_hours-people'),
+              itemCount: people.length,
+              itemBuilder: (context, i) => _PersonRow(
+                api: widget.api,
+                person: people[i],
+                selected: !tappable && people[i].id == _personId,
+                trailing: tappable,
+                onTap: () {
+                  if (!tappable) {
+                    setState(() => _personId = people[i].id);
 
-                        return;
-                      }
+                    return;
+                  }
 
-                      // In place, not pushed: the containment rule.
-                      setState(() => _phoneOpenId = people[i].id);
-                    },
-                  ),
-                ),
-        ),
-      ],
+                  // In place, not pushed: the containment rule.
+                  setState(() => _phoneOpenId = people[i].id);
+                },
+              ),
+            ),
     );
   }
 }
@@ -1099,7 +1101,7 @@ class _DayCard extends StatelessWidget {
                       if (tag != null) ...[
                         const SizedBox(width: 8),
                         _Chip(
-                          text: UiStrings.t('time_clock.tag.$tag'),
+                          text: _tagLabel(tag),
                           colour: _tagColour(context, tag),
                         ),
                       ],
@@ -1208,11 +1210,10 @@ class _DayCard extends StatelessWidget {
               decoration: BoxDecoration(
                 border: Border(top: BorderSide(color: scheme.outlineVariant)),
               ),
-              child: Text(
+              child: FormattedNotesText(
                 note,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
-                  fontStyle: FontStyle.italic,
                 ),
               ),
             ),
@@ -1278,7 +1279,9 @@ class _ShiftRow extends StatelessWidget {
                     ),
                   )
                 else ...[
-                  _Pip(colour: scheme.error),
+                  // Muted: clocking out is normal, not a problem (deep dive
+                  // 2026-11-02 #7).
+                  _Pip(colour: scheme.outline),
                   const SizedBox(width: 6),
                   Text(shift.clockedOut, style: theme.textTheme.bodySmall),
                 ],
@@ -1456,12 +1459,18 @@ class _Week {
     if (at == null) return null;
     final moved = at.add(Duration(days: days));
 
-    return '${moved.year.toString().padLeft(4, '0')}-'
-        '${moved.month.toString().padLeft(2, '0')}-'
-        '${moved.day.toString().padLeft(2, '0')}';
+    return formatCalendarDay(moved);
   }
 
   static _Week? from(Map<String, dynamic>? json) {
+    final tags = json?['day_tags'];
+    if (tags is List) {
+      _tags = [
+        for (final t in tags)
+          if (t is Map && t['value'] is String)
+            (value: t['value'] as String, label: t['label'] as String?),
+      ];
+    }
     if (json == null) return null;
 
     final start = '${json['week_start'] ?? ''}';
@@ -1874,12 +1883,7 @@ DateTime? _parseLocal(String? value) {
   return DateTime.tryParse(value.replaceFirst(' ', 'T'));
 }
 
-String _formatLocal(DateTime at) =>
-    '${at.year.toString().padLeft(4, '0')}-'
-    '${at.month.toString().padLeft(2, '0')}-'
-    '${at.day.toString().padLeft(2, '0')} '
-    '${at.hour.toString().padLeft(2, '0')}:'
-    '${at.minute.toString().padLeft(2, '0')}';
+String _formatLocal(DateTime at) => formatWallDateTime(at, at.hour, at.minute);
 
 /// The edit dialog. Returns the PATCH body, or null when cancelled.
 Future<Map<String, dynamic>?> _editTimes(
@@ -2046,7 +2050,19 @@ class _EditTimesDialogState extends State<_EditTimesDialog> {
   }
 }
 
-const _tags = ['office', 'home', 'absent', 'sick', 'holiday', 'vacation'];
+// The organization's `time_clock.day_tags`, as the last week loaded sent
+// them. A null label is a default one, shown in the app's own language.
+// ponytail: file-level, adopted by _Week.from; move onto _Week if a second
+// screen ever shows two organizations' weeks at once.
+var _tags = <({String value, String? label})>[
+  for (final v in ['office', 'home', 'absent', 'sick', 'holiday', 'vacation'])
+    (value: v, label: null),
+];
+
+String _tagLabel(String tag) =>
+    _tags.where((t) => t.value == tag).firstOrNull?.label ??
+    UiStrings.maybe('time_clock.tag.$tag') ??
+    tag;
 
 /// Returns `{'tag': …}` (null clears), or null when cancelled.
 Future<Map<String, dynamic>?> _chooseTag(
@@ -2060,7 +2076,7 @@ Future<Map<String, dynamic>?> _chooseTag(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final tag in [null, ..._tags])
+          for (final tag in [null, ..._tags.map((t) => t.value)])
             InkWell(
               onTap: () =>
                   Navigator.of(context).pop(<String, dynamic>{'tag': tag}),
@@ -2078,7 +2094,7 @@ Future<Map<String, dynamic>?> _chooseTag(
                     Text(
                       tag == null
                           ? UiStrings.t('time_clock.no_tag')
-                          : UiStrings.t('time_clock.tag.$tag'),
+                          : _tagLabel(tag),
                     ),
                   ],
                 ),
@@ -2150,7 +2166,8 @@ Future<Map<String, dynamic>?> _writeNote(
   BuildContext context,
   String? current,
 ) {
-  final text = TextEditingController(text: current ?? '');
+  // Bold, italic, underline (Jose, 2026-11-25).
+  final text = FormattedNotesController(markup: current);
   final labels = MaterialLocalizations.of(context);
 
   return showSidePanel<Map<String, dynamic>>(
@@ -2164,18 +2181,17 @@ Future<Map<String, dynamic>?> _writeNote(
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(<String, dynamic>{
-            'note': text.text.trim().isEmpty ? null : text.text.trim(),
+            'note': text.text.trim().isEmpty ? null : text.markup.trim(),
           }),
           child: Text(labels.saveButtonLabel),
         ),
       ],
       child: SizedBox(
         width: 380,
-        child: TextField(
+        child: FormattedNotesField(
           controller: text,
-          maxLines: 4,
+          label: UiStrings.t('time_clock.action.note'),
           maxLength: 2000,
-          autofocus: true,
         ),
       ),
     ),
@@ -2200,7 +2216,7 @@ class _Requests extends StatelessWidget {
     return Card(
       key: const Key('correction-requests'),
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2211,56 +2227,63 @@ class _Requests extends StatelessWidget {
             ),
             for (final r in requests) ...[
               const Divider(height: 16),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          (r['user'] as Map?)?['name']?.toString() ?? '',
-                          style: theme.textTheme.labelLarge,
-                        ),
-                        Text(
-                          '${UiStrings.t('time_clock.request_was')}: '
-                          '${r['shift_id'] == null ? UiStrings.t('time_clock.missing_day') : _span(r['was_in'], r['was_out'])}',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        Text(
-                          '${UiStrings.t('time_clock.request_asks')}: '
-                          '${_span(r['clocked_in'], r['clocked_out'])}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          r['reason']?.toString() ?? '',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => onDecide(r, 'deny'),
-                        child: Text(UiStrings.t('time_clock.decline')),
-                      ),
-                      FilledButton(
-                        onPressed: () => onDecide(r, 'approve'),
-                        child: Text(UiStrings.t('time_clock.approve')),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              // On a phone the buttons go under the request: beside it they
+              // left the text ~80 px and it wrapped word by word.
+              if (MediaQuery.sizeOf(context).width < 520) ...[
+                _info(theme, r),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: _buttons(r),
+                ),
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _info(theme, r)),
+                    const SizedBox(width: 8),
+                    _buttons(r),
+                  ],
+                ),
             ],
           ],
         ),
       ),
     );
   }
+
+  Widget _info(ThemeData theme, Map<String, dynamic> r) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        (r['user'] as Map?)?['name']?.toString() ?? '',
+        style: theme.textTheme.labelLarge,
+      ),
+      Text(
+        '${UiStrings.t('time_clock.request_was')}: '
+        '${r['shift_id'] == null ? UiStrings.t('time_clock.missing_day') : _span(r['was_in'], r['was_out'])}',
+        style: theme.textTheme.bodySmall,
+      ),
+      Text(
+        '${UiStrings.t('time_clock.request_asks')}: '
+        '${_span(r['clocked_in'], r['clocked_out'])}',
+        style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+      ),
+      Text(r['reason']?.toString() ?? '', style: theme.textTheme.bodySmall),
+    ],
+  );
+
+  Widget _buttons(Map<String, dynamic> r) => Wrap(
+    spacing: 8,
+    children: [
+      OutlinedButton(
+        onPressed: () => onDecide(r, 'deny'),
+        child: Text(UiStrings.t('time_clock.decline')),
+      ),
+      FilledButton(
+        onPressed: () => onDecide(r, 'approve'),
+        child: Text(UiStrings.t('time_clock.approve')),
+      ),
+    ],
+  );
 }

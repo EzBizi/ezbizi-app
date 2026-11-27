@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -6,7 +5,6 @@ import 'package:ezbizi_client/core/field_recorder.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/field/record_card.dart';
 import 'package:ezbizi_client/screens/field/recordings_tab.dart';
-import 'package:ezbizi_client/screens/phone/recording_player.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -146,64 +144,106 @@ void main() {
       'delete_on': '2027-01-14',
     };
 
-    testWidgets('a row opens the player, and Keep needs a reason', (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      final posted = <Map<String, dynamic>>[];
+    testWidgets(
+      'a row opens its summary and transcript, and Keep needs a reason',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final posted = <Map<String, dynamic>>[];
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: EzBiziTheme.light(),
-          home: Scaffold(
-            body: FieldRecordingsTab(
-              api: _api((r) {
-                if (r.method == 'POST') {
-                  posted.add(jsonDecode(r.body) as Map<String, dynamic>);
-                }
-                return {
-                  'data': r.method == 'GET' ? [row] : row,
-                };
-              }),
-              canListen: true,
-              canKeep: true,
-              player: _SilentPlayer(),
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: EzBiziTheme.light(),
+            home: Scaffold(
+              body: FieldRecordingsTab(
+                api: _api((r) {
+                  if (r.method == 'POST') {
+                    posted.add(jsonDecode(r.body) as Map<String, dynamic>);
+                  }
+                  if (r.url.path.endsWith('/transcript')) {
+                    return {
+                      'data': {
+                        'summary': {
+                          'summary': 'Annual sweep; cracked crown.',
+                          'done': 'Swept flue',
+                          'found': '',
+                          'recommended': 'Crown repair',
+                          'customer_asked': '',
+                        },
+                        'segments': [
+                          {
+                            'started_at': '2026-10-16T13:00:12.500Z',
+                            'ended_at': '2026-10-16T13:00:15.000Z',
+                            'text': 'Morning, I will start with the camera.',
+                          },
+                        ],
+                        'pending': 2,
+                      },
+                    };
+                  }
+                  return {
+                    'data': r.method == 'GET' ? [row] : row,
+                  };
+                }),
+                canListen: true,
+                canKeep: true,
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.text('Sam Ortiz'), findsOneWidget);
-      expect(find.text('Deletes 2027-01-14'), findsOneWidget);
+        expect(find.text('Sam Ortiz'), findsOneWidget);
+        expect(find.text('Deletes 2027-01-14'), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey('field-recording-r1')));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('field-recording-panel')),
-        findsOneWidget,
-      );
-      expect(find.textContaining('stopped: Done'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('field-recording-r1')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('field-recording-panel')),
+          findsOneWidget,
+        );
+        expect(find.textContaining('stopped: Done'), findsOneWidget);
+        expect(find.text('Annual sweep; cracked crown.'), findsOneWidget);
+        expect(find.text('Crown repair'), findsOneWidget);
+        expect(
+          find.text('Found'),
+          findsNothing,
+          reason: 'An empty section is left out.',
+        );
+        expect(
+          find.text('Morning, I will start with the camera.'),
+          findsOneWidget,
+        );
+        expect(find.text('Transcribing… 2 left'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('field-recording-play')),
+          findsNothing,
+        );
 
-      await tester.tap(find.byKey(const ValueKey('field-recording-keep')));
-      await tester.pumpAndSettle();
-      final keep = tester.widget<FilledButton>(
-        find.byKey(const ValueKey('field-recording-keep-save')),
-      );
-      expect(keep.onPressed, isNull, reason: 'Keeping needs a reason.');
+        await tester.tap(find.byKey(const ValueKey('field-recording-keep')));
+        await tester.pumpAndSettle();
+        final keep = tester.widget<FilledButton>(
+          find.byKey(const ValueKey('field-recording-keep-save')),
+        );
+        expect(keep.onPressed, isNull, reason: 'Keeping needs a reason.');
 
-      await tester.enterText(
-        find.byKey(const ValueKey('field-recording-reason')),
-        'Customer complaint',
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('field-recording-keep-save')));
-      await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey('field-recording-reason')),
+          'Customer complaint',
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('field-recording-keep-save')),
+        );
+        await tester.pumpAndSettle();
 
-      expect(posted.single, {'flagged': true, 'reason': 'Customer complaint'});
-    });
+        expect(posted.single, {
+          'flagged': true,
+          'reason': 'Customer complaint',
+        });
+      },
+    );
   });
 }
 
@@ -217,37 +257,3 @@ ApiClient _api(Object? Function(http.Request) answer) => ApiClient(
     );
   }),
 );
-
-class _SilentPlayer implements RecordingPlayer {
-  final _changes = StreamController<RecordingPlayback>.broadcast();
-
-  @override
-  RecordingPlayback get state => const RecordingPlayback();
-
-  @override
-  Stream<RecordingPlayback> get changes => _changes.stream;
-
-  @override
-  Future<void> play(List<int> bytes) async {}
-
-  @override
-  Future<void> pause() async {}
-
-  @override
-  Future<void> resume() async {}
-
-  @override
-  Future<void> stop() async {}
-
-  @override
-  Future<void> seek(Duration to) async {}
-
-  @override
-  double get speed => 1;
-
-  @override
-  Future<void> setSpeed(double speed) async {}
-
-  @override
-  void dispose() => _changes.close();
-}

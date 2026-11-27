@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Social;
 
+use App\Jobs\FinishTikTokPost;
 use App\Models\SocialConnection;
 use App\Models\SocialPostTarget;
 use App\Support\Social\Publishing\PostPayload;
@@ -115,6 +116,29 @@ class TikTokDirectPostTest extends TestCase
         $this->assertTrue(now()->addHours(23)->lt($saved->credentials['expires_at']));
     }
 
+    public function test_a_renewed_token_rereads_the_expiring_avatar_url(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->tiktok($t, expiresAt: now()->subDay()->toIso8601String());
+        $this->inTenant($t['org'], fn () => $row->forceFill(['avatar_url' => 'https://p16.tiktokcdn.test/old.jpeg'])->save());
+
+        Http::fake([
+            'open.tiktokapis.com/v2/oauth/token/' => Http::response([
+                'access_token' => 'act.new', 'refresh_token' => 'rft.new', 'expires_in' => 86400,
+            ]),
+            'open.tiktokapis.com/v2/user/info/*' => Http::response(['data' => ['user' => [
+                'open_id' => 'open-1', 'display_name' => 'EzBizi US', 'avatar_url' => 'https://p16.tiktokcdn.test/new.jpeg',
+            ]]]),
+        ]);
+
+        $this->inTenant($t['org'], fn () => (new TikTokPublisher)->token($row));
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/user/info/')
+            && $r->header('Authorization')[0] === 'Bearer act.new');
+        $saved = $this->inTenant($t['org'], fn () => SocialConnection::query()->find($row->getKey()));
+        $this->assertSame('https://p16.tiktokcdn.test/new.jpeg', $saved->avatar_url);
+    }
+
     public function test_a_live_token_is_not_renewed(): void
     {
         $t = $this->provisionTenant('A1-Group');
@@ -206,10 +230,78 @@ class TikTokDirectPostTest extends TestCase
         $this->signedInAs($reader)->getJson("/api/v1/social/connections/$key/tiktok-creator")->assertForbidden();
     }
 
-    /** @param  array<string, mixed>  $creator */
-    private function fakeTikTok(array $creator = []): void
+    /**
+     * Bug-review #5 (2026-11-09): the upload only queues TikTok's work, so the
+     * post is Sent when TikTok says PUBLISH_COMPLETE, after looking again while
+     * it processes - and Failed, with TikTok's reason, when it refuses.
+     */
+    public function test_a_tiktok_post_is_sent_only_once_tiktok_has_published_it(): void
     {
+        $t = $this->provisionTenant('A1-Group');
+        $key = $this->tiktok($t)->getKey();
+        $this->fakeTikTok(status: [
+            ['status' => 'PROCESSING_UPLOAD'],
+            ['status' => 'PUBLISH_COMPLETE'],
+        ]);
+
+        $this->postVideo($t, $key);
+
+        $target = $this->inTenant($t['org'], fn () => SocialPostTarget::query()->sole());
+        $this->assertSame(SocialPostTarget::STATUS_SENT, $target->status, (string) $target->failure);
+        $this->assertSame('pub-9', $target->remote_id);
+        Http::assertSentCount(5); // creator_info, init, upload, two status looks
+    }
+
+    public function test_a_video_tiktok_refuses_while_processing_is_failed_with_its_reason(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $key = $this->tiktok($t)->getKey();
+        $this->fakeTikTok(status: [['status' => 'FAILED', 'fail_reason' => 'video_pull_failed']]);
+
+        $this->postVideo($t, $key);
+
+        $target = $this->inTenant($t['org'], fn () => SocialPostTarget::query()->sole());
+        $this->assertSame(SocialPostTarget::STATUS_FAILED, $target->status);
+        $this->assertStringContainsString('video_pull_failed', (string) $target->failure);
+    }
+
+    public function test_tiktok_still_processing_after_the_last_look_is_failed_not_left_queued(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $key = $this->tiktok($t)->getKey();
+        $this->fakeTikTok(status: [['status' => 'PROCESSING_UPLOAD']]);
+
+        $this->postVideo($t, $key);
+
+        $target = $this->inTenant($t['org'], fn () => SocialPostTarget::query()->sole());
+        $this->assertSame(SocialPostTarget::STATUS_FAILED, $target->status);
+        $this->assertStringContainsString('still processing', (string) $target->failure);
+        Http::assertSentCount(3 + FinishTikTokPost::LOOKS);
+    }
+
+    private function postVideo(array $t, string $key): void
+    {
+        $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
+            'connections' => [$key],
+            'media' => UploadedFile::fake()->create('clip.mp4', 12, 'video/mp4'),
+            'tiktok' => [$key => ['privacy_level' => 'SELF_ONLY']],
+        ])->assertSuccessful();
+    }
+
+    /**
+     * @param  array<string, mixed>  $creator
+     * @param  list<array<string, mixed>>  $status  what status/fetch answers, in order (the last repeats)
+     */
+    private function fakeTikTok(array $creator = [], array $status = [['status' => 'PUBLISH_COMPLETE']]): void
+    {
+        $looks = Http::sequence();
+        foreach ($status as $answer) {
+            $looks->push(['data' => $answer, 'error' => ['code' => 'ok']]);
+        }
+        $looks->whenEmpty(Http::response(['data' => end($status), 'error' => ['code' => 'ok']]));
+
         Http::fake([
+            'open.tiktokapis.com/v2/post/publish/status/fetch/' => $looks,
             'open.tiktokapis.com/v2/post/publish/creator_info/query/' => Http::response([
                 'data' => $creator + ['privacy_level_options' => ['PUBLIC_TO_EVERYONE', 'SELF_ONLY']],
                 'error' => ['code' => 'ok'],

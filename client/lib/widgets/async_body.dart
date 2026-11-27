@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+
+import '../core/theme.dart';
 import 'error_note.dart';
+import 'loading_skeleton.dart';
 
 /// Loading / failed / loaded, in one place.
 ///
@@ -31,39 +34,70 @@ class AsyncBody extends StatelessWidget {
     required this.error,
     required this.onRetry,
     required this.child,
+    this.skeleton = true,
+    this.refreshing = false,
   });
+
+  /// A new answer is on its way while the old rows are still on screen
+  /// (a filter changed). They are dimmed and not clickable under a thin
+  /// progress line, so the screen never passes them off as the new filter's
+  /// (Muse audit 4A).
+  final bool refreshing;
 
   final bool loading;
   final String? error;
   final VoidCallback onRetry;
   final Widget child;
 
+  /// Grey rows shaped like a list instead of a spinner. On by default since
+  /// the mobile review of 2026-11-13 (P2, mobile-review-fixes.html §4 A): a
+  /// lone spinner on an empty page read as a hang, and the rows mean nothing
+  /// jumps when the data lands. False only for a body that is not a list.
+  final bool skeleton;
+
   @override
   Widget build(BuildContext context) {
     if (loading) {
+      if (skeleton) return const LoadingSkeleton();
       return const Center(child: CircularProgressIndicator());
     }
 
     if (error != null) {
       return Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ErrorNote(error!),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: onRetry,
-                child: const Text('Try again'),
-              ),
-            ],
+        // Scrolls in a short pane: at 320 x 700 with large text the note and
+        // Try again were taller than a phone's list area (UI pass 11-16).
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ErrorNote(error!),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: onRetry,
+                  child: const Text('Try again'),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
 
-    return child;
+    if (!refreshing) return child;
+
+    return Stack(
+      children: [
+        IgnorePointer(child: Opacity(opacity: 0.4, child: child)),
+        const Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          child: LinearProgressIndicator(minHeight: 2),
+        ),
+      ],
+    );
   }
 }
 
@@ -81,6 +115,9 @@ class AsyncBody extends StatelessWidget {
 class HeaderAboveList extends StatelessWidget {
   const HeaderAboveList({super.key, required this.header, required this.list});
 
+  /// What a fixed header always leaves its list: two rows.
+  static const double _listFloor = 120;
+
   final Widget header;
   final Widget list;
 
@@ -88,27 +125,69 @@ class HeaderAboveList extends StatelessWidget {
   Widget build(BuildContext context) {
     // The window's width, not this widget's: a desktop screen beside the
     // navigation rail is narrower than 600 and is not short of height.
-    if (MediaQuery.sizeOf(context).width >= 600) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          header,
-          Expanded(child: list),
-        ],
+    //
+    // Never a NestedScrollView inside another one's body: the inner one takes
+    // the outer's inner controller as its parent and the two overflowed the
+    // stack (Inventory > Orders on a phone, mobile review 11-24). Nested, it
+    // is a plain column; the outer one already scrolls.
+    //
+    // And short windows scroll too: a phone on its side is 923 wide but ~250
+    // tall under the bars, and the fixed header overflowed by 136 px
+    // (Android landscape, mobile review 11-24).
+    final nested = context.getInheritedWidgetOfExactType<_ScrollingHeader>();
+    final size = MediaQuery.sizeOf(context);
+    if ((size.width >= 600 && size.height >= 560) || nested != null) {
+      // The window keeps its size when the keyboard comes up: on the unfolded
+      // Duo (951 wide, 405 left above the keyboard) Customers' header took it
+      // all and the list got 0 (mobile review 11-25). So the header always
+      // sits in a scroll view that leaves the list [_listFloor]: always, so
+      // the keyboard coming up never rebuilds the box being typed in.
+      return LayoutBuilder(
+        builder: (context, box) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: box.maxHeight.isFinite
+                    ? (box.maxHeight - _listFloor).clamp(0, box.maxHeight)
+                    : double.infinity,
+              ),
+              child: SingleChildScrollView(primary: false, child: header),
+            ),
+            Expanded(child: list),
+          ],
+        ),
       );
     }
 
-    return NestedScrollView(
-      headerSliverBuilder: (context, _) => [SliverToBoxAdapter(child: header)],
-      body: Builder(
-        builder: (context) => PrimaryScrollController(
-          controller: PrimaryScrollController.of(context),
-          automaticallyInheritForPlatforms: TargetPlatform.values.toSet(),
-          child: list,
+    // Floating: any scroll back up brings the header back. Scrolled with the
+    // body alone, a short section (HR's Pay, one card) left an empty screen
+    // with the name, Back and the section tabs all gone (phone audit
+    // 2026-11-04, Section 3 #5).
+    return _ScrollingHeader(
+      child: NestedScrollView(
+        floatHeaderSlivers: true,
+        headerSliverBuilder: (context, _) => [
+          SliverFloatingHeader(child: header),
+        ],
+        body: Builder(
+          builder: (context) => PrimaryScrollController(
+            controller: PrimaryScrollController.of(context),
+            automaticallyInheritForPlatforms: TargetPlatform.values.toSet(),
+            child: list,
+          ),
         ),
       ),
     );
   }
+}
+
+/// Marks the body of a HeaderAboveList that scrolls its header.
+class _ScrollingHeader extends InheritedWidget {
+  const _ScrollingHeader({required super.child});
+
+  @override
+  bool updateShouldNotify(_ScrollingHeader oldWidget) => false;
 }
 
 /// A screen heading with an optional action on the right.
@@ -156,8 +235,9 @@ class PanelHeader extends StatelessWidget {
       ],
     );
 
+    final gutter = Gutter.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+      padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 12),
       child: LayoutBuilder(
         builder: (context, constraints) {
           if (action == null) return text;

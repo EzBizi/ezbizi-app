@@ -89,12 +89,12 @@ void main() {
     expect(server.last.containsKey('answered'), isFalse);
     expect(_names(), hasLength(4));
 
-    await tester.tap(find.text('1–2 stars'));
+    await tester.tap(find.text('1–3 stars'));
     await tester.pumpAndSettle();
     expect(server.last['rating'], 'negative');
-    // The server's "negative" is 1–3; the chip keeps the 1s and 2s.
+    // The chip is the server's "negative": 1 to 3 stars (2026-11-19).
     expect(_names(), ['Dana Whitfield', 'Lee Park']);
-    await tester.tap(find.text('1–2 stars'));
+    await tester.tap(find.text('1–3 stars'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('This week'));
@@ -268,7 +268,9 @@ void main() {
   testWidgets('Draft with AI fills the box; Post reply saves and publishes', (
     tester,
   ) async {
-    final server = _Server();
+    final server = _Server(
+      permissions: const ['reviews.view', 'reviews.edit', 'reviews.publish'],
+    );
     await server.pump(tester);
 
     await tester.tap(find.byKey(const ValueKey('review-row-rev-1')));
@@ -324,12 +326,25 @@ void main() {
     expect(find.byKey(const ValueKey('review-unanswered-rev-1')), findsOne);
   });
 
+  /// Android landscape 11-24: 923 wide and ~330 tall under the module title,
+  /// the strip and the full band overflowed by 138 px and left no list.
+  testWidgets('a wide but short pane keeps its list', (tester) async {
+    final server = _Server();
+    await server.pump(tester, size: const Size(923, 330));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('reviews-tile-average')), findsNothing);
+    final row = find.byKey(const ValueKey('review-row-rev-1'));
+    expect(row, findsOneWidget);
+    expect(tester.getTopLeft(row).dy, lessThan(330));
+  });
+
   testWidgets('on a phone a review opens in place, with back', (tester) async {
     final server = _Server();
     await server.pump(tester, size: const Size(390, 844));
 
     expect(find.byKey(const ValueKey('reviews-tile-average')), findsNothing);
-    expect(find.text('1–2 stars'), findsOneWidget);
+    expect(find.text('1–3 stars'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('review-row-rev-1')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('review-panel')), findsOneWidget);

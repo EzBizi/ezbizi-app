@@ -78,6 +78,26 @@ class MetaAdsTest extends TestCase
         $this->assertSame('GA', $campaign->fresh()->state);
     }
 
+    public function test_a_campaign_lands_in_the_one_branch_its_state_names(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $connection = $this->account($t);
+        $this->inTenant($t['org'], fn () => $connection->forceFill(['scope_type' => SocialConnection::SCOPE_COMPANY, 'scope_id' => $t['company']->id])->save());
+        $jersey = $this->inTenant($t['org'], fn () => \App\Models\Franchise::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'name' => 'New Jersey',
+        ]));
+
+        Http::fake(['graph.facebook.com/*/act_111/campaigns*' => Http::response(['data' => [
+            ['id' => '901', 'name' => 'A1 - Meta Leads - NJ', 'objective' => 'OUTCOME_LEADS'],
+            ['id' => '902', 'name' => 'A1 - Meta Leads - Chicago', 'objective' => 'OUTCOME_LEADS'],
+        ]])]);
+
+        $this->inTenant($t['org'], fn () => app(MetaAdInsights::class)->campaigns($connection));
+        $branches = MetaAdCampaign::query()->withoutGlobalScopes()->pluck('franchise_id', 'campaign_id');
+        $this->assertSame($jersey->id, $branches['901']);
+        $this->assertNull($branches['902']);
+    }
+
     public function test_daily_rows_land_as_totals_and_by_region_and_a_resync_does_not_double(): void
     {
         $t = $this->provisionTenant('A1-Group');
@@ -86,7 +106,7 @@ class MetaAdsTest extends TestCase
         $row = fn (?string $region) => array_filter([
             'date_start' => '2026-10-10', 'campaign_id' => '900', 'adset_id' => '77', 'adset_name' => 'Houston',
             'spend' => '12.50', 'impressions' => '1000', 'clicks' => '20', 'account_currency' => 'USD',
-            'actions' => [['action_type' => 'link_click', 'value' => '20'], ['action_type' => 'lead', 'value' => '3']],
+            'actions' => [['action_type' => 'link_click', 'value' => '20'], ['action_type' => 'lead', 'value' => '3'], ['action_type' => 'onsite_conversion.lead_grouped', 'value' => '2']],
             'region' => $region,
         ]);
 
@@ -106,6 +126,8 @@ class MetaAdsTest extends TestCase
         $this->assertSame('12.50', (string) $rows[0]->spend);
         // "lead", not every action: 3, not 23.
         $this->assertSame(3, (int) $rows[0]->leads);
+        // Instant forms alone, for the report texts: the pixel's "leads" are not forms.
+        $this->assertSame(2, (int) $rows[0]->forms);
 
         // Reports' read of totals, in cents.
         $ads = app(MetaAdInsights::class);

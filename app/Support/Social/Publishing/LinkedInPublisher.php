@@ -360,9 +360,9 @@ final class LinkedInPublisher implements DeletesPosts, LinksToPosts, SocialPubli
      * LinkedIn's last 60 days. Renewing one needs a refresh token, which
      * LinkedIn gives only to approved partners — so most connections have
      * nothing to renew with, and when theirs runs out the only fix is to
-     * connect again. Said in those words, without marking the row: the clock
-     * running out is not LinkedIn refusing us, and the 401 path above marks
-     * the row the moment LinkedIn actually does.
+     * connect again. Said in those words, and the row is marked broken: an
+     * expired token with nothing to renew it is as final as a refusal, and an
+     * unmarked row kept the card green until a post failed (2026-11-12).
      *
      * When a refresh token IS held, it is renewed under a per-connection lock
      * and re-read inside it, the TikTok pattern, so two workers never both
@@ -383,6 +383,13 @@ final class LinkedInPublisher implements DeletesPosts, LinksToPosts, SocialPubli
             if ($expiry->isFuture()) {
                 return $this->stored($credentials);
             }
+
+            // Marked, so the card says it instead of staying green until a
+            // post fails (2026-11-12): the token is gone and only Connect fixes it.
+            $connection->forceFill([
+                'status' => SocialConnection::STATUS_BROKEN,
+                'status_reason' => 'LinkedIn’s permission ran out after 60 days. It needs connecting again.',
+            ])->save();
 
             throw new SocialPublishFailed(
                 'LinkedIn’s permission for this account ran out — LinkedIn makes it last 60 days. '

@@ -5,9 +5,12 @@ import '../core/deep_links.dart';
 import '../core/module_screens.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'business_profile/post_queue_view.dart';
+import 'customer_experience/auto_replies_tab.dart';
 import 'business_profile_screen.dart';
 import 'customer_experience/complaints_tab.dart';
 import 'customer_experience/review_links_tab.dart';
+import 'customer_experience/review_qr_panel.dart';
 
 /// Customer Experience — Reviews and Business Profile, moved out of Marketing
 /// on 2026-09-25 (Jose).
@@ -26,8 +29,8 @@ import 'customer_experience/review_links_tab.dart';
 /// same reason: drawn on Reviews' grant, so it is that module, not a tab of
 /// this one.
 const customerExperienceChildChips = {
-  'business_profile': ['GBP Listings', 'GBP Performance'],
-  'reviews': ['Reviews', 'Review links'],
+  'business_profile': ['GBP Listings', 'GBP Performance', 'Posts to approve'],
+  'reviews': ['Reviews', 'Auto-replies', 'Review links', 'Review QR'],
 };
 
 class CustomerExperienceScreen extends StatefulWidget {
@@ -67,6 +70,14 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
   void _followLink() {
     final key = DeepLinks.pending.value?.module;
     if (key == null) return;
+    // A complaint's link (the Reviews & Complaints board, Jose 11-24).
+    if (key == 'customer_experience' &&
+        DeepLinks.pending.value?.type == 'complaint') {
+      if (_tab != 'Reviews & Complaints') {
+        setState(() => _tab = 'Reviews & Complaints');
+      }
+      return;
+    }
     for (final module in widget.session.me?.reachableModules ?? const []) {
       if (module.key == key && module.parent == 'customer_experience') {
         final label = _labelOf(module.key, module.label);
@@ -102,7 +113,22 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
                 performance: true,
               ),
             ),
+          // Weekly AI Google posts waiting for Approve (design 176, Jose 2026-11-03).
+          if (module.key == 'business_profile')
+            (
+              customerExperienceChildChips['business_profile']![2],
+              Icons.fact_check_outlined,
+              () => PostQueueView(api: widget.api),
+            ),
         ],
+    // Every review the AI answered or drafted, with our reply (Jose,
+    // 2026-11-10). Reviews' own activity, so Reviews' grant.
+    if (me.reaches('reviews'))
+      (
+        'Auto-replies',
+        Icons.smart_toy_outlined,
+        () => AutoRepliesTab(api: widget.api, session: widget.session),
+      ),
     // What customers did with their review links (Jose, 2026-10-15). Reviews'
     // own activity, so Reviews' grant; the server asks the same.
     if (me.reaches('reviews'))
@@ -111,11 +137,16 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
         Icons.ads_click_outlined,
         () => ReviewLinksTab(api: widget.api, session: widget.session),
       ),
+    // A QR a technician shows on site; scans count for them (design 204,
+    // Jose 2026-11-23). Reviews' grant, as the server asks.
+    if (me.reaches('reviews'))
+      ('Review QR', Icons.qr_code_2, () => ReviewQrPanel(api: widget.api)),
     // Every bad review, bad rating and complaint call (Jose, 2026-10-20). The
     // registry's TabDefinition('complaints'), so its own grant.
     if (me.can('customer_experience.complaints.view'))
       (
-        'Complaints',
+        // Shoval via Jose, 2026-11-20 (design 202).
+        'Reviews & Complaints',
         Icons.report_problem_outlined,
         () => ComplaintsTab(api: widget.api, session: widget.session),
       ),

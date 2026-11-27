@@ -1,5 +1,13 @@
 # A1 Tools staff into EzBizi: the migration
 
+> **Status 2026-11-13: FINISHED 2026-09-29 — this is history, not a plan.** Both phases ran
+> and A1's clock-in retired that day (results at the end). A1 Tools was switched off on
+> 2026-09-28. The one-off commands named below (`hr:import-a1-tools`,
+> `worktime:import-a1-tools`, `hr:send-a1-welcome`) were deleted in `2795b58b2` (2026-10-09),
+> and `fleet:import-a1-tools` in `13dd2595c` (2026-10-30). The scratchpad inventory and mapping
+> paths below no longer exist. The dumps named below are still in `/home/ubuntu/manual-dumps/`
+> on the app box (checked 2026-11-13).
+
 Coordinated by the deploy desk, which gives the all-clear to each step. This
 file is the single source of truth: Jose's decisions, what moves where, who
 builds what, and the order. It holds no personal data. The per-person

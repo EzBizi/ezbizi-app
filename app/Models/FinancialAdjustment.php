@@ -15,6 +15,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class FinancialAdjustment extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'financial_adjustments';
+
     use HasUuids;
 
     public const KINDS = ['refund', 'dispute', 'check_return', 'repair_move'];

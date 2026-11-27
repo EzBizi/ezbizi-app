@@ -1,5 +1,11 @@
 # A1 Tools Training into EzBizi
 
+> **Status 2026-11-13: FINISHED — history, not a plan.** The import ran on 2026-09-30 and was
+> re-run in A1's topic shape the same day (dump `training-before-a1-reimport-20260930T184835Z`
+> is in `/home/ubuntu/manual-dumps/`; that run's figures are not recorded here). The only open
+> item is the missing videos at the end of this file. `training:import-a1-tools`, including
+> its `--undo`, was deleted in `2795b58b2` (2026-10-09). A1 Tools was switched off on 2026-09-28.
+
 The deploy desk coordinates this. This file is the single source of truth for the part: Jose's words, what is measured, who builds what, and the order. It holds no personal data.
 
 Earlier parts: `docs/A1-TOOLS-PEOPLE-MIGRATION.md` (staff) and `docs/A1-TOOLS-CLIENTS-JOBS-MIGRATION.md` (clients, jobs and money).
@@ -260,6 +266,11 @@ Jose found YouTube copies. Matched by video title, these 8 topics went back to t
 - Lost Booking Due to Uncertainty: jeTQG071ffY
 - Complaint Scenario: 22fjpVN-RPQ ("Customer Complaint")
 
+*Measured 2026-11-13: the guide holds 9 YouTube topics, not 8 — "Booking with Price Resistance"
+is back too, on OzP7fPZFFOM ("Lost Booking Due to Premature Fee Disclosure"), in Dispatcher
+Essentials › Scheduled New Client. The guide was last changed 2026-10-12 13:53 UTC, so this
+went in with the restore. 9vx5RbTywhM is not used.*
+
 **Still missing:**
-- Booking with Price Resistance. Two of the links match no topic by title: OzP7fPZFFOM ("Lost Booking Due to Premature Fee Disclosure") and 9vx5RbTywhM ("Dispatcher Video 1 chf3").
-- The 7 how-to videos (Workiz scheduling, job source, rescheduling, ETA call, complaint handling, cancellation, RingCentral).
+- ~~Booking with Price Resistance.~~ *Restored — see above.* Two of the links match no topic by title: OzP7fPZFFOM ("Lost Booking Due to Premature Fee Disclosure") and 9vx5RbTywhM ("Dispatcher Video 1 chf3").
+- The 7 how-to videos (Workiz scheduling, job source, rescheduling, ETA call, complaint handling, cancellation, RingCentral). *Still missing 2026-11-13: the guide has no Vimeo link, and its 9 YouTube links are all on the restored topics.*

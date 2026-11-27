@@ -32,12 +32,15 @@ final class TwilioSignature
             return false;
         }
 
-        $token = (string) $connection->auth_token;
-        if ($token === '') {
-            return false;
+        // The previous token too, while numbers move to a new Twilio account
+        // (2026-11-19): a number not yet moved still signs with the old one.
+        foreach ([$connection->auth_token, $connection->previous_auth_token] as $token) {
+            if (is_string($token) && $token !== '' && (new RequestValidator($token))->validate($header, $url, $params)) {
+                return true;
+            }
         }
 
-        return (new RequestValidator($token))->validate($header, $url, $params);
+        return false;
     }
 
     /**
@@ -55,23 +58,31 @@ final class TwilioSignature
         array|string $params,
         ?string $header,
     ): bool {
-        $platform = (string) config('services.twilio.platform_account_sid');
-        $token = (string) config('services.twilio.platform_auth_token');
-
-        if ($header === null || $header === '' || ! is_array($params) || $platform === '' || $token === '') {
+        if ($header === null || $header === '' || ! is_array($params)) {
             return false;
         }
 
-        if (($params['AccountSid'] ?? null) !== $platform) {
-            return false;
+        // The current platform parent, and the previous one while numbers move
+        // to a new Twilio account (2026-11-19). The one Twilio says sent it.
+        $pairs = [
+            [config('services.twilio.platform_account_sid'), config('services.twilio.platform_auth_token')],
+            [config('services.twilio.platform_previous_account_sid'), config('services.twilio.platform_previous_auth_token')],
+        ];
+        foreach ($pairs as [$platform, $token]) {
+            if (! is_string($platform) || $platform === '' || ! is_string($token) || $token === ''
+                || ($params['AccountSid'] ?? null) !== $platform) {
+                continue;
+            }
+
+            $held = PhoneNumber::query()
+                ->where('connection_id', $connection->id)
+                ->where('account_sid', $platform)
+                ->where('e164', (string) ($params['To'] ?? ''))
+                ->exists();
+
+            return $held && (new RequestValidator($token))->validate($header, $url, $params);
         }
 
-        $held = PhoneNumber::query()
-            ->where('connection_id', $connection->id)
-            ->where('account_sid', $platform)
-            ->where('e164', (string) ($params['To'] ?? ''))
-            ->exists();
-
-        return $held && (new RequestValidator($token))->validate($header, $url, $params);
+        return false;
     }
 }

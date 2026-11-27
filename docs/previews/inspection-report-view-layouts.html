@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inspection report view</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#16191c;--mut:#5b6670;--line:#dde2e7;--pri:#0b6e8a;--prif:#d8eef5;
+--ok:#2e7d32;--okf:#e7f3e8;--bad:#c62828;--badf:#fdecea;--na:#888;--naf:#f1f1f1;--q:#f6f7f8}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;
+--ok:#7fd49b;--okf:#18321f;--bad:#f09a9a;--badf:#3a1a1a;--na:#9aa6b0;--naf:#242b33;--q:#212831}}
+:root[data-theme="dark"]{--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--prif:#173843;
+--ok:#7fd49b;--okf:#18321f;--bad:#f09a9a;--badf:#3a1a1a;--na:#9aa6b0;--naf:#242b33;--q:#212831}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.lead{margin:0 0 20px;color:var(--mut);max-width:1000px}
+.opt{margin-bottom:28px}.opt>h2{font-size:15px;margin:0 0 2px}.opt>p{margin:0 0 8px;color:var(--mut);font-size:12.5px;max-width:1000px}
+.rec{color:var(--pri)}
+.win{max-width:1180px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;height:640px}
+.list{width:260px;border-right:1px solid var(--line);flex:none}
+.list .it{padding:9px 12px;border-bottom:1px solid var(--line)}.list .on{background:var(--prif)}
+.list b{display:block;font-size:12.5px}.mut{color:var(--mut);font-size:11.5px}
+.doc{flex:1;overflow:hidden;padding:16px 20px}
+.doc h3{margin:0;font-size:17px}
+.res{display:flex;gap:10px;align-items:center;border-radius:10px;padding:9px 12px;margin:10px 0 12px;font-weight:600}
+.res.bad{background:var(--badf);color:var(--bad)}.res.ok{background:var(--okf);color:var(--ok)}
+.cnt{display:flex;gap:6px;margin-left:auto}
+.b{display:inline-block;border-radius:4px;padding:1px 7px;font-size:10.5px;font-weight:700;color:#fff;letter-spacing:.03em}
+.b.p{background:var(--ok)}.b.f{background:var(--bad)}.b.n{background:var(--na)}
+.sec{border:1px solid var(--line);border-radius:10px;margin-bottom:12px;overflow:hidden}
+.sec>h4{margin:0;padding:8px 12px;background:var(--q);font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);display:flex;gap:8px}
+.sec>h4 .sp{flex:1}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 16px;padding:10px 12px}
+.grid .l{font-size:11px;color:var(--mut)}
+.fd{margin:8px 12px;padding:8px 10px;border-left:4px solid var(--na);border-radius:4px;background:var(--card)}
+.fd.p{border-left-color:var(--ok)}.fd.f{border-left-color:var(--bad);background:var(--badf)}.fd.n{border-left-color:var(--na)}
+.fh{display:flex;gap:8px;align-items:center;font-weight:600}.fh .sp{flex:1}
+.fs{margin-top:2px}
+.code{margin:6px 0 0 8px;padding:5px 9px;border-left:2px solid var(--line);background:var(--q);font-size:11.5px;color:var(--mut)}
+.code b{color:var(--ink)}
+.rv{margin:6px 0 0 8px;display:flex;gap:10px;flex-wrap:wrap;font-size:12px}
+.ph{width:56px;height:56px;border-radius:6px;background:linear-gradient(135deg,#8a8f96,#c5c9ce)}
+.dv{padding:8px 12px 0;font-weight:600;font-size:12.5px}
+.note{margin:8px 12px;padding:6px 9px;background:var(--q);border-radius:6px;font-size:12px}
+.nav{width:200px;border-right:1px solid var(--line);padding:12px;flex:none}
+.nav div{display:flex;padding:5px 6px;border-radius:6px;font-size:12px}.nav .on{background:var(--prif);color:var(--pri);font-weight:600}.nav .sp{flex:1}
+table{width:100%;border-collapse:collapse}
+th{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);text-align:left;font-weight:600;padding:7px 10px;border-bottom:1px solid var(--line)}
+td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr.f td:first-child{box-shadow:inset 4px 0 var(--bad)}tr.p td:first-child{box-shadow:inset 4px 0 var(--ok)}tr.n td:first-child{box-shadow:inset 4px 0 var(--na)}
+.btns{display:flex;gap:8px;margin-top:10px}.btn{border-radius:18px;padding:6px 14px;font-weight:600;font-size:12.5px}.fill{background:var(--pri);color:#fff}.out{border:1px solid var(--line);color:var(--pri)}
+.chips{display:flex;gap:6px;margin:0 0 10px}.chips span{border-radius:16px;padding:3px 10px;font-size:12px;border:1px solid var(--line);color:var(--mut)}.chips .on{background:var(--prif);color:var(--pri);border-color:transparent;font-weight:600}
+.phones{display:flex;flex-wrap:wrap;gap:24px}
+.phn{width:375px}.phn>h2{font-size:15px;margin:0 0 2px}.phn>p{margin:0 0 8px;color:var(--mut);font-size:12.5px}
+.scr{width:375px;height:700px;border:1px solid var(--line);border-radius:22px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column}
+.ttl{background:var(--card);padding:10px 14px;border-bottom:1px solid var(--line)}
+.ttl .bk{color:var(--pri);font-size:12.5px}.ttl b{display:block;font-size:15px;margin-top:4px}
+.body{flex:1;overflow:hidden;padding:10px 12px}
+.scr .sec{background:var(--card)}.scr .grid{grid-template-columns:1fr 1fr}
+.scr .res{margin-top:0}
+</style></head><body>
+<h1>203 · Inspection › Generated Reports: the report reads like the PDF</h1>
+<p class="lead">Jose (11-23, via the desk): the report in the app "should be more similar" to the PDF, with groups and colours. Today the app prints every answer as one flat list of grey label/value rows, including the steering questions the PDF hides. All three options below draw the same report the PDF prints: only the questions this inspection actually asked, the steering ones left out, each <b>finding</b> as a card with a green / red / grey bar and a PASS / FAIL / N/A badge, the chosen words under it, the code it's measured against in a quote block, and its photos, notes and work underneath. The result line ("Fail · 2 of 14 items did not meet standards") sits on top. Nothing on the server changes. The report stays frozen, as before.</p>
+
+<div class="opt"><h2>1 · The PDF's page, as section cards <span class="rec">(recommended)</span></h2>
+<p>A result banner on top with the Pass / Fail / N/A counts. Then one card per section, the way the PDF has a heading per section. Plain answers (client, address, chimney type) sit in a 3-column grid inside the card, not one per line. Findings are bar-and-badge cards, with failures tinted red. The "Inspection summary" table from the PDF's last page closes the report. Download PDF and Archive stay at the bottom.</p>
+<div class="win">
+<div class="list"><div class="it on"><b>Level 2 Chimney Inspection</b><span class="mut">Dana Reyes · JOB-04926</span></div><div class="it"><b>Level 1 Chimney Inspection</b><span class="mut">Kelly Harmon · JOB-04911</span></div><div class="it"><b>Dryer Vent Inspection</b><span class="mut">Ana Soto · JOB-04897</span></div></div>
+<div class="doc">
+<h3>Level 2 Chimney Inspection</h3><div class="mut">Dana Reyes · JOB-04926 · Submitted by Sam Okafor 11/21/2026 2:14 PM</div>
+<div class="res bad">✕ Inspection result: Fail · 2 of 14 items did not meet standards<span class="cnt"><span class="b p">PASS 9</span><span class="b f">FAIL 2</span><span class="b n">N/A 3</span></span></div>
+<div class="sec"><h4>Client and site</h4><div class="grid"><div><div class="l">Client</div>Dana Reyes</div><div><div class="l">Address</div>14 Elm St, Akron OH</div><div><div class="l">Date</div>11/21/2026</div></div></div>
+<div class="sec"><h4>The system<span class="sp"></span><span class="b f">1 FAIL</span></h4>
+<div class="grid"><div><div class="l">Chimney type</div>Masonry</div><div><div class="l">Flues</div>1</div><div><div class="l">Appliance</div>Wood fireplace</div></div>
+<div class="fd f"><div class="fh">Chimney crown<span class="sp"></span><span class="b f">FAIL</span></div><div class="fs">Cracked, water entering</div><div class="code"><b>R1003.9.1</b> Chimney caps / crowns shall be sloped to shed water…</div><div class="rv"><span class="ph"></span><span class="ph"></span><span><span class="mut">Recommended work</span><br>Crown rebuild · $850.00</span></div></div>
+<div class="fd p"><div class="fh">Flue liner<span class="sp"></span><span class="b p">PASS</span></div><div class="fs">Clay tile, intact</div><div class="code"><b>NFPA 211</b> 14.2 Liners shall be inspected for cracks…</div></div>
+<div class="fd n"><div class="fh">Spark arrestor<span class="sp"></span><span class="b n">N/A</span></div><div class="fs">Not applicable</div></div>
+</div></div></div></div>
+
+<div class="opt"><h2>2 · Sections down the side, findings on the right</h2>
+<p>Same cards, plus a section list on the left with each section's fail count. Click a section to jump to it. Better for 100-question reports, but it adds a third column beside the reports list.</p>
+<div class="win">
+<div class="list" style="width:220px"><div class="it on"><b>Level 2 Chimney Inspection</b><span class="mut">Dana Reyes · JOB-04926</span></div><div class="it"><b>Level 1 Chimney Inspection</b><span class="mut">Kelly Harmon</span></div></div>
+<div class="nav"><div class="on">Result<span class="sp"></span></div><div>Client and site</div><div>The system<span class="sp"></span><span class="b f">1</span></div><div>Smoke chamber<span class="sp"></span><span class="b f">1</span></div><div>Firebox</div><div>Summary</div></div>
+<div class="doc"><h3>Level 2 Chimney Inspection</h3><div class="res bad">✕ Fail · 2 of 14 did not meet standards</div>
+<div class="sec"><h4>The system</h4><div class="fd f"><div class="fh">Chimney crown<span class="sp"></span><span class="b f">FAIL</span></div><div class="fs">Cracked, water entering</div><div class="code"><b>R1003.9.1</b> Chimney caps shall be sloped…</div></div><div class="fd p"><div class="fh">Flue liner<span class="sp"></span><span class="b p">PASS</span></div><div class="fs">Clay tile, intact</div></div></div></div></div></div>
+
+<div class="opt"><h2>3 · The summary table first, a row opens its finding</h2>
+<p>The PDF's "Inspection summary" page as the main view: Item · Status · Notes, with the coloured edge on each row. A row expands into the finding card (citation, photos, work). Shortest page, but it reads less like the PDF than option 1.</p>
+<div class="win"><div class="list"><div class="it on"><b>Level 2 Chimney Inspection</b><span class="mut">Dana Reyes · JOB-04926</span></div></div>
+<div class="doc"><h3>Level 2 Chimney Inspection</h3><div class="res bad">✕ Fail · 2 of 14 · Pass 9 · Fail 2 · N/A 3</div>
+<table><tr><th>Item</th><th>Status</th><th>Notes</th></tr>
+<tr class="f"><td>Chimney crown ▾</td><td><span class="b f">FAIL</span></td><td>Cracked, water entering</td></tr>
+<tr><td colspan="3"><div class="code" style="margin:0"><b>R1003.9.1</b> Chimney caps shall be sloped…</div><div class="rv" style="margin-left:0"><span class="ph"></span><span class="ph"></span></div></td></tr>
+<tr class="p"><td>Flue liner ▸</td><td><span class="b p">PASS</span></td><td>Clay tile, intact</td></tr>
+<tr class="n"><td>Spark arrestor ▸</td><td><span class="b n">N/A</span></td><td>Not applicable</td></tr>
+<tr class="f"><td>Smoke chamber ▸</td><td><span class="b f">FAIL</span></td><td>Unparged, gaps</td></tr></table></div></div></div>
+
+<div class="phones">
+<div class="phn"><h2>4 · Phone: the same cards, stacked <span class="rec">(recommended)</span></h2><p>The full-screen report from the list. Banner, then section cards with a 2-column grid. Finding cards span the full width with the badge on the right. Citations wrap.</p>
+<div class="scr"><div class="ttl"><span class="bk">← All reports</span><b>Level 2 Chimney Inspection</b><span class="mut">Dana Reyes · JOB-04926</span></div><div class="body">
+<div class="res bad">✕ Fail · 2 of 14 items<span class="cnt"><span class="b p">9</span><span class="b f">2</span><span class="b n">3</span></span></div>
+<div class="sec"><h4>Client and site</h4><div class="grid"><div><div class="l">Client</div>Dana Reyes</div><div><div class="l">Date</div>11/21/2026</div></div></div>
+<div class="sec"><h4>The system</h4><div class="fd f"><div class="fh">Chimney crown<span class="sp"></span><span class="b f">FAIL</span></div><div class="fs">Cracked, water entering</div><div class="code"><b>R1003.9.1</b> Chimney caps shall be sloped to shed water…</div><div class="rv"><span class="ph"></span><span class="ph"></span></div></div>
+<div class="fd p"><div class="fh">Flue liner<span class="sp"></span><span class="b p">PASS</span></div><div class="fs">Clay tile, intact</div></div></div></div></div></div>
+<div class="phn"><h2>5 · Phone: Fail first, with a filter</h2><p>Chips All · Fail · Pass · N/A above the cards, opening on Fail. Quick for a technician, but it hides the client's whole picture.</p>
+<div class="scr"><div class="ttl"><span class="bk">← All reports</span><b>Level 2 Chimney Inspection</b></div><div class="body"><div class="chips"><span>All 14</span><span class="on">Fail 2</span><span>Pass 9</span><span>N/A 3</span></div>
+<div class="fd f" style="margin:0 0 8px"><div class="fh">Chimney crown<span class="sp"></span><span class="b f">FAIL</span></div><div class="fs">Cracked, water entering</div><div class="code"><b>R1003.9.1</b> Chimney caps…</div></div>
+<div class="fd f" style="margin:0"><div class="fh">Smoke chamber<span class="sp"></span><span class="b f">FAIL</span></div><div class="fs">Unparged, gaps</div></div></div></div></div>
+<div class="phn"><h2>6 · Phone: summary rows that open</h2><p>The table as rows (name, badge). A tap opens the finding below the row.</p>
+<div class="scr"><div class="ttl"><span class="bk">← All reports</span><b>Level 2 Chimney Inspection</b></div><div class="body"><div class="res bad">✕ Fail · 2 of 14</div>
+<div class="sec"><div class="fd f" style="margin:0;border-radius:0"><div class="fh">Chimney crown ▾<span class="sp"></span><span class="b f">FAIL</span></div><div class="code"><b>R1003.9.1</b> Chimney caps…</div></div><div class="fd p" style="margin:0;border-radius:0"><div class="fh">Flue liner ▸<span class="sp"></span><span class="b p">PASS</span></div></div><div class="fd n" style="margin:0;border-radius:0"><div class="fh">Spark arrestor ▸<span class="sp"></span><span class="b n">N/A</span></div></div></div></div></div></div>
+</div>
+</body></html>

@@ -303,6 +303,9 @@ class SettingsController extends Controller
             // another. What the screen owes them is the sentence.
             'not_yet_in_effect' => $definition->notYetInEffect,
 
+            // A text message: one curly quote or dash sends it as UCS-2, 70 characters a part.
+            'sms' => $definition->sms,
+
             // Can this SCOPE hold it? Inheritance, not permission.
             'editable_here'  => $allowsScope,
 

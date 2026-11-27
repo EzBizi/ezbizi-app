@@ -23,6 +23,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use App\Support\Workiz\WorkizClock;
 
 /**
  * Turn the Workiz mirror into EzBizi customers and jobs.
@@ -97,11 +98,13 @@ class ProjectWorkizRecords extends Command
     public const LOCK = 'ezbizi:project-workiz';
 
     /**
-     * Long enough that no real run outlives it — projecting the whole history
-     * import took about two minutes — and short enough that a run killed
-     * mid-way does not hold the projection off for more than an hour.
+     * The scheduler slot's own ceiling (ezbizi-scheduler@.service,
+     * TimeoutStartSec=300): no run can outlive it, so neither does the lock.
+     * It was an hour, and on 11-12 a slot killed at 17:25 by that timeout left
+     * it held: no Workiz job became an EzBizi job until 18:25. A normal run
+     * takes about 100 seconds.
      */
-    private const LOCK_SECONDS = 3600;
+    public const LOCK_SECONDS = 300;
 
     /**
      * When the last completed pass BEGAN. The next pass derives clients only
@@ -117,6 +120,18 @@ class ProjectWorkizRecords extends Command
             $this->info('Another Workiz projection is already running, so this one did nothing.');
 
             return self::SUCCESS;
+        }
+
+        // A run killed mid-way (a deploy restarting the scheduler) frees the
+        // lock at once instead of holding projection off for its full hour
+        // (11-10: 30 minutes of bookings waited). ponytail: SIGKILL cannot be
+        // trapped; that case still waits out LOCK_SECONDS.
+        if (extension_loaded('pcntl')) {
+            $this->trap([SIGTERM, SIGINT, SIGHUP], function () use ($lock) {
+                $lock->release();
+
+                exit(1);
+            });
         }
 
         try {
@@ -437,7 +452,9 @@ class ProjectWorkizRecords extends Command
         $name = $client->name ?: $client->company;
         $norm = fn (?string $value) => mb_strtolower(preg_replace('/\s+/u', ' ', trim((string) $value)));
         $zip = fn (?string $value) => substr(preg_replace('/\D+/', '', (string) $value), 0, 5);
-        $placeholder = fn (?string $street) => in_array(WorkizTwins::street($street), WorkizTwins::PLACEHOLDER_STREETS, true);
+        // The org's list (Customers, 11-04: no constants), in the same street form as the match.
+        $streets = array_map(fn (string $s) => WorkizTwins::street($s), Customer::placeholders('customers.placeholder_streets'));
+        $placeholder = fn (?string $street) => in_array(WorkizTwins::street($street), $streets, true);
 
         if ($phone === null || preg_match('/^\+1\d{10}$/', $phone) !== 1 || ($name ?? '') === '' || $placeholder($client->address)) {
             return $none;
@@ -535,6 +552,11 @@ class ProjectWorkizRecords extends Command
                     // needs no mapping table.
                     'status' => $mirrored->status,
 
+                    // Workiz's labels, through Job's setters, which tidy the words.
+                    'job_type' => $this->label($mirrored, 'JobType'),
+                    'sub_status' => $this->label($mirrored, 'SubStatus'),
+                    'tags' => is_array($mirrored->payload['Tags'] ?? null) ? $mirrored->payload['Tags'] : null,
+
                     // The naive 'Y-m-d H:i:s' string, handed straight to
                     // FranchiseWallTime's cast. Workiz sends no zone — `Timezone`
                     // is absent from every real payload — so building a Carbon
@@ -559,7 +581,7 @@ class ProjectWorkizRecords extends Command
                 // status, which is correct: it only acts on the way in. With
                 // no Workiz moment it stays UNSTAMPED: markEarnedIfDue would
                 // read null as now and file old work under this month.
-                $moment = $this->workizMoment($mirrored, $franchise->timezone);
+                $moment = $this->workizMoment($mirrored, WorkizClock::zone($franchise));
 
                 if ($moment !== null) {
                     $job->markEarnedIfDue($moment);
@@ -572,7 +594,7 @@ class ProjectWorkizRecords extends Command
                 $by = trim((string) ($mirrored->payload['CreatedBy'] ?? ''));
                 $born = $mirrored->payload['CreatedDate'] ?? null;
                 if (is_string($born) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $born)) {
-                    $job->created_at = Carbon::createFromFormat('Y-m-d H:i:s', $born, $franchise->timezone ?: 'America/New_York')->utc();
+                    $job->created_at = Carbon::createFromFormat('Y-m-d H:i:s', $born, WorkizClock::zone($franchise))->utc();
                 }
                 if ($by !== '') {
                     $job->created_by_label = $by;
@@ -606,7 +628,10 @@ class ProjectWorkizRecords extends Command
      * invoiced — most imported jobs read USD 0.00 because A1 Tools last saw
      * them before they were priced.
      */
-    private const FOLLOWED = ['status', 'scheduled_for', 'amount_minor', 'performed_by_user_id'];
+    private const FOLLOWED = ['status', 'scheduled_for', 'amount_minor', 'performed_by_user_id', 'job_type', 'sub_status', 'tags', 'description'];
+
+    /** Followed since 2026-11-02 (Jobs), description since 11-10; a row projected before has none recorded. */
+    private const LABELS = ['job_type', 'sub_status', 'tags', 'description'];
 
     /**
      * Keep projected jobs following Workiz — per field, and only where nobody
@@ -643,6 +668,7 @@ class ProjectWorkizRecords extends Command
     {
         $followed = 0;
         $announce = [];
+        $tagged = [];
 
         WorkizJob::query()
             ->select('workiz_jobs.*')
@@ -662,10 +688,15 @@ class ProjectWorkizRecords extends Command
                     // to agree with PHP's strict test, null against '' included.
                     ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.projected, '$.area_inputs') <=> JSON_ARRAY(workiz_jobs.service_area, workiz_jobs.postal_code))")
                     ->orWhereRaw('NOT (workiz_team_members.user_id <=> jobs.performed_by_user_id)')
+                    // ponytail: untidy Workiz words (stray spaces) re-load each run; the decision below is tidy.
+                    ->orWhereRaw("NOT (JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.JobType')) <=> jobs.job_type)")
+                    ->orWhereRaw("NOT (JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.SubStatus')) <=> jobs.sub_status)")
+                    ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.payload, '$.Tags') <=> CAST(jobs.tags AS JSON))")
+                    ->orWhereRaw("NOT (TRIM(JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.JobNotes'))) <=> jobs.description)")
                     // Workiz's team moved since it was handed to Scheduling: team() below.
                     ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.projected, '$.team') <=> JSON_EXTRACT(workiz_jobs.payload, '$.Team[*].id'))");
             })
-            ->chunkById(500, function ($mirrored) use (&$followed, &$announce, $dryRun) {
+            ->chunkById(500, function ($mirrored) use (&$followed, &$announce, &$tagged, $dryRun) {
                 $jobs = Job::query()->whereIn('id', $mirrored->pluck('job_id'))->get()->keyBy('id');
 
                 foreach ($mirrored as $row) {
@@ -685,7 +716,22 @@ class ProjectWorkizRecords extends Command
                         'scheduled_for' => $row->scheduled_for?->format('Y-m-d H:i:s'),
                         'amount_minor' => $this->minor($row->payload['JobTotalPrice'] ?? null),
                         'performed_by_user_id' => $this->performer($row),
-                    ];
+                        'description' => $this->text($row->payload['JobNotes'] ?? null),
+                    ] + $this->labels($row);
+
+                    // No label recorded as ours yet: the job's own is ours only
+                    // when it already agrees with Workiz (the labels backfill);
+                    // otherwise a person's, or free to fill when empty.
+                    foreach (self::LABELS as $field) {
+                        if (! array_key_exists($field, $last)) {
+                            // Workiz's notes grow after a job is copied (Jobs, 11-10:
+                            // JOB-57727 held the first three lines): a description that
+                            // is the start of Workiz's notes is still ours.
+                            $grew = $field === 'description' && $now[$field] !== null && $workiz[$field] !== null
+                                && str_starts_with($workiz[$field], $now[$field]);
+                            $last[$field] = $grew || $this->same($now[$field], $workiz[$field]) ? $now[$field] : null;
+                        }
+                    }
 
                     $changes = [];
 
@@ -729,13 +775,14 @@ class ProjectWorkizRecords extends Command
                         continue;
                     }
 
-                    DB::transaction(function () use ($row, $job, $changes, $moveArea, $inputs, $last, $now, &$announce) {
+                    DB::transaction(function () use ($row, $job, $changes, $moveArea, $inputs, $last, $now, &$announce, &$tagged) {
                         if ($moveArea) {
                             $job->service_area_id = JobServiceArea::resolve($job->franchise, $row->service_area, $row->postal_code);
                         }
 
                         if ($changes !== []) {
-                            $job->forceFill($changes);
+                            $job->forceFill(array_key_exists('tags', $changes)
+                                ? ['tags' => $changes['tags'] === null ? null : json_decode($changes['tags'], true)] + $changes : $changes);
 
                             /*
                              * WORKIZ-COMPLETED WORK MUST REACH REVENUE.
@@ -752,7 +799,7 @@ class ProjectWorkizRecords extends Command
                              * year of revenue would land in this month.
                              */
                             if (array_key_exists('status', $changes)) {
-                                $job->markEarnedIfDue($this->workizMoment($row, $job->franchise?->timezone));
+                                $job->markEarnedIfDue($this->workizMoment($row, WorkizClock::zone($job->franchise)));
                             }
                         }
 
@@ -760,8 +807,14 @@ class ProjectWorkizRecords extends Command
                         $job->save();
 
                         if (array_key_exists('status', $changes)
-                            && $this->happenedRecently($row, $job->franchise?->timezone)) {
+                            && $this->happenedRecently($row, WorkizClock::zone($job->franchise))) {
                             $announce[] = [$job, $now['status'], $changes['status']];
+                        }
+
+                        // Automations, 2026-11-03: the same guard as status, so a backfill texts nobody.
+                        if (array_key_exists('tags', $changes)
+                            && $this->happenedRecently($row, WorkizClock::zone($job->franchise))) {
+                            $tagged[] = [$job, json_decode((string) ($now['tags'] ?? 'null'), true) ?? [], json_decode((string) ($changes['tags'] ?? 'null'), true) ?? []];
                         }
 
                         // What we have written, field by field. A field a
@@ -783,6 +836,7 @@ class ProjectWorkizRecords extends Command
         }
 
         $this->announce($events, $announce);
+        $this->announceTags($events, $tagged);
 
         return $followed;
     }
@@ -870,6 +924,24 @@ class ProjectWorkizRecords extends Command
                     'after' => ['status' => $after],
                 ]);
             }
+        }
+    }
+
+    /**
+     * `job.tags_changed` for Workiz's tag moves, under announce()'s rules: only
+     * recent moves reach here, and more than the limit in one pass is a
+     * backfill that announces none.
+     *
+     * @param  list<array{0: Job, 1: list<string>, 2: list<string>}>  $moves
+     */
+    private function announceTags(EventEmitter $events, array $moves): void
+    {
+        if ($moves === [] || count($moves) > max(0, (int) $this->option('announce-limit'))) {
+            return;
+        }
+
+        foreach ($moves as [$job, $before, $after]) {
+            $events->emit('job.tags_changed', $job, ['before' => ['tags' => $before], 'after' => ['tags' => $after]]);
         }
     }
 
@@ -982,7 +1054,29 @@ class ProjectWorkizRecords extends Command
             'scheduled_for' => $job->getRawOriginal('scheduled_for'),
             'amount_minor' => $job->amount_minor,
             'performed_by_user_id' => $job->performed_by_user_id,
+            'job_type' => $job->job_type,
+            'sub_status' => $job->sub_status,
+            // One JSON spelling, so same() compares it as a string (MySQL re-spaces a JSON column).
+            'tags' => $job->tags === null ? null : json_encode($job->tags, JSON_UNESCAPED_UNICODE),
+            'description' => $job->description,
         ];
+    }
+
+    /** Workiz's labels as Job's setters would store them. */
+    private function labels(WorkizJob $row): array
+    {
+        $tidy = new Job;
+        $tidy->tags = is_array($row->payload['Tags'] ?? null) ? $row->payload['Tags'] : null;
+
+        return ['job_type' => $this->label($row, 'JobType'), 'sub_status' => $this->label($row, 'SubStatus'),
+            'tags' => $tidy->tags === null ? null : json_encode($tidy->tags, JSON_UNESCAPED_UNICODE)];
+    }
+
+    private function label(WorkizJob $row, string $key): ?string
+    {
+        $value = $row->payload[$key] ?? null;
+
+        return is_string($value) ? (new Job(['job_type' => $value]))->job_type : null;
     }
 
     /**

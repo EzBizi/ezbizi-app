@@ -1,9 +1,11 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import '../../core/staff_session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
+import '../../core/soft_keyboard.dart';
 
 /// The oldest client build each platform may still talk to.
 ///
@@ -189,16 +191,9 @@ class _ClientVersionsScreenState extends State<ClientVersionsScreen> {
               // Standard field height, as tall as Leads search (Jose, 2026-10-27).
               SizedBox(
                 width: 240,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('client-versions-search'),
-                  textAlignVertical: TextAlignVertical.center,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIconConstraints: BoxConstraints(minWidth: 36),
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Find a platform',
-                    border: OutlineInputBorder(),
-                  ),
+                  hint: 'Find a platform',
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),
@@ -231,7 +226,7 @@ class _ClientVersionsScreenState extends State<ClientVersionsScreen> {
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                     itemCount: _shown.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
                     itemBuilder: (context, i) => _row(context, _shown[i]),
                   ),
           ),
@@ -249,9 +244,11 @@ class _ClientVersionsScreenState extends State<ClientVersionsScreen> {
     final note = row['note'] as String?;
     final changedBy = row['changed_by'] as String?;
 
+    // One compact row per platform (UI queue 168).
     return Card(
+      margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -269,7 +266,7 @@ class _ClientVersionsScreenState extends State<ClientVersionsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(_label(platform), style: theme.textTheme.titleMedium),
+                    Text(_label(platform), style: theme.textTheme.titleSmall),
                     const SizedBox(height: 2),
                     Text(
                       // The state in a sentence, not a badge. "0.0.0030" beside
@@ -428,7 +425,7 @@ class _EditPanelState extends State<_EditPanel> {
         children: [
           TextField(
             controller: _minimum,
-            autofocus: true,
+            autofocus: autofocusOnOpen,
             decoration: const InputDecoration(
               labelText: 'Oldest allowed version',
               // The empty case spelled out, because it is the recovery path and

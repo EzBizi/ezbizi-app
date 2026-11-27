@@ -1,6 +1,9 @@
+import '../../widgets/module_page_header.dart';
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/theme.dart';
 import '../../core/contracts.dart';
 import '../../core/files.dart';
@@ -75,6 +78,10 @@ class _ContractsTabState extends State<ContractsTab> {
   /// unreadable, and blanking the page over it hides what somebody came to read.
   String? _cannotDesign;
 
+  /// One contract failing to open; kept apart from [_cannotDesign] so it does
+  /// not disable "New contract" (full-code audit, 2026-11-27).
+  String? _openError;
+
   /// Why the last draft download was refused, in the server's words.
   String? _draftError;
 
@@ -109,17 +116,32 @@ class _ContractsTabState extends State<ContractsTab> {
   void initState() {
     super.initState();
     _load();
+    // A template published or archived elsewhere: read again quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'hr_contracts'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
 
-  Future<void> _load() async {
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
-    setState(() {
-      // A spinner only when there is nothing to keep — see AsyncBody. The
-      // refresh after publishing leaves the rows up.
-      _loading = _templates.isEmpty;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        // A spinner only when there is nothing to keep — see AsyncBody. The
+        // refresh after publishing leaves the rows up.
+        _loading = _templates.isEmpty;
+        _error = null;
+      });
+    }
 
     final answers = await Future.wait([
       widget.api.get('/hr/contracts'),
@@ -129,6 +151,7 @@ class _ContractsTabState extends State<ContractsTab> {
     if (!mounted || request != _request) return;
 
     final templates = answers[0];
+    if (quiet && !templates.ok) return;
     final catalogue = answers[1];
 
     setState(() {
@@ -202,13 +225,20 @@ class _ContractsTabState extends State<ContractsTab> {
               'what merges into the document. Editing one publishes a new '
               'version; the contracts already signed keep the version that '
               'produced them.',
-          action: FilledButton.icon(
-            key: const ValueKey('tour-hr-contracts-new'),
-            onPressed: _mayCreate && _cannotDesign == null ? _create : null,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('New contract'),
+          action: ModuleAction(
+            child: FilledButton.icon(
+              key: const ValueKey('tour-hr-contracts-new'),
+              onPressed: _mayCreate && _cannotDesign == null ? _create : null,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('New contract'),
+            ),
           ),
         ),
+        if (_openError != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: ErrorNote(_openError!),
+          ),
         if (_cannotDesign != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
@@ -303,14 +333,9 @@ class _ContractsTabState extends State<ContractsTab> {
     alignment: Alignment.centerLeft,
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 320),
-      child: TextField(
+      child: ListSearch(
         key: const ValueKey('tour-hr-contracts-search'),
-        decoration: const InputDecoration(
-          hintText: 'Search contracts',
-          prefixIcon: Icon(Icons.search),
-          isDense: true,
-          border: OutlineInputBorder(),
-        ),
+        hint: 'Search contracts',
         onChanged: (v) => setState(() => _query = v),
       ),
     ),
@@ -378,9 +403,7 @@ class _ContractsTabState extends State<ContractsTab> {
                   ),
               ],
             ),
-            Text(
-              template['version'] == null ? '—' : 'v${template['version']}',
-            ),
+            Text(template['version'] == null ? '—' : 'v${template['version']}'),
             Text(_questionCount(template['field_count'])),
             // Written, or still only questions: a template with no wording
             // produces a dump of answers, not an agreement. Absent is a server
@@ -479,7 +502,10 @@ class _ContractsTabState extends State<ContractsTab> {
   /// rather than shipped with every row, so opening the tab does not pull down
   /// every question of every contract to draw six names.
   Future<void> _open(String id) async {
-    setState(() => _opening = id);
+    setState(() {
+      _opening = id;
+      _openError = null;
+    });
 
     final response = await widget.api.get('/hr/contracts/$id');
 
@@ -491,7 +517,7 @@ class _ContractsTabState extends State<ContractsTab> {
       if (!response.ok) {
         // Beside the list rather than over it: the rest of the page is fine,
         // and one row failing to open is not a reason to lose the others.
-        _cannotDesign = 'That contract could not be opened: ${response.reason}';
+        _openError = 'That contract could not be opened: ${response.reason}';
         return;
       }
 

@@ -1,19 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
+import '../../widgets/list_search.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/sending_server_panel.dart';
 import '../../widgets/workiz_connect_form.dart';
+import '../../widgets/workiz_tags_section.dart';
 import '../../widgets/airtable_token_connect.dart';
 import '../../widgets/api_key_connect_form.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/social_network_mark.dart';
 import '../../widgets/telegram_linked_staff.dart';
 import '../email/mailbox_panels.dart';
+import '../../widgets/disconnect_panel.dart';
+import '../../core/theme.dart';
+import '../../core/timestamps.dart';
+import '../email/consent_window.dart';
+import '../../widgets/open_destination.dart';
+import 'choose_products_panel.dart';
+import 'integration_family_card.dart';
 import 'integration_provider_screen.dart';
+import 'integrations_health.dart';
 
 /// Settings › Integrations — every outside account this view is connected to,
 /// in one place.
@@ -55,10 +66,14 @@ class IntegrationsScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.session,
+    this.openConsent = openConsentWindow,
   });
 
   final ApiClient api;
   final Session session;
+
+  /// Injected so a test can hand in a sign-in window that opens nothing.
+  final OpenConsentWindow openConsent;
 
   @override
   State<IntegrationsScreen> createState() => _IntegrationsScreenState();
@@ -98,6 +113,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// read it. An empty map is "none set up".
   Map<String, dynamic>? _sending;
 
+  /// The server saved at this scope (`connected_here`), with its last check.
+  Map<String, dynamic>? _sendingHere;
+
   /// Why the server would not answer for the sending server here, when it
   /// would not. The card is still drawn, carrying this instead of Connect:
   /// a card that vanishes on a refusal is how Triplex Group (2026-10-22) had
@@ -118,6 +136,19 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// `Scaffold`.
   String? _open;
 
+  /// Products a head's sign-in brings, by head: the catalogue's
+  /// `signed_in_with` (UI queue 182). They draw inside the head's card.
+  Map<String, List<String>> get _folded {
+    final out = <String, List<String>>{};
+    for (final e in _catalogue.entries) {
+      final head = e.value['signed_in_with'] as String?;
+      if (head != null && head.isNotEmpty) {
+        out.putIfAbsent(head, () => []).add(e.key);
+      }
+    }
+    return out;
+  }
+
   String get _viewName =>
       widget.session.me?.scope.label ??
       widget.session.me?.organization.name ??
@@ -129,7 +160,37 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     _load();
   }
 
+  /// GET /integrations/overview, or null when it failed: then there is no
+  /// note and no status lines, and the grid is exactly as before.
+  Map<String, dynamic>? _overview;
+
+  Future<void> _loadOverview() async {
+    final r = await widget.api.get('/integrations/overview');
+    if (!mounted) return;
+    final data = r.ok ? r.body['data'] : null;
+    setState(() => _overview = data is Map<String, dynamic> ? data : null);
+  }
+
+  /// A cause's fix: reconnect opens the app's pane, retry re-checks every
+  /// account in the cause, a link opens outside.
+  Future<void> _fix(HealthCause cause) async {
+    final action = cause.fix?['action'];
+    if (action == 'reconnect') {
+      setState(() => _open = cardProviderOf(cause.provider));
+    } else if (action == 'open_url' && cause.fix?['url'] is String) {
+      await launchUrl(Uri.parse(cause.fix!['url'] as String));
+    } else if (action == 'retry') {
+      for (final id in cause.ids) {
+        await widget.api.post('/integrations/$id/recheck', const {});
+      }
+      await _loadOverview();
+    } else {
+      setState(() => _open = cardProviderOf(cause.provider));
+    }
+  }
+
   Future<void> _load() async {
+    _loadOverview();
     // Data sources are filtered out of this endpoint by default, because
     // listing them once put twenty-two Google Ads accounts in the Social Media
     // composer as if a post could go to one. Integrations is the screen that
@@ -179,7 +240,13 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                   label: n['label'] as String?,
                   scopeType: n['scope_type'] as String? ?? '',
                   scopeId: n['scope_id'] as String? ?? '',
-                  connected: true,
+                  // NumbersController's own health: does a call reach anybody.
+                  connected: _phoneProblems(n).isEmpty,
+                  statusReason: _phoneProblems(n).isEmpty
+                      ? null
+                      : '${_phoneProblems(n).length} '
+                            '${_phoneProblems(n).length == 1 ? 'problem' : 'problems'}: '
+                            '${_phoneProblems(n).join(' ')}',
                 ),
             ]
           : null;
@@ -189,6 +256,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       _sending = server == null
           ? null
           : (server['in_effect'] as Map<String, dynamic>?) ?? const {};
+      _sendingHere = server?['connected_here'] as Map<String, dynamic>?;
       // A 4xx is the server answering "not here", with its reason; a 5xx or
       // no answer at all says nothing about this scope, so it offers nothing.
       _sendingRefusal =
@@ -300,18 +368,33 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       final key = c.provider == 'workiz_web' ? 'workiz' : c.provider;
       byProvider.putIfAbsent(key, () => []).add(c);
     }
-    final host = _sending?['host'] as String?;
-    if (host != null && host.isNotEmpty) {
+    // The server saved at this scope, as its last check found it: verified
+    // is connected, failed is broken with the reason, never on our say-so.
+    final here = _sendingHere ?? _sending;
+    final host = here?['host'] as String?;
+    if (here != null && host != null && host.isNotEmpty) {
+      final state = here['state'] as String?;
+      final failed = state == 'failed';
       byProvider['sending_server'] = [
         IntegrationConnection(
           id: 'sending_server',
           provider: 'sending_server',
           providerLabel: 'Sending server',
           displayName: host,
-          label: _sending?['from_address'] as String?,
+          label: here['from_address'] as String?,
           scopeType: '',
           scopeId: '',
-          connected: true,
+          connected: !failed,
+          statusReason: failed
+              ? (here['state_reason'] as String? ??
+                    'The mail server refused the last send.')
+              : null,
+          detail: state == 'verified' || failed
+              ? null
+              : 'Not checked yet: send a test from its panel.',
+          lastCheckedAt: DateTime.tryParse(
+            here['last_checked_at'] as String? ?? '',
+          ),
         ),
       ];
     }
@@ -325,7 +408,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       if (_mayManageWorkspace) 'google_workspace',
       if (_numbers != null) 'phone_numbers',
       if (_sending != null || _sendingRefusal != null) 'sending_server',
-    };
+    }..removeAll(_folded.values.expand((v) => v));
+    // A head with nothing of its own but a connected product still draws.
+    providers.addAll(_folded.keys.where(_catalogue.containsKey));
 
     // THE PANE IN PLACE OF THE GRID, never over the app. See [_open].
     final open = _open;
@@ -403,6 +488,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         purpose: _purpose[open],
         onEdit: open == 'workiz' && _maySeeExperimental ? _editWorkiz : null,
         mayMoveWorkizWeb: _mayConnectProvider('workiz_web'),
+        footer: open == 'workiz' && _mayConnectProvider('workiz')
+            ? WorkizTagsSection(api: widget.api)
+            : null,
         onChanged: _load,
         onBack: () => setState(() => _open = null),
       );
@@ -420,6 +508,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
   bool _phone = false;
 
+  String _query = '';
+
   Widget _grid(
     BuildContext context,
     Set<String> providers,
@@ -434,16 +524,137 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               'The outside services EzBizi works with. Open one to connect, '
               'edit or disconnect it.',
         ),
-        Expanded(child: _list(context, providers, byProvider)),
+        // Every list has search: about twenty services in six cards (phone
+        // audit 2026-11-04, Section 4 #12).
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: ListSearch(
+              key: const ValueKey('integrations-search'),
+              hint: 'Find a service',
+              width: _phone ? double.infinity : 280,
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+        ),
+        Expanded(
+          child: _list(context, {
+            for (final p in providers)
+              if (_query.trim().isEmpty ||
+                  [p, ...?_folded[p]].any(
+                    (q) => _label(
+                      q,
+                    ).toLowerCase().contains(_query.trim().toLowerCase()),
+                  ))
+                p,
+          }, byProvider),
+        ),
       ],
     );
   }
 
+  /// The families, as category chips (UI queue 183) — the headings this
+  /// screen used to draw as one card each.
+  static const _categories = [
+    ('phone', 'Phone'),
+    ('messaging', 'Messaging'),
+    ('mailing', 'Mailing'),
+    ('email', 'Email'),
+    ('social', 'Social'),
+    ('leads', 'Advertising and listings'),
+    ('reporting', 'Reporting'),
+    ('tasks', 'Tasks'),
+  ];
+
+  /// One key per category section, so a chip scrolls to its heading.
+  final Map<String, GlobalKey> _sectionKeys = {};
+
+  /// Connected (working or not) before what is only offered.
+  bool _hasAny(
+    String provider,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) =>
+      [
+        provider,
+        ...?_folded[provider],
+      ].any((p) => (byProvider[p] ?? const []).isNotEmpty) ||
+      _products(provider).any((p) => p['connected'] == true);
+
+  /// Sections by category, as before 0.0.0566 (Jose, 2026-11-13): chips on
+  /// top scroll to them, every card the same size, and what needs attention
+  /// is the LAST section, one plain line per cause.
   Widget _list(
     BuildContext context,
     Set<String> providers,
     Map<String, List<IntegrationConnection>> byProvider,
   ) {
+    final theme = Theme.of(context);
+    final by = <String, List<String>>{};
+    for (final p in providers) {
+      by.putIfAbsent(_familyOf(p), () => []).add(p);
+    }
+    for (final list in by.values) {
+      list.sort((a, b) {
+        final c =
+            (_hasAny(a, byProvider) ? 0 : 1) - (_hasAny(b, byProvider) ? 0 : 1);
+        return c != 0 ? c : _label(a).compareTo(_label(b));
+      });
+    }
+    final sections = [
+      for (final (key, title) in _categories)
+        if (by.containsKey(key)) (key, title),
+      // A family this build has no heading for still draws, last.
+      for (final key in by.keys)
+        if (!_categories.any((c) => c.$1 == key)) (key, 'Other'),
+    ];
+
+    Widget card(String provider) => _isFamily(provider)
+        ? _familyTile(provider, byProvider)
+        : _providerCard(
+            context,
+            provider: provider,
+            rows: byProvider[provider] ?? const [],
+            canName: _familyOf(provider) == 'reporting',
+          );
+
+    Widget section(String key, String title) {
+      final mine = by[key]!;
+      return Padding(
+        key: _sectionKeys.putIfAbsent(key, GlobalKey.new),
+        padding: const EdgeInsets.only(bottom: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              title,
+              key: ValueKey('integrations-section:$key'),
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            // A family is a row on a phone too: its fixed-height card ran
+            // its status lines out of the box, under the next row (mobile
+            // review 2026-11-13: Telegram drawn over WhatsApp's status).
+            if (_phone)
+              for (final provider in mine)
+                _isFamily(provider)
+                    ? _familyRow(provider, byProvider)
+                    : _providerRow(
+                        context,
+                        provider: provider,
+                        rows: byProvider[provider] ?? const [],
+                      )
+            else
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [for (final provider in mine) card(provider)],
+              ),
+          ],
+        ),
+      );
+    }
+
     return ListView(
       key: const ValueKey('tour-integrations-list'),
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -463,94 +674,50 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           ),
           const SizedBox(height: 12),
         ],
-        if (_numbers != null) ...[
-          _family(
-            context,
-            title: 'Phone',
-            icon: Icons.call_outlined,
-            family: 'phone',
-            providers: providers,
-            byProvider: byProvider,
-            empty: 'No phone numbers in $_viewName.',
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final (key, title) in sections)
+                ActionChip(
+                  key: ValueKey('integrations-category:$key'),
+                  label: Text(title),
+                  onPressed: () {
+                    final at = _sectionKeys[key]?.currentContext;
+                    if (at != null) {
+                      Scrollable.ensureVisible(
+                        at,
+                        duration: const Duration(milliseconds: 250),
+                      );
+                    }
+                  },
+                ),
+            ],
           ),
-          const SizedBox(height: 12),
-        ],
-        // The business's own WhatsApp number (Embedded Signup), beside the
-        // phone numbers (UI queue 110). Connected HERE: no other screen owns
-        // it, so no `_whereFor` sends them away.
-        _family(
-          context,
-          title: 'Messaging',
-          icon: Icons.chat_outlined,
-          family: 'messaging',
-          providers: providers,
-          byProvider: byProvider,
-          empty: 'No messaging account connected in $_viewName.',
         ),
-        const SizedBox(height: 12),
-        _family(
-          context,
-          title: 'Mailing',
-          icon: Icons.drafts_outlined,
-          family: 'mailing',
-          providers: providers,
-          byProvider: byProvider,
-          empty:
-              'No mailing account connected in $_viewName. A newsletter is '
-              'sent through the company\'s own account, so one has to be '
-              'connected before anything can go out.',
+        for (final (key, title) in sections) section(key, title),
+        if (providers.isEmpty)
+          DashboardNote('No service matches in $_viewName.'),
+        IntegrationsHealthNote(
+          api: widget.api,
+          me: widget.session.me,
+          overview: _overview,
+          onFix: _fix,
+          onChanged: _loadOverview,
         ),
-        if (_mayManageWorkspace ||
-            _sending != null ||
-            _sendingRefusal != null) ...[
-          const SizedBox(height: 12),
-          _family(
-            context,
-            title: 'Email',
-            icon: Icons.inbox_outlined,
-            family: 'email',
-            providers: providers,
-            byProvider: byProvider,
-            empty: 'Nothing for email connected in $_viewName.',
+        for (final line in _problems)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              line,
+              key: const ValueKey('integrations-problem'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: StateColour.of(context).caution,
+              ),
+            ),
           ),
-        ],
-        const SizedBox(height: 12),
-        _family(
-          context,
-          title: 'Social',
-          icon: Icons.share_outlined,
-          family: 'social',
-          providers: providers,
-          byProvider: byProvider,
-          empty: 'No social account connected in $_viewName.',
-        ),
-        const SizedBox(height: 12),
-        _family(
-          context,
-          title: 'Advertising and listings',
-          icon: Icons.campaign_outlined,
-          family: 'leads',
-          providers: providers,
-          byProvider: byProvider,
-          empty: 'No advertising account connected in $_viewName.',
-        ),
-        const SizedBox(height: 12),
-        _family(
-          context,
-          title: 'Reporting',
-          icon: Icons.assessment_outlined,
-          family: 'reporting',
-          providers: providers,
-          byProvider: byProvider,
-          empty:
-              'No reporting source connected in $_viewName. Reports read '
-              'these directly, so a report covering a business with none '
-              'connected has nothing to show.',
-          // Only the reporting sources, for now. The others are named where
-          // they are connected, and this screen is not trying to become the
-          // place every account is administered.
-          canName: true,
-        ),
       ],
     );
   }
@@ -808,76 +975,275 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     ),
   ];
 
-  Widget _family(
-    BuildContext context, {
-    required String title,
-    required IconData icon,
-    required String family,
-    required Set<String> providers,
-    required Map<String, List<IntegrationConnection>> byProvider,
-    required String empty,
-    bool canName = false,
+  /// The products a head's sign-in can bring, when it lists two or more
+  /// (UI queue 183): the catalogue's `products[]`. One product is just the
+  /// provider, with nothing to choose between.
+  List<Map<String, dynamic>> _products(String head) {
+    final list = ((_catalogue[head]?['products'] as List<dynamic>?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    return list.length > 1 ? list : const [];
+  }
+
+  bool _isFamily(String provider) =>
+      _folded.containsKey(provider) || _products(provider).isNotEmpty;
+
+  /// A product with a sign-in of its own (WhatsApp's Embedded Signup): the
+  /// family's Disconnect leaves it (Meta API, 2da5e93ec).
+  bool _ownSignIn(String head, Map<String, dynamic> product) {
+    final path = product['start_path'] as String?;
+    return path != null &&
+        path.isNotEmpty &&
+        path != _catalogue[head]?['start_path'];
+  }
+
+  /// What the server said it could not take back, after a disconnect: shown
+  /// as a caution line rather than lost in a snackbar.
+  List<String> _problems = const [];
+
+  void _noteProblems(ApiResponse? response) {
+    final data = response?.data;
+    final problems = data is Map<String, dynamic> ? data['problems'] : null;
+    setState(() {
+      _problems = problems is List
+          ? problems.whereType<String>().toList()
+          : const [];
+    });
+  }
+
+  /// Set up in another module, never at a sign-in (Gmail → Email's
+  /// Workspace setup, Leads + Google 6262b4928): no scopes of its own.
+  bool _setUpElsewhere(String head, Map<String, dynamic> product) =>
+      _ownSignIn(head, product) &&
+      ((product['scopes'] as List<dynamic>?) ?? const []).isEmpty;
+
+  /// Lands on the module a product is set up in: `/email/workspace` → Email.
+  void _openElsewhere(Map<String, dynamic> product) {
+    final module = ((product['start_path'] as String?) ?? '')
+        .split('/')
+        .firstWhere((s) => s.isNotEmpty, orElse: () => '');
+    if (module.isNotEmpty) OpenDestination.of(context)?.call(module);
+  }
+
+  /// The login a family's rows came from. Google's DELETE needs it beside the
+  /// code (6262b4928); a family whose rows carry none sends none.
+  Map<String, dynamic>? _accountEmail(String head) {
+    final providers = {
+      head,
+      ...?_folded[head],
+      for (final p in _products(head)) p['provider'] as String? ?? '',
+    };
+    for (final c in [..._connections, ..._workspace]) {
+      final email = c.accountEmail;
+      if (providers.contains(c.provider) && email != null && email.isNotEmpty) {
+        return {'account_email': email};
+      }
+    }
+    return null;
+  }
+
+  /// One sign-in and everything it brings (UI queue 182, reshaped by 183).
+  Widget _familyCard(
+    String head,
+    Map<String, List<IntegrationConnection>> byProvider, {
+    VoidCallback? close,
   }) {
-    /*
-     * EVERY PROVIDER, connected or not (Jose, 2026-10-13; UI queue 82).
-     *
-     * This used to draw only what a business has, with the rest as an "Also
-     * available" row of chips, because thirteen "Set up" cards beside two
-     * real ones read as a catalogue. Jose's words reverse it: "i should be
-     * able to see all the options so i can connected them all if i wanted."
-     * So every provider is a card. The ones not connected look lighter and
-     * carry Connect, and the connected ones still come first.
-     */
-    final mine = providers.where((p) => _familyOf(p) == family).toList()
-      ..sort((a, b) {
-        // Connected first, then alphabetically. What a business HAS is the
-        // thing it came to look at; what it could have follows it.
-        final byCount = (byProvider[b]?.length ?? 0).compareTo(
-          byProvider[a]?.length ?? 0,
-        );
+    // In the panel: close it first, so what the action opens is not under it.
+    VoidCallback then(VoidCallback f) => () {
+      close?.call();
+      f();
+    };
 
-        return byCount != 0 ? byCount : _label(a).compareTo(_label(b));
-      });
-    final connected = mine.where((p) => (byProvider[p] ?? const []).isNotEmpty);
-    final phone = _phone;
+    final theme = Theme.of(context);
+    final all = [head, ...?_folded[head]];
+    final rows = [for (final p in all) ...?byProvider[p]];
+    final may = _mayConnectProvider(head);
+    final products = _products(head);
+    final usable = may && _catalogue[head]?['usable'] != false;
 
-    return DashboardCard(
-      title: mine.isEmpty
-          ? title
-          : '$title · ${connected.length} of ${mine.length} connected',
-      icon: icon,
-      child: mine.isEmpty
-          ? DashboardNote(empty)
-          // A phone gets a list with the action on the right (UI queue 82,
-          // option 4). Wider, a grid that reflows: this pane is 1400pt on a
-          // desktop window, and a card narrower than its provider's name is
-          // not a card.
-          : phone
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final provider in mine)
-                  _providerRow(
-                    context,
-                    provider: provider,
-                    rows: byProvider[provider] ?? const [],
-                  ),
-              ],
-            )
-          : Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                for (final provider in mine)
-                  _providerCard(
-                    context,
-                    provider: provider,
-                    rows: byProvider[provider] ?? const [],
-                    canName: canName,
-                  ),
-              ],
-            ),
+    Widget pill(String provider) => _pill(
+      theme,
+      rows: byProvider[provider] ?? const [],
+      broken: (byProvider[provider] ?? const [])
+          .where((r) => !r.connected)
+          .length,
     );
+
+    return IntegrationFamilyCard(
+      head: head,
+      label: _label(head),
+      subtitle: rows.isEmpty
+          ? (_purpose[head] ?? '')
+          : (cardStatus(_overview, all)?.$1 ?? _lastChecked(rows)),
+      // The panel is phone-narrow whatever the window.
+      phone: _phone || close != null,
+      mayAddAccess: usable,
+      onOpen: then(() => setState(() => _open = head)),
+      onManage: products.isNotEmpty && usable
+          ? then(() => _choose(head))
+          : null,
+      onAddAccess: products.isNotEmpty
+          ? (key) {
+              close?.call();
+              final product = products.firstWhere(
+                (p) => p['key'] == key,
+                orElse: () => const {},
+              );
+              _setUpElsewhere(head, product)
+                  ? _openElsewhere(product)
+                  : _choose(head, preTick: {key});
+            }
+          : null,
+      onDisconnect: rows.isNotEmpty && may
+          ? then(() => _disconnectFamily(head))
+          : null,
+      products: products.isNotEmpty
+          ? [
+              for (final p in products)
+                FamilyProduct(
+                  provider: p['key'] as String? ?? '',
+                  label: p['label'] as String? ?? '',
+                  connected: p['connected'] == true,
+                  keeps: _ownSignIn(head, p),
+                  detail: p['connected'] != true
+                      ? 'Not granted at sign-in'
+                      : (byProvider[p['provider']] ?? const []).isEmpty
+                      ? 'Connected'
+                      : _beneath(byProvider[p['provider']]!),
+                  status: pill(p['provider'] as String? ?? ''),
+                ),
+            ]
+          : [
+              for (final p in all)
+                FamilyProduct(
+                  provider: p,
+                  label: _label(p),
+                  connected: (byProvider[p] ?? const []).isNotEmpty,
+                  detail: (byProvider[p] ?? const []).isEmpty
+                      ? 'Not granted at sign-in'
+                      : _beneath(byProvider[p]!),
+                  status: pill(p),
+                ),
+            ],
+    );
+  }
+
+  /// A family as one tile the size of every other card (Jose, 2026-11-13:
+  /// never a giant card expanded in place). The tap opens the full family
+  /// card (products, Manage, Disconnect) in a SidePanel.
+  Widget _familyTile(
+    String head,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) {
+    final all = [head, ...?_folded[head]];
+    return _providerCard(
+      context,
+      provider: head,
+      rows: [for (final p in all) ...?byProvider[p]],
+      statusOf: all,
+      onTap: () => _openFamily(head, byProvider),
+    );
+  }
+
+  /// The same family as one line of a phone's list.
+  Widget _familyRow(
+    String head,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) {
+    final all = [head, ...?_folded[head]];
+    return _providerRow(
+      context,
+      provider: head,
+      rows: [for (final p in all) ...?byProvider[p]],
+      statusOf: all,
+      onTap: () => _openFamily(head, byProvider),
+    );
+  }
+
+  void _openFamily(
+    String head,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) => showSidePanel<void>(
+    context,
+    builder: (panel) => SidePanel(
+      title: _label(head),
+      child: _familyCard(
+        head,
+        byProvider,
+        close: () => Navigator.of(panel).pop(),
+      ),
+    ),
+  );
+
+  /// "Choose what to connect" (UI queue 183): ticks sign in for just those;
+  /// unticking removes one product with `DELETE …/connections?product=`.
+  Future<void> _choose(String head, {Set<String> preTick = const {}}) async {
+    await showSidePanel<void>(
+      context,
+      builder: (_) => ChooseProductsPanel(
+        api: widget.api,
+        label: _label(head),
+        startPath: _catalogue[head]?['start_path'] as String? ?? '',
+        products: _products(head),
+        preTick: preTick,
+        openConsent: widget.openConsent,
+        onElsewhere: (product) {
+          Navigator.of(context).pop();
+          _openElsewhere(product);
+        },
+        onChanged: _load,
+        onRemove: (key) => confirmDisconnect(
+          context,
+          api: widget.api,
+          title:
+              'Remove ${_products(head).firstWhere((p) => p['key'] == key, orElse: () => const {})['label'] ?? key}?',
+          explanation:
+              'EzBizi stops using it, and asks ${_label(head)} to take the '
+              'access back.',
+          perform: (code) => widget.api.deleteWithBody(
+            '/social/providers/$head/connections?product=$key',
+            {'code': code, ...?_accountEmail(head)},
+          ),
+        ),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
+  /// One code, every row the sign-in brought: the server's
+  /// `DELETE social/providers/{head}/connections` takes the whole family —
+  /// except a product with a sign-in of its own, which stays.
+  Future<void> _disconnectFamily(String head) async {
+    final products = _products(head);
+    final goes = products.isNotEmpty
+        ? [
+            for (final p in products)
+              if (p['connected'] == true && !_ownSignIn(head, p))
+                p['label'] as String? ?? '',
+          ]
+        : [head, ...?_folded[head]].map(_label).toList();
+    final stays = [
+      for (final p in products)
+        if (p['connected'] == true && _ownSignIn(head, p))
+          p['label'] as String? ?? '',
+    ];
+    final done = await confirmDisconnect(
+      context,
+      api: widget.api,
+      title: 'Disconnect ${_label(head)}?',
+      explanation:
+          'EzBizi stops using everything this sign-in brought: '
+          '${goes.join(', ')}. To use them again, sign in again.'
+          '${stays.isEmpty ? '' : ' ${stays.join(', ')} stays connected.'}',
+      perform: (code) => widget.api.deleteWithBody(
+        '/social/providers/$head/connections',
+        {'code': code, ...?_accountEmail(head)},
+      ),
+    );
+    if (done != null && mounted) {
+      _noteProblems(done);
+      await _load();
+    }
   }
 
   String _label(String provider) =>
@@ -925,9 +1291,12 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     'thumbtack': 'Leads and messages from Thumbtack.',
     'workiz': 'Jobs and calls from Workiz, for reports.',
     'airtable': 'A base read by Profit & Loss.',
+    'quickbooks': 'Expenses per market, read into Financials.',
+    'plaid': 'Your bank and card accounts, read into Financials › Bank.',
     'ringcentral': 'Calls from RingCentral, for reports.',
     'whatsapp': 'Your own WhatsApp number, to message customers.',
     'telegram': 'Your staff Tech Assistant bot on Telegram.',
+    'monday': 'Keeps the boards brought over from Monday in step.',
     'google_workspace': 'Shared inboxes from your Google Workspace domain.',
     'phone_numbers': 'Calls and texts on your EzBizi numbers.',
     'sending_server':
@@ -1001,6 +1370,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     required String provider,
     required List<IntegrationConnection> rows,
     bool canName = false,
+    List<String>? statusOf,
+    VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
     final broken = rows.where((r) => !r.connected).length;
@@ -1016,9 +1387,11 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         // Sets state; the body swaps. NOT a push — see [_open]. Everything
         // the pane needs is read there from the same maps this card read,
         // so the two cannot show different connections for one provider.
-        onTap: none && _catalogue[provider]?['usable'] == false
-            ? null
-            : () => setState(() => _open = provider),
+        onTap:
+            onTap ??
+            (none && _catalogue[provider]?['usable'] == false
+                ? null
+                : () => setState(() => _open = provider)),
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -1036,15 +1409,17 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                // spaceBetween, not a Spacer: a Spacer took half the row and
+                // cut the pill to "Not conne…".
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   SocialNetworkMark(network: provider, size: 28),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   // Flexible, because the pill is the only thing on this card
                   // that can grow; a fourth status word, or another language,
                   // would otherwise overflow at paint time with no warning.
-                  Flexible(
-                    child: _pill(theme, rows: rows, broken: broken),
-                  ),
+                  // Only a dot: what is wrong is said once, at the bottom.
+                  _dot(theme, rows: rows, broken: broken),
                 ],
               ),
               const SizedBox(height: 10),
@@ -1070,6 +1445,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                       : theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (!none) ...[
+                const SizedBox(height: 2),
+                _statusOrChecked(theme, provider, statusOf ?? [provider], rows),
+              ],
               if (none) ...[const Spacer(), _offer(context, provider)],
             ],
           ),
@@ -1083,6 +1462,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     BuildContext context, {
     required String provider,
     required List<IntegrationConnection> rows,
+    List<String>? statusOf,
+    VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
     final broken = rows.where((r) => !r.connected).length;
@@ -1090,9 +1471,11 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
     return InkWell(
       key: ValueKey('provider:$provider'),
-      onTap: none && _catalogue[provider]?['usable'] == false
-          ? null
-          : () => setState(() => _open = provider),
+      onTap:
+          onTap ??
+          (none && _catalogue[provider]?['usable'] == false
+              ? null
+              : () => setState(() => _open = provider)),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
@@ -1122,6 +1505,13 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                           : theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  if (!none)
+                    _statusOrChecked(
+                      theme,
+                      provider,
+                      statusOf ?? [provider],
+                      rows,
+                    ),
                 ],
               ),
             ),
@@ -1143,6 +1533,11 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       final row = rows.first;
       final from = row.label;
 
+      // A broken server never reads "Connected" (Jose, 2026-11-03).
+      if (!row.connected) {
+        return 'Needs reconnecting · ${row.statusReason ?? row.displayName}';
+      }
+
       return from == null || from.isEmpty
           ? 'Connected · ${row.displayName}'
           : 'Connected · $from\n${row.displayName}';
@@ -1151,28 +1546,71 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     return _beneath(rows);
   }
 
-  String _beneath(List<IntegrationConnection> rows) {
-    if (rows.isEmpty) return 'Nothing connected here yet.';
+  /// The card's status sentence from the overview; the "Last checked" line
+  /// when the overview has nothing for it (or failed).
+  Widget _statusOrChecked(
+    ThemeData theme,
+    String provider,
+    List<String> providers,
+    List<IntegrationConnection> rows,
+  ) {
+    final status = cardStatus(_overview, providers);
+    if (status != null) {
+      return IntegrationStatusLine(
+        status,
+        key: ValueKey('status-line:$provider'),
+      );
+    }
+    return Text(
+      _lastChecked(rows),
+      key: ValueKey('last-checked:$provider'),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
 
-    final broken = rows.where((r) => !r.connected).length;
+  /// "Last checked …" from the daily token check: the latest verdict among
+  /// these rows, or that none has been checked yet (Jose, 2026-11-03).
+  static String _lastChecked(List<IntegrationConnection> rows) {
+    final checked = rows.map((r) => r.lastCheckedAt).whereType<DateTime>();
+    if (checked.isEmpty) return 'Not checked yet';
+    final at = checked.reduce((a, b) => a.isAfter(b) ? a : b).toLocal();
+    final d = DateTime.now().difference(at);
+    final when = d.inMinutes < 1
+        ? 'just now'
+        : d.inHours < 1
+        ? '${d.inMinutes} min ago'
+        : d.inDays < 1
+        ? '${d.inHours} h ago'
+        : formatCalendarDay(at);
+    return 'Last checked $when';
+  }
 
-    final scopes = <String>{
-      for (final row in rows.where((r) => r.scopeType.isNotEmpty))
-        switch (row.scopeType) {
-          'organization' => 'the organization',
-          'company' => 'a company',
-          'franchise' => 'a branch',
-          _ => 'another place',
-        },
+  String _beneath(List<IntegrationConnection> rows) =>
+      integrationsBeneath(rows);
+
+  Widget _dot(
+    ThemeData theme, {
+    required List<IntegrationConnection> rows,
+    required int broken,
+  }) {
+    final (label, colour) = switch ((rows.isEmpty, broken > 0)) {
+      (true, _) => ('Not connected', theme.colorScheme.outlineVariant),
+      (false, true) => ('Needs attention', theme.colorScheme.error),
+      (false, false) => ('Connected', StateColour.of(context).on),
     };
-
-    final where = scopes.isEmpty ? '' : ' at ${scopes.join(', ')}';
-
-    // The broken count leads when there is one, because a connection that has
-    // stopped working is the whole reason somebody opens this screen.
-    return broken > 0
-        ? '$broken of ${rows.length} need attention$where'
-        : '${rows.length} connected$where';
+    return Tooltip(
+      message: label,
+      child: Container(
+        key: ValueKey('status-dot:$label'),
+        width: 9,
+        height: 9,
+        decoration: BoxDecoration(color: colour, shape: BoxShape.circle),
+      ),
+    );
   }
 
   Widget _pill(
@@ -1200,4 +1638,44 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       ),
     );
   }
+}
+
+/// Phone's own health for one line (NumbersController `health`): the plain
+/// sentences of what is wrong; empty when it is ok. A row without `health`
+/// (an older server) is read as ok rather than invented broken.
+List<String> _phoneProblems(Map<String, dynamic> n) {
+  final health = n['health'] as Map<String, dynamic>?;
+  if (health == null || health['ok'] == true) return const [];
+  final problems = ((health['problems'] as List<dynamic>?) ?? const [])
+      .whereType<String>()
+      .toList();
+  return problems.isEmpty ? const ['This line is not working.'] : problems;
+}
+
+/// The line under a product: "N connected at …" only when every account is
+/// connected; otherwise "N accounts (X connected) at …", where X counts only
+/// rows whose status is connected, the Dashboard's number. Counting revoked,
+/// paused and broken rows as connected showed Google Ads 89 here and 46 on
+/// the Dashboard (UI/UX audit, 2026-11-13).
+@visibleForTesting
+String integrationsBeneath(List<IntegrationConnection> rows) {
+  if (rows.isEmpty) return 'Nothing connected here yet.';
+
+  final connected = rows.where((r) => r.connected).length;
+
+  final scopes = <String>{
+    for (final row in rows.where((r) => r.scopeType.isNotEmpty))
+      switch (row.scopeType) {
+        'organization' => 'the organization',
+        'company' => 'a company',
+        'franchise' => 'a branch',
+        _ => 'another place',
+      },
+  };
+
+  final where = scopes.isEmpty ? '' : ' at ${scopes.join(', ')}';
+
+  return connected == rows.length
+      ? '${rows.length} connected$where'
+      : '${rows.length} accounts ($connected connected)$where';
 }

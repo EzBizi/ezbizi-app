@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/colour_field.dart';
 import '../../widgets/tag.dart';
 
 /// The words an organization's jobs carry (2026-10-20): types, sub-statuses
@@ -87,11 +88,25 @@ class JobTypeLabel extends StatelessWidget {
 }
 
 /// The first [shown] tags, then "+N"; hovering shows every one.
+/// Each of a job's tags in its Workiz colour, where the server knows it
+/// (`tag_colours`, Jose 2026-11-10); a tag with none stays grey.
+Map<String, Color> jobTagColours(Map? job) => {
+  for (final MapEntry(:key, :value)
+      in ((job?['tag_colours'] as Map?) ?? const {}).entries)
+    '$key': ?ColourField.parse('$value'),
+};
+
 class JobTagsSummary extends StatelessWidget {
-  const JobTagsSummary(this.tags, {super.key, this.shown = 2});
+  const JobTagsSummary(
+    this.tags, {
+    super.key,
+    this.shown = 2,
+    this.colours = const {},
+  });
 
   final List<String> tags;
   final int shown;
+  final Map<String, Color> colours;
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +120,8 @@ class JobTagsSummary extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (final t in tags.take(shown)) Flexible(child: Tag(t)),
+          for (final t in tags.take(shown))
+            Flexible(child: Tag(t, colour: colours[t])),
           if (rest > 0)
             Padding(
               padding: const EdgeInsets.only(left: 6),

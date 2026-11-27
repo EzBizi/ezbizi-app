@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -378,6 +379,7 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
             loading: _loading,
             error: _error,
             onRetry: _load,
+            skeleton: true,
             child: LayoutBuilder(
               builder: (context, box) {
                 final beside = box.maxWidth >= _paneBeside;
@@ -618,15 +620,11 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
       children: [
         SizedBox(
           width: 280,
-          child: TextField(
+          child: ListSearch(
             key: const ValueKey('email-inbox-search'),
             controller: _search,
+            hint: 'Search inboxes',
             onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Search inboxes',
-            ),
           ),
         ),
         if (keys.length > 1)
@@ -1494,6 +1492,7 @@ class _MailboxCard extends StatelessWidget {
     final theme = Theme.of(context);
     final state = stateOf(mailbox);
     final reached = lastReachedSentence(mailbox, formats: me.display);
+    final health = healthOf(mailbox);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1519,6 +1518,22 @@ class _MailboxCard extends StatelessWidget {
             if (mailbox.named) ...[
               const SizedBox(height: 2),
               Text(mailbox.displayName, style: theme.textTheme.bodySmall),
+            ],
+            if (health != null) ...[
+              const SizedBox(height: 8),
+              for (final (key, line) in [
+                ('receive', health.receive),
+                ('send', health.send),
+              ])
+                Text(
+                  line,
+                  key: ValueKey('email-health-$key'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: line.contains('✗')
+                        ? theme.colorScheme.error
+                        : null,
+                  ),
+                ),
             ],
             const SizedBox(height: 12),
             Wrap(
@@ -1641,6 +1656,10 @@ class _MailboxCard extends StatelessWidget {
                 Refused(
                   reason: disconnectRefusal,
                   child: TextButton(
+                    // Muted: destructive (phone audit 2026-11-04).
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                     onPressed: disconnectRefusal == null ? onDisconnect : null,
                     child: const Text('Disconnect'),
                   ),

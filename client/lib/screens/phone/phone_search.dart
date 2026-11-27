@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 // The search the phone panes share: one box, one matcher.
@@ -10,17 +11,10 @@ Widget phoneSearchBox({
   required ValueChanged<String> onChanged,
 }) => SizedBox(
   width: 260,
-  child: TextField(
+  child: ListSearch(
     key: key,
+    hint: hint,
     onChanged: onChanged,
-    textAlignVertical: TextAlignVertical.center,
-    decoration: InputDecoration(
-      isDense: true,
-      hintText: hint,
-      prefixIcon: const Icon(Icons.search, size: 18),
-      prefixIconConstraints: const BoxConstraints(minWidth: 36),
-      border: const OutlineInputBorder(),
-    ),
   ),
 );
 

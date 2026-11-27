@@ -1,9 +1,11 @@
+import '../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -13,8 +15,10 @@ import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
 import '../widgets/search_picker.dart';
+import '../widgets/side_panel.dart';
 import '../widgets/open_destination.dart';
 import '../widgets/status_pill.dart';
+import '../widgets/formatted_notes.dart';
 import 'customer_experience/review_stats_band.dart';
 
 /// Reviews — what the public said, the answer, and the work behind it.
@@ -22,7 +26,7 @@ import 'customer_experience/review_stats_band.dart';
 /// ── UI queue 145 (Jose, 2026-10-26: "Looks good", 1 and 4) ─────
 ///
 /// An inbox: a summary strip (average this month against last, new this
-/// month, unanswered, 1–2 stars still to answer; each tile sets its filter),
+/// month, unanswered, 1–3 stars still to answer; each tile sets its filter),
 /// search with quick chips and a More filters panel, the reviews as a list on
 /// the left and the open one on the right with its reply box. Table and Board
 /// (UI queue 101) stay behind the view toggle. On a phone the list is the
@@ -87,7 +91,7 @@ class _Summary {
   final int counted;
   final int total;
 
-  /// Unanswered 1- and 2-star reviews, from the server's own totals.
+  /// Unanswered 1- to 3-star reviews, from the server's own totals.
   final int? low;
 
   /// The server caps a page at 200, so more than that is a sample.
@@ -122,8 +126,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   /// Opens on unanswered — see the class note.
   bool _onlyUnanswered = true;
 
-  /// The "1–2 stars" chip. The server's rating filter has no "2 or fewer", so
-  /// this asks for 1–3 and keeps the 1s and 2s.
+  /// The "1–3 stars" chip: the server's `rating=negative`, 3 stars or fewer
+  /// (Adeline, approved by Jose 2026-11-19: "1 to 3 stars not 1 to 2").
   bool _low = false;
   String _rating = 'any';
   int? _days;
@@ -150,7 +154,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   Map<String, dynamic>? _open;
   bool _confirmingPublish = false;
   final _draft = TextEditingController();
-  final _note = TextEditingController();
+  final _note = FormattedNotesController();
   final _reason = TextEditingController();
   final _match = TextEditingController();
   List<Map<String, dynamic>>? _suggestions;
@@ -164,13 +168,28 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
   @override
   void initState() {
+    _note.addListener(() => setState(() {}));
     super.initState();
     _load();
     _loadSummary();
     _loadReplyRule();
     _takeLink();
     DeepLinks.pending.addListener(_takeLink);
+    // A review or reply synced from Google, or a note added elsewhere: the
+    // list re-reads quietly and the open review in place (the reply being
+    // typed is its own box and is never touched).
+    _live = LiveChanges.of(widget.api).subscribe({'reviews'}, (batch) async {
+      if (!_loading) await _load(quiet: true);
+      final open = _open?['id'];
+      if (open != null &&
+          !_busy &&
+          (batch.reload || batch.touched('reviews').contains('$open'))) {
+        await _refresh();
+      }
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   /// A tapped notification about a review opens that review.
   void _takeLink() {
@@ -181,6 +200,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_takeLink);
     _draft.dispose();
     _note.dispose();
@@ -200,13 +220,16 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     return now.subtract(Duration(days: days));
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
-    setState(() {
-      _loading = _loaded.isEmpty;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = _loaded.isEmpty;
+        _error = null;
+      });
+    }
 
     final from = _from;
     final response = await widget.api.get('/reviews', {
@@ -215,7 +238,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         'rating': 'negative'
       else if (_rating != 'any')
         'rating': _rating,
-      if (_low) 'per_page': '200',
       if (from != null) 'from': formatCalendarDay(from),
       if (_sort != 'newest') 'sort': _sort,
       'location': ?_location,
@@ -225,6 +247,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     });
 
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;
@@ -273,12 +296,12 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         'from': formatCalendarDay(lastMonth),
         'per_page': '200',
       }),
-      for (final stars in const ['1', '2'])
-        widget.api.get('/reviews', {
-          'answered': 'no',
-          'rating': stars,
-          'per_page': '1',
-        }),
+      // 1–3 stars (Adeline, approved by Jose 2026-11-19).
+      widget.api.get('/reviews', {
+        'answered': 'no',
+        'rating': 'negative',
+        'per_page': '1',
+      }),
     ]);
     if (!mounted) return;
 
@@ -307,8 +330,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         ? ((r.body['meta'] as Map?)?['total'] as num?)?.toInt() ??
               (r.data as List? ?? const []).length
         : null;
-    final one = totalOf(responses[1]);
-    final two = totalOf(responses[2]);
+    final low = totalOf(responses[1]);
     final meta = window.body['meta'] as Map<String, dynamic>? ?? const {};
     final counted = rows.length;
 
@@ -319,19 +341,18 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         newThis: newThis,
         counted: counted,
         total: (meta['total'] as num?)?.toInt() ?? counted,
-        low: one == null || two == null ? null : one + two,
+        low: low,
       ),
     );
   }
 
-  /// The loaded rows the search box and the 1–2 stars chip allow.
+  /// The loaded rows the search box allows.
   ///
   /// The server reads `q` (c3cf49fdc); narrowing the loaded page as well keeps
   /// the list right while a debounced request is still out.
   List<Map<String, dynamic>> get _reviews {
     final q = _q.toLowerCase();
     return _loaded.where((r) {
-      if (_low && ((r['rating'] as num?)?.toInt() ?? 9) > 2) return false;
       if (q.isEmpty) return true;
       final text = [
         r['reviewer_name'],
@@ -729,10 +750,14 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           content = body;
         }
 
+        final short = box.maxHeight < 560;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (box.maxWidth >= 700) _summaryStrip(theme),
+            // A phone on its side is wide but short: the strip and the full
+            // band left the list nothing (138 px over, landscape 11-24), so a
+            // short pane gets the phone's compact band only.
+            if (box.maxWidth >= 700 && !short) _summaryStrip(theme),
             if (_stats case final stats?)
               ReviewStatsBand(
                 stats: stats,
@@ -740,6 +765,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 drafting: _drafting,
                 onDraftAll: _can('reviews.manage') ? _draftAll : null,
                 onSendWindow: _openSendWindow,
+                compact: box.maxWidth < 600 || short,
               ),
             _toolbar(theme, box.maxWidth),
             if (_profile != null && box.maxWidth < 1200)
@@ -815,7 +841,10 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             _tile(
               theme,
               key: 'average',
-              label: 'Average rating',
+              // Named with its period: the all-time average elsewhere on Customer
+              // Experience read as a second, different rating (desktop review
+              // 2026-11-13, Top 7).
+              label: 'Average rating this month',
               value: average == null ? '—' : '${avg(average)} / 5',
               sub: averageSub,
               info:
@@ -866,11 +895,11 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             _tile(
               theme,
               key: 'low',
-              label: '1–2 stars to answer',
+              label: '1–3 stars to answer',
               value: s?.low == null ? '—' : '${s!.low}',
-              sub: 'unanswered, 1 or 2 stars',
+              sub: 'unanswered, 1 to 3 stars',
               info:
-                  'Unanswered 1-star and 2-star reviews, of any age, at the '
+                  'Unanswered 1- to 3-star reviews, of any age, at the '
                   'places you can see. Counted by the server.',
               tone: (s?.low ?? 0) > 0 ? Tone.bad : null,
               onTap: () => _refilter(() {
@@ -987,19 +1016,11 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     final left = <Widget>[
       SizedBox(
         width: width < 600 ? width - 32 : 260,
-        child: TextField(
+        child: ListSearch(
           key: const Key('reviews-search'),
           controller: _search,
+          hint: 'Name or what they said',
           onChanged: _searched,
-          style: theme.textTheme.bodyMedium,
-          decoration: InputDecoration(
-            isDense: true,
-            prefixIcon: const Icon(Icons.search, size: 18),
-            hintText: 'Name or what they said',
-            hintStyle: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.inputDecorationTheme.hintStyle?.color,
-            ),
-          ),
         ),
       ),
       FilterChip(
@@ -1012,7 +1033,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       ),
       FilterChip(
         key: const ValueKey('tour-customer_experience-rating'),
-        label: const Text('1–2 stars'),
+        label: const Text('1–3 stars'),
         selected: _low,
         onSelected: (v) => _refilter(() {
           _low = v;
@@ -1035,11 +1056,27 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
     final right = <Widget>[
       if (_profile != null && width >= 1200)
-        SizedBox(
-          width: 230,
-          child: ConnectedAccount(
+        // Design 164's chip, as GBP Listings draws it: a 230 px line cut
+        // both halves to "Google Busi…  Change it in …" (UI/UX review
+        // 2026-11-02 #2). Who it is opens in a panel.
+        Tooltip(
+          message: '${_profile!['display_name'] ?? ''}',
+          child: InkWell(
             key: const ValueKey('tour-reviews-profile'),
-            connection: _profile!,
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => showSidePanel<void>(
+              context,
+              builder: (context) => SidePanel(
+                title: 'Google connection',
+                child: ConnectedAccount(connection: _profile!),
+              ),
+            ),
+            child: StatusPill(
+              _profile!['status'] == 'disconnected' ? 'Google' : 'Google ✓',
+              tone: _profile!['status'] == 'disconnected'
+                  ? Tone.caution
+                  : Tone.ok,
+            ),
           ),
         ),
       FilledButton.tonalIcon(
@@ -1081,6 +1118,72 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         onSelectionChanged: (v) => setState(() => _view = v.single),
       ),
     ];
+
+    // Design 195 (phone 4): search, Filters and ⋯ on one line, the quick
+    // chips on one more that scrolls sideways. Fetch new and the view are in
+    // the ⋯.
+    if (width < 600) {
+      final chips = left.whereType<FilterChip>().toList();
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(child: (left.first as SizedBox).child!),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  key: const ValueKey('reviews-more-filters'),
+                  onPressed: () => setState(() => _moreOpen = !_moreOpen),
+                  child: Text(more > 0 ? 'Filters · $more' : 'Filters'),
+                ),
+                MenuAnchor(
+                  menuChildren: [
+                    MenuItemButton(
+                      key: const ValueKey('tour-customer_experience-fetch'),
+                      leadingIcon: const Icon(Icons.sync, size: 18),
+                      onPressed: _syncing ? null : _sync,
+                      child: Text(_syncing ? 'Fetching…' : 'Fetch new'),
+                    ),
+                    const Divider(height: 1),
+                    for (final (v, label, icon) in const [
+                      ('inbox', 'Inbox', Icons.inbox_outlined),
+                      ('table', 'Table', Icons.table_rows_outlined),
+                      ('board', 'Board', Icons.view_agenda_outlined),
+                    ])
+                      MenuItemButton(
+                        key: ValueKey('reviews-view-$v'),
+                        leadingIcon: Icon(icon, size: 18),
+                        trailingIcon: _view == v
+                            ? const Icon(Icons.check, size: 18)
+                            : null,
+                        onPressed: () => setState(() => _view = v),
+                        child: Text(label),
+                      ),
+                  ],
+                  builder: (context, menu, _) => IconButton(
+                    key: const ValueKey('reviews-more'),
+                    tooltip: 'More',
+                    icon: const Icon(Icons.more_horiz),
+                    onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final c in chips) ...[c, const SizedBox(width: 6)],
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     Widget wrap(List<Widget> children) => Wrap(
       spacing: 10,
@@ -1315,7 +1418,12 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   String _who(Map<String, dynamic> review) =>
       (review['reviewer_name'] as String?)?.trim().isNotEmpty == true
       ? review['reviewer_name'] as String
-      : 'A Google user';
+      : (review['source'] ?? 'google') == 'google'
+      ? 'A Google user'
+      : 'An ${_sourceName(review['source'] as String)} customer';
+
+  String _sourceName(String source) =>
+      source == 'ekomi' ? 'eKomi' : source[0].toUpperCase() + source.substring(1);
 
   /// "Company · Branch" where the review is a branch's, so twenty "Main"s do
   /// not read the same; the company alone, or the Google location's name.
@@ -1708,8 +1816,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Text(
-        _low
-            ? '$shown ${shown == 1 ? 'review' : 'reviews'} with 1 or 2 stars'
+        _q.isNotEmpty
+            ? '$shown ${shown == 1 ? 'review' : 'reviews'} on this page match'
             : '$_total ${_total == 1 ? 'review' : 'reviews'}',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
@@ -1973,6 +2081,51 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             ),
           ],
 
+          // From a review link, inferred by name (Jose, 2026-11-09).
+          if (review['link_match'] case final Map lm)
+            Padding(
+              key: const ValueKey('review-link-match'),
+              padding: const EdgeInsets.only(top: 8),
+              child: Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    'From a review link · ${lm['confidence']} match'
+                    '${lm['clicked'] == true ? '' : ' · without a click'}'
+                    '${lm['status'] == 'auto' ? '' : ' · ${lm['status']}'}',
+                    style: small,
+                  ),
+                  if (manage && lm['status'] == 'auto') ...[
+                    TextButton(
+                      key: const ValueKey('review-link-confirm'),
+                      onPressed: _busy
+                          ? null
+                          : () => _write(
+                              widget.api.put(
+                                '/reviews/${review['id']}/link-match',
+                                {'confirmed': true},
+                              ),
+                            ),
+                      child: const Text('Confirm'),
+                    ),
+                    TextButton(
+                      key: const ValueKey('review-link-reject'),
+                      onPressed: _busy
+                          ? null
+                          : () => _write(
+                              widget.api.put(
+                                '/reviews/${review['id']}/link-match',
+                                {'confirmed': false},
+                              ),
+                            ),
+                      child: const Text('Not this customer'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
           _section(theme, 'Reply'),
           _reply(theme, review),
 
@@ -2013,23 +2166,18 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             for (final n in notes)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
-                child: Text(
+                child: FormattedNotesText(
                   '${_date({'reviewed_at': n['at']})}'
                   '${n['by'] == null ? '' : ' · ${n['by']}'}: ${n['text']}',
                   style: small,
                 ),
               ),
           if (manage) ...[
-            TextField(
-              key: const ValueKey('review-note'),
+            FormattedNotesField(
+              fieldKey: const ValueKey('review-note'),
               controller: _note,
+              label: 'Add a note',
               minLines: 1,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                isDense: true,
-                labelText: 'Add a note',
-              ),
-              onChanged: (_) => setState(() {}),
             ),
             Align(
               alignment: Alignment.centerRight,
@@ -2038,7 +2186,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 onPressed: _busy || _note.text.trim().isEmpty
                     ? null
                     : () {
-                        final text = _note.text.trim();
+                        final text = _note.markup.trim();
                         _note.clear();
                         _write(
                           widget.api.post('/reviews/${review['id']}/notes', {
@@ -2128,6 +2276,13 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     final reply = review['reply'] as Map<String, dynamic>?;
     final published = reply?['status'] == 'published';
     final postedAt = DateTime.tryParse('${reply?['published_at'] ?? ''}');
+    // What this person may do (Adeline, 2026-11-23: she pressed Post reply
+    // without the grant and thought it had gone). Writing a reply is Reviews'
+    // edit; posting it on Google is publish.
+    final canDraft = _can('reviews.edit');
+    final canPost = _can('reviews.publish');
+    // Removed from Google, from eKomi, or no connected profile: say why, offer nothing to post.
+    final blocked = published ? null : review['reply_blocked'] as String?;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2171,7 +2326,29 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
               ),
             ),
           ),
-        if (!published) ...[
+        if (blocked != null)
+          Padding(
+            key: const ValueKey('review-reply-blocked'),
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(blocked, style: theme.textTheme.bodySmall),
+          ),
+        if (blocked == null && !published && !canDraft && !canPost)
+          Padding(
+            key: const ValueKey('review-reply-read-only'),
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              reply == null
+                  ? 'Not answered yet. Your role can read reviews but not '
+                        'reply; ask an administrator for Reviews › Edit and '
+                        'Publish.'
+                  : 'A reply is waiting, not posted on Google yet: '
+                        '${reply['body'] ?? ''} Your role can read reviews '
+                        'but not post replies; ask an administrator for '
+                        'Reviews › Publish.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        if (blocked == null && !published && (canDraft || canPost)) ...[
           if (_aiDraft != null && _draft.text == _aiDraft)
             const Padding(
               padding: EdgeInsets.only(bottom: 6),
@@ -2188,7 +2365,12 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
-                'A draft is saved. Nobody outside sees it until you post it.',
+                canPost
+                    ? 'A draft is saved, not posted. Nobody outside sees it '
+                          'until you post it.'
+                    : 'A draft is saved, not posted. Your role cannot post '
+                          'replies on Google; someone with Reviews › Publish '
+                          'has to post it.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -2197,6 +2379,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           TextField(
             key: const ValueKey('review-reply-box'),
             controller: _draft,
+            readOnly: !canDraft,
             onChanged: (_) => setState(() {}),
             minLines: 3,
             maxLines: 6,
@@ -2217,22 +2400,23 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 key: ValueKey('review-ai-draft-${review['id']}'),
                 icon: const Icon(Icons.auto_awesome, size: 16),
                 label: const Text('Draft with AI'),
-                onPressed: _busy ? null : () => _suggest(review),
+                onPressed: _busy || !canDraft ? null : () => _suggest(review),
               ),
               TextButton(
                 key: const ValueKey('review-save-draft'),
-                onPressed: _busy || _draft.text.trim().isEmpty
+                onPressed: _busy || !canDraft || _draft.text.trim().isEmpty
                     ? null
                     : () => _saveDraft(review),
                 child: const Text('Save draft'),
               ),
-              FilledButton(
-                key: const ValueKey('review-post'),
-                onPressed: _busy || _draft.text.trim().isEmpty
-                    ? null
-                    : () => setState(() => _confirmingPublish = true),
-                child: const Text('Post reply'),
-              ),
+              if (canPost)
+                FilledButton(
+                  key: const ValueKey('review-post'),
+                  onPressed: _busy || _draft.text.trim().isEmpty
+                      ? null
+                      : () => setState(() => _confirmingPublish = true),
+                  child: const Text('Post reply'),
+                ),
             ],
           ),
           // The confirm is inline, not a dialog: the house rule.

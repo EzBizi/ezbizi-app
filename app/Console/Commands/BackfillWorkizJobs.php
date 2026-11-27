@@ -158,8 +158,10 @@ class BackfillWorkizJobs extends Command
                     // $failed is a status and a sentence, never the URL: the token is in it.
                     $this->error("{$connection->display_name}: {$page['failed']} Stopped at page {$at['page']}; progress is saved, run again later.");
                     Log::warning("Workiz backfill: {$connection->display_name}: {$page['failed']}");
+                    // One branch refused is that branch's: the others still go on (integration audit, 11-12).
+                    $refused[] = $connection->display_name;
 
-                    return self::FAILURE;
+                    continue 2;
                 }
 
                 $tally = $tenant->run($organization, fn () => $this->tally($connection, $page['jobs'], $at['clients'], $dry));
@@ -177,6 +179,7 @@ class BackfillWorkizJobs extends Command
         }
 
         $done = 0;
+        $refused ??= [];
 
         foreach ($connections as $connection) {
             $at = ($own ? $load($keyFor($connection)) : $progress)['branches'][$connection->scope_id] ?? self::FRESH;
@@ -194,7 +197,7 @@ class BackfillWorkizJobs extends Command
             $this->info('Dry run: nothing was written.');
         }
 
-        return self::SUCCESS;
+        return $refused === [] ? self::SUCCESS : self::FAILURE;
     }
 
     /**

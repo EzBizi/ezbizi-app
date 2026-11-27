@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Jobs\FieldTranscribeChunk;
 use App\Models\FieldRecording;
 use App\Models\Job;
 use App\Models\User;
+use App\Services\Leads\CallTranscripts;
 use App\Support\Audit\AuditLogger;
 use App\Support\Field\FieldTracking;
 use App\Support\Files\FileStore;
@@ -28,6 +30,7 @@ final class FieldRecordingsController extends Controller
         private readonly FieldTracking $tracking,
         private readonly FileStore $files,
         private readonly AuditLogger $audit,
+        private readonly CallTranscripts $whisper,
     ) {}
 
     public function begin(Request $request): JsonResponse
@@ -89,7 +92,7 @@ final class FieldRecordingsController extends Controller
         }
 
         $path = $this->files->putContents($bytes, $this->directory($recording), 'm4a');
-        $recording->chunks()->create([
+        $chunk = $recording->chunks()->create([
             'seq' => $data['seq'],
             'started_at' => Carbon::parse($data['started_at'])->utc(),
             'duration_ms' => $data['duration_ms'],
@@ -97,6 +100,10 @@ final class FieldRecordingsController extends Controller
             'sha256' => strtolower($data['sha256']),
             'path' => $path,
         ]);
+        // Words, not audio: Whisper drops the silence, then the file goes.
+        if ($this->whisper->local()) {
+            FieldTranscribeChunk::dispatch($chunk->getKey());
+        }
         $recording->forceFill([
             'chunk_count' => $recording->chunks()->count(),
             'total_bytes' => (int) $recording->chunks()->sum('bytes'),
@@ -124,8 +131,25 @@ final class FieldRecordingsController extends Controller
                 ->map(fn ($e) => ['at' => Carbon::parse($e['at'])->utc()->toIso8601ZuluString(), 'type' => $e['type']])
                 ->all(),
         ])->save();
+        FieldTranscribeChunk::summarizeIfDone($recording);
 
         return response()->json(['data' => $this->present($recording)]);
+    }
+
+    /** The words and the summary: what is left once the audio is gone. */
+    public function transcript(Request $request, FieldRecording $recording): JsonResponse
+    {
+        $this->assertMayHear($request->user(), $recording);
+
+        return response()->json(['data' => [
+            'summary' => $recording->summary,
+            'segments' => $recording->segments()->get()->map(fn ($s) => [
+                'started_at' => $s->started_at->toIso8601ZuluString('millisecond'),
+                'ended_at' => $s->ended_at->toIso8601ZuluString('millisecond'),
+                'text' => $s->text,
+            ]),
+            'pending' => $recording->chunks()->whereNull('transcribed_at')->whereNotNull('path')->count(),
+        ]]);
     }
 
     /** Yours, or with field.listen everyone's you can see on Field. ?user_id narrows, ?date picks a day. */
@@ -165,7 +189,7 @@ final class FieldRecordingsController extends Controller
     public function audio(Request $request, FieldRecording $recording, int $seq): StreamedResponse
     {
         $this->assertMayHear($request->user(), $recording);
-        $chunk = $recording->chunks()->where('seq', $seq)->firstOrFail();
+        $chunk = $recording->chunks()->where('seq', $seq)->whereNotNull('path')->firstOrFail(); // transcribed: deleted
 
         return $this->files->serve($chunk->path, mime: 'audio/mp4', filename: "recording-{$seq}.m4a", disposition: 'inline');
     }
@@ -227,6 +251,8 @@ final class FieldRecordingsController extends Controller
             'chunks' => $r->chunk_count,
             'events' => $r->events ?? [],
             'customer_told' => $r->customer_told,
+            'summary' => $r->summary,
+            'transcribed' => $r->summarized_at !== null,
             'flagged' => $r->flagged,
             'flag_reason' => $r->flag_reason,
             'delete_on' => $r->flagged ? null : $r->started_at->copy()->addDays(FieldRecording::KEEP_DAYS)->toDateString(),

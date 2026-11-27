@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -112,7 +113,10 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
     for (final p in _purposes) {
       if (p.key == key) return p.label;
     }
-    return key;
+    // A purpose the server no longer lists: words, not the raw key
+    // ("WEEKLY_SUMMARY", phone audit 2026-11-04).
+    final words = key.replaceAll('_', ' ').trim().toLowerCase();
+    return words.isEmpty ? '' : words[0].toUpperCase() + words.substring(1);
   }
 
   List<({String key, String label})> get _unset => [
@@ -153,6 +157,35 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
       return;
     }
     _replace(Map<String, dynamic>.from(response.data as Map));
+  }
+
+  /// The ✕ is small and a stray tap took somebody out with no way back
+  /// (phone audit 2026-11-04, Section 4 #10), so it offers Undo.
+  Future<void> _takeOut(
+    Map<String, dynamic> group,
+    List<_Person> members,
+    String id,
+    String name,
+  ) async {
+    final before = [for (final m in members) m.id];
+    await _saveMembers(group, [
+      for (final other in before)
+        if (other != id) other,
+    ]);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$name taken out'),
+        behavior: SnackBarBehavior.floating,
+        width: 420,
+        // An action makes a SnackBar persist by default (Flutter 3.35+); ours time out.
+        persist: false,
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => _saveMembers(group, before),
+        ),
+      ),
+    );
   }
 
   Future<void> _add(Map<String, dynamic> group) async {
@@ -264,18 +297,7 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
 
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ErrorNote(_error!),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ],
-        ),
-      );
+      return ErrorRetry(_error!, onRetry: _load);
     }
 
     final narrow = MediaQuery.sizeOf(context).width < 600;
@@ -301,16 +323,9 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
           // Standard field height, as tall as Leads search (Jose, 2026-10-27).
           child: SizedBox(
             width: 240,
-            child: TextField(
+            child: ListSearch(
               key: const Key('whatsapp-groups-search'),
-              textAlignVertical: TextAlignVertical.center,
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIconConstraints: BoxConstraints(minWidth: 36),
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a group',
-                border: OutlineInputBorder(),
-              ),
+              hint: 'Find a group',
               onChanged: (v) => setState(() => _query = v),
             ),
           ),
@@ -384,13 +399,24 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
               fontWeight: FontWeight.w800,
             ),
           ),
-          for (final p in unset)
-            ActionChip(
-              key: ValueKey('whatsapp-unset-${p.key}'),
-              // An ellipsis rather than a cut mid-word on a phone.
-              label: Text(p.label, overflow: TextOverflow.ellipsis),
-              onPressed: () => _create(p.key),
+          // One searchable picker, not a chip per report: about 60 of them
+          // wrapped eight rows (deep dive 2026-11-02).
+          SizedBox(
+            width: narrow ? double.infinity : 360,
+            child: SearchPickerField<String>(
+              key: const Key('whatsapp-unset-picker'),
+              value: null,
+              isDense: true,
+              hint: 'Choose a report · ${unset.length}',
+              options: [
+                for (final p in unset)
+                  SearchOption(value: p.key, label: p.label),
+              ],
+              onChanged: (key) {
+                if (key != null) _create(key);
+              },
             ),
+          ),
           Text(
             'Each needs a group before it can be sent.',
             style: theme.textTheme.bodySmall,
@@ -521,10 +547,7 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
                     deleteButtonTooltipMessage: 'Take ${m.name} out',
                     onDeleted: busy
                         ? null
-                        : () => _saveMembers(group, [
-                            for (final other in members)
-                              if (other.id != m.id) other.id,
-                          ]),
+                        : () => _takeOut(group, members, m.id, m.name),
                   ),
                 Tooltip(
                   message: full

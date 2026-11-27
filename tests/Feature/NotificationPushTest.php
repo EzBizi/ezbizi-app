@@ -160,6 +160,65 @@ class NotificationPushTest extends TestCase
     }
 
     /**
+     * Jose, 2026-11-13: per-module on/off. A muted module still collects in
+     * the bell but does not push; a colleague who did not mute it is pushed.
+     */
+    /** Jose, 2026-11-25: Monday's "Received directly on your device" switch. */
+    public function test_phone_notifications_off_stops_the_push_and_keeps_the_bell(): void
+    {
+        Http::fake([
+            self::OAUTH => Http::response(['access_token' => 'ya29.test', 'expires_in' => 3600]),
+            self::FCM => Http::response(['name' => 'projects/ezbizi-506117/messages/1']),
+        ]);
+
+        $this->configureFcm();
+        $tenant = $this->provisionTenant('Pi');
+        $colleague = $this->userWithRole($tenant, 'Dispatcher');
+        $this->device($tenant, $tenant['admin']->id, 'token-off-phone');
+        $this->device($tenant, $colleague->id, 'token-on-phone');
+        $this->inTenant($tenant['org'], fn () => $tenant['admin']
+            ->forceFill(['preferences' => ['notifications.push' => false]])->save());
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'Trial ends tomorrow', subject: $tenant['org'], source: 'system',
+        ));
+
+        $this->assertSame(2, $told, 'both still get the bell row');
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'messages:send') && $r['message']['token'] === 'token-on-phone');
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'messages:send') && $r['message']['token'] === 'token-off-phone');
+    }
+
+    public function test_a_muted_module_collects_in_the_bell_without_pushing(): void
+    {
+        Http::fake([
+            self::OAUTH => Http::response(['access_token' => 'ya29.test', 'expires_in' => 3600]),
+            self::FCM => Http::response(['name' => 'projects/ezbizi-506117/messages/1']),
+        ]);
+
+        $this->configureFcm();
+        $tenant = $this->provisionTenant('Omicron');
+        $colleague = $this->userWithRole($tenant, 'Dispatcher');
+        $this->device($tenant, $tenant['admin']->id, 'token-muted-phone');
+        $this->device($tenant, $colleague->id, 'token-colleague-phone');
+
+        $this->inTenant($tenant['org'], fn () => $tenant['admin']
+            ->forceFill(['preferences' => ['notifications.muted_modules' => ['automations']]])->save());
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'Automation switched off',
+            subject: $tenant['org'],
+            source: 'automation',
+            automationId: (string) Str::uuid7(),
+        ));
+
+        $this->assertSame(2, $told, 'both still get the bell row');
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'messages:send')
+            && $request['message']['token'] === 'token-colleague-phone');
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'messages:send')
+            && $request['message']['token'] === 'token-muted-phone');
+    }
+
+    /**
      * Alerts, new leads and missed calls interrupt; everything else does not.
      *
      * Jose, 2026-10-08: HIGH importance for alerts, calls and new leads,
@@ -416,6 +475,39 @@ class NotificationPushTest extends TestCase
         $this->assertSame(1, $this->inTenant($tenant['org'], fn () => DeviceToken::query()->count()));
     }
 
+    public function test_a_registration_that_loses_the_insert_race_takes_the_row_over(): void
+    {
+        $tenant = $this->provisionTenant('Kappa');
+        $colleague = $this->userWithRole($tenant, 'Colleague', []);
+
+        // A concurrent call inserts the same token between our lookup and our
+        // insert, exactly once.
+        $raced = false;
+        DeviceToken::creating(function (DeviceToken $device) use (&$raced, $tenant): void {
+            if ($raced) {
+                return;
+            }
+            $raced = true;
+            DeviceToken::withoutGlobalScopes()->insert([
+                'id' => (string) Str::uuid(),
+                'organization_id' => $tenant['org']->id,
+                'user_id' => $tenant['admin']->id,
+                'platform' => 'android',
+                'token' => $device->token,
+                'created_at' => now(),
+                'last_registered_at' => now(),
+            ]);
+        });
+
+        $this->signedInAs($colleague)->postJson('/api/v1/notifications/devices', [
+            'token' => 'token-raced', 'platform' => 'android',
+        ])->assertOk();
+
+        $devices = $this->inTenant($tenant['org'], fn () => DeviceToken::query()->get());
+        $this->assertCount(1, $devices);
+        $this->assertSame($colleague->id, $devices->first()->user_id);
+    }
+
     public function test_a_handset_that_changes_hands_moves_rather_than_duplicating(): void
     {
         $tenant = $this->provisionTenant('Iota');
@@ -639,5 +731,62 @@ class NotificationPushTest extends TestCase
         ));
 
         $this->assertSame(1, $this->inTenant($tenant['org'], fn () => DeviceToken::query()->count()));
+    }
+
+    /**
+     * EzChat, the chat companion (Jose 2026-11-25), registers its handsets as
+     * `ezchat`; an EzBizi build that says nothing stays `ezbizi`.
+     */
+    public function test_a_handset_says_which_app_it_belongs_to(): void
+    {
+        $tenant = $this->provisionTenant('Ezc');
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/notifications/devices', [
+            'token' => 'token-ezchat', 'platform' => 'android', 'app' => 'ezchat',
+        ])->assertOk();
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/notifications/devices', [
+            'token' => 'token-ezbizi', 'platform' => 'android',
+        ])->assertOk();
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/notifications/devices', [
+            'token' => 'token-other', 'platform' => 'android', 'app' => 'whatsapp',
+        ])->assertUnprocessable();
+
+        $apps = $this->inTenant($tenant['org'], fn () => DeviceToken::query()->pluck('app', 'token')->all());
+        $this->assertSame(['token-ezbizi' => 'ezbizi', 'token-ezchat' => 'ezchat'], collect($apps)->sortKeys()->all());
+    }
+
+    /** EzBizi's notifications reach EzBizi handsets; EzChat gets chat and calls only. */
+    public function test_an_ezchat_handset_is_not_sent_ezbizi_notifications(): void
+    {
+        Http::fake([
+            self::OAUTH => Http::response(['access_token' => 'ya29.test', 'expires_in' => 3600]),
+            self::FCM => Http::response(['name' => 'projects/ezbizi-506117/messages/1']),
+        ]);
+        $this->configureFcm();
+        $tenant = $this->provisionTenant('Ezd');
+        $this->device($tenant, $tenant['admin']->id, 'token-ezbizi-phone');
+        $chat = $this->device($tenant, $tenant['admin']->id, 'token-ezchat-phone');
+        $this->inTenant($tenant['org'], fn () => $chat->forceFill(['app' => 'ezchat'])->save());
+
+        $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'New Live Chat Lead', subject: $tenant['org'], source: 'automation',
+        ));
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'messages:send') && $r['message']['token'] === 'token-ezbizi-phone');
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'messages:send') && $r['message']['token'] === 'token-ezchat-phone');
+    }
+
+    /** An EzChat iPhone is pushed with EzChat's bundle id as the topic. */
+    public function test_an_ezchat_iphone_gets_its_own_apns_topic(): void
+    {
+        Http::fake([self::APNS => Http::response('', 200)]);
+        $this->configureApns();
+        $tenant = $this->provisionTenant('Eze');
+        $device = $this->device($tenant, $tenant['admin']->id, 'token-ezchat-iphone');
+        $this->inTenant($tenant['org'], fn () => $device->forceFill(['platform' => 'ios', 'app' => 'ezchat'])->save());
+
+        $sent = app(\App\Support\Notifications\ApnsSender::class)->send(collect([$device->fresh()]), 'Ana', 'Hello');
+
+        $this->assertSame(1, $sent);
+        Http::assertSent(fn ($r) => $r->header('apns-topic')[0] === 'com.ezbizi.ezchat');
     }
 }

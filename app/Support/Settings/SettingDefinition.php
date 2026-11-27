@@ -226,6 +226,8 @@ final class SettingDefinition
          * because `group` on the wire is already the registry group.
          */
         public readonly ?string $section = null,
+        /** A text message: Settings warns when it has a character outside GSM-7 (desk, 2026-11-12). */
+        public readonly bool $sms = false,
     ) {
         if (! preg_match('/^[a-z][a-z0-9_.]*$/', $key)) {
             throw new InvalidArgumentException("Setting key '{$key}' must be lower_snake_case.");

@@ -23,8 +23,8 @@ Do this before you claim the work is done. Do not put secrets on the board.
 Every **connection we own** (Google Cloud, Play Console, Apple Developer, Meta,
 TikTok, LinkedIn, YouTube, X, Pinterest, Azure app registrations, and anything
 similar) is created and administered as **`development@ezbizi.com`**, not
-`jose@ezbizi.com` and not a personal Gmail. That mailbox must exist in Workspace
-first. Tenant OAuth (a customer connecting *their* Page or inbox) is unchanged:
+`jose@ezbizi.com` and not a personal Gmail. That mailbox exists (it administers
+the EZBIZI LLC Google organization; see `docs/BUSINESS-PROFILE.md`). Tenant OAuth (a customer connecting *their* Page or inbox) is unchanged:
 they still sign in as themselves.
 
 The board does **not** replace `docs/EZBIZI-STATUS.md` or `docs/EZBIZI-TODO.md`.
@@ -34,7 +34,10 @@ see mid-flight work without rereading a chat.
 ## Standing
 
 - A1 Tools may be read. Its code is never copied in.
-- Never edit production on the server as shipping. `scripts/deploy.sh`.
+- Never edit production on the server as shipping. Push your branch to `origin` and
+  ask the deploy desk (`docs/SESSIONS.md`) to cut; it runs `scripts/release.sh`, which
+  runs `scripts/deploy.sh` for web. Scripts and flags: `docs/DEPLOY.md`. The desk's own
+  mistakes and the rules they produced: `docs/RetardMoments.md`.
 - Never point a sandbox at the production database.
 - Secrets stay off the repo and out of chat.
 - **File on the current view, not on reach.** `/me.companies` and `/me.franchises`

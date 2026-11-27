@@ -127,6 +127,26 @@ class TwilioSignatureTest extends TestCase
         ])->assertNotFound();
     }
 
+    // Moving to a new Twilio account (11-19): a number not yet moved signs
+    // with the old token, so both pass, and an unrelated token still does not.
+    public function test_the_previous_auth_token_also_validates_during_the_move(): void
+    {
+        $t = $this->provisionTenant();
+        $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
+            'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+            'scope_id' => $t['org']->id,
+            'auth_token' => 'new-account-token',
+            'previous_auth_token' => 'old-account-token',
+        ]));
+        $url = $this->voiceUrl($t['org']->id, $connection->id);
+        $params = ['CallSid' => 'CAcccccccccccccccccccccccccccccccc', 'From' => '+15551112222', 'To' => '+15553334444'];
+        $sign = fn (string $token) => ['X-Twilio-Signature' => (new RequestValidator($token))->computeSignature($url, $params)];
+
+        $this->post($url, $params, $sign('new-account-token'))->assertOk();
+        $this->post($url, $params, $sign('old-account-token'))->assertOk();
+        $this->post($url, $params, $sign('somebody-elses-token'))->assertForbidden();
+    }
+
     private function voiceUrl(string $organizationId, string $connectionId): string
     {
         return url('/api/v1/phone/voice/'.$organizationId.'/'.$connectionId);

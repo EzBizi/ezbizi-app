@@ -189,6 +189,35 @@ const Map<String, Tour> phoneTours = {
       ),
     ],
   ),
+  'phone/Chat': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'chat-search',
+        title: 'Your chats',
+        body:
+            'Every conversation with your colleagues, newest first. Search '
+            'names and messages here.',
+      ),
+      TourStep(
+        anchor: 'chat-new-desk',
+        title: 'New chat',
+        body: 'Message any colleague on EzBizi, or start a group.',
+      ),
+      TourStep(
+        anchor: 'chat-filters',
+        title: 'Unread and groups',
+        body: 'Show only chats waiting for you, or only groups.',
+      ),
+      TourStep(
+        anchor: 'chat-input',
+        title: 'Write',
+        body:
+            'Type and send. The + sends photos and documents, the mic records '
+            'a voice message, and the phone at the top calls them.',
+      ),
+    ],
+  ),
   'phone/Records': Tour(
     version: 1,
     steps: [
@@ -380,35 +409,44 @@ const Map<String, Tour> phoneTours = {
       ),
     ],
   ),
-  'scheduling/Overbooking': Tour(
+  'scheduling/Re-Scheduling': Tour(
     version: 1,
     steps: [
       TourStep(
-        anchor: 'tour-scheduling-overbooking-counts',
-        title: 'Overbooked and full',
+        anchor: 'tour-scheduling-rescheduling-segments',
+        title: 'Re-Scheduling',
         body:
-            'Days booked past what an area or a franchise takes, and areas '
-            'with no spot left. Click an overbooked row below for its jobs.',
-      ),
-      TourStep(
-        anchor: 'tour-scheduling-overbooking-span',
-        title: 'How far ahead',
-        body: 'Overbooked days in the next 7, 14, 30 or 60 days.',
-      ),
-      TourStep(
-        anchor: 'overbooking-pick-date',
-        title: 'One day',
-        body: 'Pick a date to see that day alone; the × clears it.',
-      ),
-      TourStep(
-        anchor: 'tour-scheduling-fully-booked',
-        title: 'Fully booked',
-        body: 'Areas with no spot left, each with its next opening.',
+            'Overbooking: days booked past what they take. Underbooking: open '
+            'spots, with texts offering them to customers booked later. AI '
+            'suggestions: jobs that would sit better beside other work.',
       ),
     ],
   ),
-  'scheduling/Re-Scheduling/Rescheduling Availability': Tour(
-    version: 2,
+  'scheduling/Re-Scheduling/Overbooking': Tour(
+    version: 3,
+    steps: [
+      TourStep(
+        anchor: 'tour-booked-day',
+        title: 'The day',
+        body:
+            'Tomorrow by default. ‹ and › move a day; Today and Tomorrow jump.',
+      ),
+      TourStep(
+        anchor: 'booked-over-days',
+        title: 'Days over',
+        body:
+            'The next 14 days that are over capacity, and in how many areas. '
+            'Tap one to open it.',
+      ),
+      TourStep(
+        anchor: 'tour-booked-summary',
+        title: 'The whole day',
+        body: 'Areas over capacity, open spots and full areas that day.',
+      ),
+    ],
+  ),
+  'scheduling/Re-Scheduling/Underbooking': Tour(
+    version: 3,
     steps: [
       TourStep(
         anchor: 'tour-booked-day',
@@ -432,8 +470,8 @@ const Map<String, Tour> phoneTours = {
       ),
     ],
   ),
-  'scheduling/Re-Scheduling': Tour(
-    version: 1,
+  'scheduling/Re-Scheduling/AI suggestions': Tour(
+    version: 2,
     steps: [
       TourStep(
         anchor: 'rescheduling-list',

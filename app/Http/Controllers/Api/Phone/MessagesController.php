@@ -63,13 +63,21 @@ class MessagesController extends Controller
 
         $query = PhoneMessage::query()
             ->whereIn('number_id', $readable)
-            ->orderByDesc('created_at');
+            ->orderByDesc('created_at')
+            ->orderByDesc('id'); // a tie-breaker, so pages never overlap
 
         if (filled($input['peer'] ?? null)) {
             $peer = (string) $input['peer'];
             $query->where(fn ($q) => $q
                 ->where('from_e164', $peer)
                 ->orWhere('to_e164', $peer));
+        }
+
+        // Records asks a page at a time (Desk 11-13: 2.27 MB per open froze the
+        // screen); no per_page is still everything, for older callers.
+        $perPage = (int) $request->query('per_page', 0);
+        if ($perPage > 0) {
+            $query->forPage(max(1, (int) $request->query('page', 1)), min($perPage, 500));
         }
 
         $messages = $query->get();
@@ -135,17 +143,6 @@ class MessagesController extends Controller
         return response()->json(['data' => $this->row($message)], Status::HTTP_CREATED);
     }
 
-    private function matchCustomer(string $e164): ?string
-    {
-        if ($e164 === '') {
-            return null;
-        }
-
-        return Customer::query()
-            ->where('phone', $e164)
-            ->value('id');
-    }
-
     /** @return array<string, mixed> */
     private function row(PhoneMessage $message): array
     {
@@ -161,20 +158,5 @@ class MessagesController extends Controller
             'customer_id' => $message->customer_id,
             'created_at' => $message->created_at?->toIso8601String(),
         ];
-    }
-
-    /** @return array<string, mixed> */
-    private function payload(PhoneMessage $message): array
-    {
-        return ['after' => [
-            'id' => $message->id,
-            'twilio_sid' => $message->twilio_sid,
-            'direction' => $message->direction,
-            'from_e164' => $message->from_e164,
-            'to_e164' => $message->to_e164,
-            'body' => $message->body,
-            'number_id' => $message->number_id,
-            'customer_id' => $message->customer_id,
-        ]];
     }
 }

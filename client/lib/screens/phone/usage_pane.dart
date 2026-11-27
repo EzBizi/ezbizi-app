@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/list_table.dart';
 import '../../widgets/share_bar.dart';
@@ -81,14 +82,9 @@ class _UsagePaneState extends State<UsagePane> {
 
     final to = DateTime.now();
     final from = to.subtract(Duration(days: _days));
-    String ymd(DateTime d) =>
-        '${d.year.toString().padLeft(4, '0')}-'
-        '${d.month.toString().padLeft(2, '0')}-'
-        '${d.day.toString().padLeft(2, '0')}';
-
     final response = await widget.api.get(
       '/phone/usage?scope_type=${widget.scopeType}&scope_id=${widget.scopeId}'
-      '&from=${ymd(from)}&to=${ymd(to)}',
+      '&from=${formatCalendarDay(from)}&to=${formatCalendarDay(to)}',
     );
 
     if (!mounted) return;
@@ -139,18 +135,7 @@ class _UsagePaneState extends State<UsagePane> {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ErrorNote(_error!),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ],
-        ),
-      );
+      return ErrorRetry(_error!, onRetry: _load);
     }
 
     return ListView(

@@ -26,6 +26,7 @@ List<Map> _records() => [
 Future<List<List<CellChange>>> _pump(
   WidgetTester tester, {
   List<Map>? records,
+  List<Map>? fields,
   void Function(Map<String, int>)? onWidths,
 }) async {
   tester.view.physicalSize = const Size(900, 600);
@@ -39,8 +40,8 @@ Future<List<List<CellChange>>> _pump(
       home: Scaffold(
         body: FinancialGrid(
           tableId: 't1',
-          fields: _fields,
-          allFields: _fields,
+          fields: fields ?? _fields,
+          allFields: fields ?? _fields,
           records: rows,
           config: const {},
           onOpen: (_, {initial = const {}}) {},
@@ -80,6 +81,49 @@ Future<void> _key(
 }
 
 void main() {
+  testWidgets(
+    'an unticked checkbox cell shows an empty box, and clicking it ticks it',
+    (tester) async {
+      final fields = <Map>[
+        {'id': 'n', 'name': 'Name', 'type': 'text', 'is_primary': true},
+        {'id': 'd', 'name': 'Deductible', 'type': 'checkbox'},
+      ];
+      final batches = await _pump(
+        tester,
+        fields: fields,
+        records: [
+          {
+            'id': 'r1',
+            'values': {'n': 'Diesel', 'd': true},
+          },
+          {
+            'id': 'r2',
+            'values': {'n': 'Rent', 'd': false},
+          },
+          {
+            'id': 'r3',
+            'values': <String, dynamic>{'n': 'Tolls'},
+          },
+        ],
+      );
+
+      expect(find.byIcon(Icons.check_box), findsOneWidget);
+      expect(find.byIcon(Icons.check_box_outline_blank), findsNWidgets(2));
+      final ticked = tester.getSize(find.byIcon(Icons.check_box));
+      expect(
+        tester.getSize(find.byIcon(Icons.check_box_outline_blank).first),
+        ticked,
+      );
+
+      await tester.tap(find.byIcon(Icons.check_box_outline_blank).last);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(batches.last.single.value, true);
+      expect(find.byIcon(Icons.check_box), findsNWidgets(2));
+    },
+  );
+
   testWidgets('typing over a cell and Enter saves it and moves down', (
     tester,
   ) async {

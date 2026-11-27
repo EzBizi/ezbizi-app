@@ -274,7 +274,7 @@ class SmsCodesConsentTest extends TestCase
     /**
      * A number with no country code is refused rather than guessed at.
      *
-     * The dial pad learned this the hard way: `+3057242199` reached Twilio as
+     * The dial pad learned this the hard way: `+3055550107` reached Twilio as
      * a real-looking destination and came back unroutable, and the same shape
      * here would send a code into nothing while reporting success.
      */

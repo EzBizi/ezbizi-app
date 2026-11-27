@@ -45,6 +45,8 @@ final class WorkizWebhookController
             return response('', 422);
         }
 
+        Cache::forever(\App\Support\Workiz\WorkizHealth::NUDGED.$branch->getKey(), now()->toIso8601String());
+
         // One read per record per 20 seconds: a save that fires three rules
         // is one change. Every lead nudge for a branch is one import.
         $once = 'workiz-webhook:'.$branch->getKey().':'.($kind === 'lead' ? 'leads' : $id);

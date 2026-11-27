@@ -13,7 +13,7 @@ use RuntimeException;
 /**
  * One listing's Business Profile data beyond the profile itself, for Customer
  * Experience and Marketing (A1 Leads takeover, 2026-10-19): performance,
- * search terms, photos, categories and services, and its standing with Google.
+ * search terms, photos, categories and services.
  *
  * Official APIs only, through the listing's own connection (each company links
  * its own profile - Jose, 2026-10-16), so a paused business is refused by
@@ -27,8 +27,6 @@ final class BusinessProfileApi
     private const INFO = 'https://mybusinessbusinessinformation.googleapis.com/v1/';
 
     private const PERFORMANCE = 'https://businessprofileperformance.googleapis.com/v1/';
-
-    private const VERIFICATIONS = 'https://mybusinessverifications.googleapis.com/v1/';
 
     private const V4 = 'https://mybusiness.googleapis.com/v4/';
 
@@ -157,27 +155,6 @@ final class BusinessProfileApi
             'name' => self::v1Name($location).'/attributes',
             'attributes' => [['name' => 'attributes/url_whatsapp', 'valueType' => 'URL', 'uriValues' => [['uri' => $uri]]]],
         ])->throw();
-    }
-
-    /**
-     * Google's standing for the listing: verified, published, may it be
-     * managed, and what Google says to do when not.
-     *
-     * @return array{has_voice_of_merchant: bool, has_business_authority: bool, verify: bool, resolve_ownership_conflict: bool, complies_with_guidelines: ?string, verifications: list<array{method: ?string, state: ?string, created: ?string}>}
-     */
-    public function standing(BusinessLocation $location): array
-    {
-        $vom = $this->client($location)->get(self::VERIFICATIONS.self::v1Name($location).':getVoiceOfMerchantState')->throw()->json() ?? [];
-        $list = $this->client($location)->get(self::VERIFICATIONS.self::v1Name($location).'/verifications')->json('verifications') ?? [];
-
-        return [
-            'has_voice_of_merchant' => (bool) ($vom['hasVoiceOfMerchant'] ?? false),
-            'has_business_authority' => (bool) ($vom['hasBusinessAuthority'] ?? false),
-            'verify' => isset($vom['verify']),
-            'resolve_ownership_conflict' => isset($vom['resolveOwnershipConflict']),
-            'complies_with_guidelines' => $vom['complyWithGuidelines']['recommendationReason'] ?? null,
-            'verifications' => array_map(fn ($v) => ['method' => $v['method'] ?? null, 'state' => $v['state'] ?? null, 'created' => $v['createTime'] ?? null], $list),
-        ];
     }
 
     public static function writable(): void

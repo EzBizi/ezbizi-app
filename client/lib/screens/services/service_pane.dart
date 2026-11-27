@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/session.dart';
@@ -62,21 +61,41 @@ class _ServicePaneState extends State<ServicePane> {
     super.initState();
     _groupId = inventoryMap(widget.service['group'])?['id'] as String?;
     _labelId = inventoryMap(widget.service['label'])?['id'] as String?;
+    _filled = _typed;
     _loadTaxonomy();
   }
 
   @override
   void didUpdateWidget(covariant ServicePane oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.service != widget.service) {
-      _service = widget.service;
-      _name.text = widget.service['name'] as String? ?? '';
-      _description.text = widget.service['description'] as String? ?? '';
-      _price.text = _priceText(widget.service['price_minor']);
-      _groupId = inventoryMap(widget.service['group'])?['id'] as String?;
-      _labelId = inventoryMap(widget.service['label'])?['id'] as String?;
-    }
+    if (oldWidget.service == widget.service) return;
+    // A live re-read of the list (somebody else's edit) fills the boxes only
+    // when nothing is typed here; another service always fills.
+    final other = oldWidget.service['id'] != widget.service['id'];
+    _service = widget.service;
+    if (other || (!_busy && _typed == _filled)) _fill(widget.service);
   }
+
+  void _fill(Map<String, dynamic> row) {
+    _name.text = row['name'] as String? ?? '';
+    _description.text = row['description'] as String? ?? '';
+    _price.text = _priceText(row['price_minor']);
+    _groupId = inventoryMap(row['group'])?['id'] as String?;
+    _labelId = inventoryMap(row['label'])?['id'] as String?;
+    _filled = _typed;
+  }
+
+  /// What the boxes hold, to tell an edit in progress from a filled form.
+  String get _typed => [
+    _name.text,
+    _description.text,
+    _price.text,
+    _groupId,
+    _labelId,
+  ].join('|');
+
+  /// [_typed] as last filled from the server.
+  String _filled = '';
 
   @override
   void dispose() {
@@ -142,6 +161,7 @@ class _ServicePaneState extends State<ServicePane> {
     setState(() {
       _busy = false;
       _service = Map<String, dynamic>.from(response.data as Map);
+      _fill(_service);
     });
     widget.onChanged(_service);
   }
@@ -247,34 +267,40 @@ class _ServicePaneState extends State<ServicePane> {
                 ),
                 const SizedBox(height: 12),
                 if (_taxonomyReady)
-                SearchPickerField<String?>(
-                  key: ValueKey('group-$_groupId'),
-                  value: _groupId,
-                  label: 'Group',
-                  options: [
-                    const SearchOption(value: null, label: 'No group'),
-                    for (final row in _groups)
-                      SearchOption(value: row['id'] as String?, label: row['name'] as String? ?? ''),
-                  ],
-                  onChanged: !_canEdit || _busy
-                      ? null
-                      : (v) => setState(() => _groupId = v),
-                ),
+                  SearchPickerField<String?>(
+                    key: ValueKey('group-$_groupId'),
+                    value: _groupId,
+                    label: 'Group',
+                    options: [
+                      const SearchOption(value: null, label: 'No group'),
+                      for (final row in _groups)
+                        SearchOption(
+                          value: row['id'] as String?,
+                          label: row['name'] as String? ?? '',
+                        ),
+                    ],
+                    onChanged: !_canEdit || _busy
+                        ? null
+                        : (v) => setState(() => _groupId = v),
+                  ),
                 const SizedBox(height: 12),
                 if (_taxonomyReady)
-                SearchPickerField<String?>(
-                  key: ValueKey('label-$_labelId'),
-                  value: _labelId,
-                  label: 'Label',
-                  options: [
-                    const SearchOption(value: null, label: 'No label'),
-                    for (final row in _labels)
-                      SearchOption(value: row['id'] as String?, label: row['name'] as String? ?? ''),
-                  ],
-                  onChanged: !_canEdit || _busy
-                      ? null
-                      : (v) => setState(() => _labelId = v),
-                ),
+                  SearchPickerField<String?>(
+                    key: ValueKey('label-$_labelId'),
+                    value: _labelId,
+                    label: 'Label',
+                    options: [
+                      const SearchOption(value: null, label: 'No label'),
+                      for (final row in _labels)
+                        SearchOption(
+                          value: row['id'] as String?,
+                          label: row['name'] as String? ?? '',
+                        ),
+                    ],
+                    onChanged: !_canEdit || _busy
+                        ? null
+                        : (v) => setState(() => _labelId = v),
+                  ),
                 if (_canEdit) ...[
                   const SizedBox(height: 16),
                   Align(
@@ -285,13 +311,21 @@ class _ServicePaneState extends State<ServicePane> {
                     ),
                   ),
                 ],
+                // Set apart from Save and in the error colour, so it is not
+                // read as the next step (deep dive 2026-11-02 #11).
                 if (_canDelete) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 32),
+                  const Divider(),
+                  const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: OutlinedButton(
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.delete_outline),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(context).colorScheme.error,
+                      ),
                       onPressed: _busy ? null : _delete,
-                      child: const Text('Delete service'),
+                      label: const Text('Delete service'),
                     ),
                   ),
                 ],

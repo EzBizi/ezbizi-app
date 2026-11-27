@@ -111,7 +111,7 @@ final class InventoryStockItems
 
         return [
             'rows' => $rows,
-            'tiles' => self::tiles($facts, $withOrders, $withMoney, $openOrders),
+            'tiles' => self::tiles($facts, $withOrders, $withMoney, $openOrders, $user, $scope),
         ];
     }
 
@@ -258,7 +258,7 @@ final class InventoryStockItems
             // to multiply. Absent entirely without financials.
             $row['value_minor'] = $item->last_cost_minor === null
                 ? null
-                : (int) round(((float) $onHand) * (int) $item->last_cost_minor);
+                : InventorySummary::shelfValue((string) $onHand, (int) $item->last_cost_minor);
         }
 
         return $row;
@@ -268,7 +268,7 @@ final class InventoryStockItems
      * @param  list<array<string, mixed>>  $facts
      * @return array<string, mixed>
      */
-    private static function tiles(array $facts, bool $withOrders, bool $withMoney, int $openOrders): array
+    private static function tiles(array $facts, bool $withOrders, bool $withMoney, int $openOrders, User $user, ViewScope $scope): array
     {
         $low = array_values(array_filter($facts, fn ($f) => $f['status'] === 'below_reorder'));
         $out = array_values(array_filter($facts, fn ($f) => $f['status'] === 'out_of_stock'));
@@ -281,17 +281,7 @@ final class InventoryStockItems
         ];
 
         if ($withMoney) {
-            $value = 0;
-            $priced = false;
-            foreach ($facts as $fact) {
-                $cost = $fact['item']->last_cost_minor;
-                if ($cost === null) {
-                    continue;
-                }
-                $priced = true;
-                $value += (int) round(((float) $fact['total']) * (int) $cost);
-            }
-            $tiles['value_minor'] = $priced ? $value : null;
+            $tiles['value_minor'] = InventorySummary::stockValueMinor($user, $scope);
         }
 
         if ($withOrders) {

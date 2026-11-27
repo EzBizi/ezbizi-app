@@ -47,7 +47,10 @@ class InventoryPlaceFields extends StatelessWidget {
                   value: inventoryOrgValue,
                   label: me.organization.name,
                 ),
-              for (final c in me.companiesInView)
+              for (final c in me.companiesKeeping(
+                me.companiesInView,
+                companyId,
+              ))
                 SearchOption(value: c.id, label: c.name),
             ],
             onChanged: enabled
@@ -70,7 +73,7 @@ class InventoryPlaceFields extends StatelessWidget {
                 label: inventoryGeneralLabel,
               ),
               for (final f in branchOptions(
-                _places,
+                me.franchisesKeeping(_places, franchiseId),
                 me.companies,
                 activeOnly: false,
               ))

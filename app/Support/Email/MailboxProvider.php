@@ -64,7 +64,7 @@ enum MailboxProvider: string
     public function label(): string
     {
         return match ($this) {
-            self::GmailOAuth => 'Google (recommended)',
+            self::GmailOAuth => 'Google sign-in (retired)',
             self::GmailWorkspace => 'Google Workspace',
             self::MicrosoftOauth => 'Microsoft 365',
             self::Imap => 'IMAP',
@@ -105,9 +105,10 @@ enum MailboxProvider: string
                 .'on this installation first.',
             self::Imap => 'Connecting by IMAP means storing the mailbox password here, '
                 .'and for most mail services that is the account password — the same one that '
-                .'opens everything else on that account. If this address is on Google, connect '
-                .'it with Google instead: that hands over a key for mail only, and it can be '
-                .'taken back without changing anybody\'s password.',
+                .'opens everything else on that account. For a personal @gmail.com address use '
+                .'server imap.gmail.com, port 993, and a Google app password (Google Account → '
+                .'Security → App passwords): it reads mail only, and deleting it in Google cuts '
+                .'EzBizi off without changing any password.',
         };
     }
 

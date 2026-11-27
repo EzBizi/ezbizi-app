@@ -9,6 +9,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use App\Support\Settings\SettingsResolver;
 
 /**
  * Calls straight to the business's own lines, in Leads beside the Local
@@ -92,9 +93,6 @@ final class RingCentralLeadCalls
     /** Answered in the business's existing-customer queue (Settings: leads.existing_client_queue). */
     public const EXISTING_CLIENT = 'EXISTING_CLIENT';
 
-    /** A call older than this files quietly: a catch-up run announces nothing. */
-    private const ANNOUNCE_WITHIN_MINUTES = 60;
-
     private const WORDS = [self::POSSIBLE_SPAM => 'Possible spam', self::MISSED => 'Missed call', self::VOICEMAIL => 'Voicemail', self::IN_PROGRESS => 'In progress', self::FETCHING => 'Fetching recording'];
 
     public function __construct(
@@ -130,11 +128,18 @@ final class RingCentralLeadCalls
         $org = \App\Models\Organization::query()->find(app(\App\Support\Tenancy\TenantContext::class)->idOrFail());
         $settings = app(\App\Support\Settings\SettingsResolver::class);
         $markets = array_change_key_case((array) $settings->get('leads.line_markets', $org), CASE_UPPER);
+        $brands = array_change_key_case((array) $settings->get('leads.line_brands', $org), CASE_UPPER);
+        // Jose, 2026-11-17: whose call it is comes from the number it came in
+        // on, assigned in Leads › Manage › Phone lines. Names are the fallback.
+        $assigned = (array) $settings->get('leads.line_numbers', $org);
         $existingQueue = (string) $settings->get('leads.existing_client_queue', $org) ?: null;
         // The map holds a branch id (Settings' place picker) or, for values
         // migrated before it existed, a branch name: both resolve.
         $franchises = Franchise::query()->where('company_id', $defaultCompanyId)->get(['id', 'name'])
             ->flatMap(fn ($f) => [$f->name => $f->id, (string) $f->id => $f->id]);
+        // A brand line's market lands in that brand's branch of the same name
+        // ("ED - CT - GBP": A-1's CT branch is Connecticut, so Everdoors' Connecticut).
+        $branchNames = Franchise::query()->get(['id', 'name', 'company_id']);
 
         $filed = 0;
         foreach ($calls as $i => $call) {
@@ -155,11 +160,19 @@ final class RingCentralLeadCalls
                 continue;
             }
 
-            $line = (string) ($lineNames[(string) ($out ? $call['from'] : $call['to_number'])] ?? '');
-            $companyId = self::companyFor($line, $companies->all(), $markets) ?? $defaultCompanyId;
-            $franchiseId = $companyId === $defaultCompanyId
-                ? ($franchises[$markets[self::market($line)] ?? ''] ?? null)
-                : null;
+            $dialed = (string) ($out ? $call['from'] : $call['to_number']);
+            $line = (string) ($lineNames[$dialed] ?? '');
+            [$companyId, $franchiseId] = self::placeOf($assigned[$dialed] ?? null, $branchNames);
+            if ($companyId === null) {
+                // ponytail: one warning per number a day; a screen list if Jose wants one.
+                if ($dialed !== '' && \Illuminate\Support\Facades\Cache::add('rc-unassigned:'.$dialed, 1, now()->addDay())) {
+                    \Illuminate\Support\Facades\Log::warning("RingCentral number {$dialed} ({$line}) has no company in Leads › Manage › Phone lines; filed by its name and account.");
+                }
+                $companyId = self::companyFor($line, $companies->all(), $markets, $brands) ?? $defaultCompanyId;
+                $branch = $franchises[$markets[self::market($line, $brands)] ?? ''] ?? null;
+                $franchiseId = $companyId === $defaultCompanyId ? $branch : ($branch === null ? null
+                    : $branchNames->first(fn ($f) => $f->company_id === $companyId && $f->name === $branchNames->firstWhere('id', $branch)?->name)?->id);
+            }
 
             $customer = KnownCustomer::is(self::customerNumber($call));
             $outcome = $out ? self::OUTBOUND : self::outcome($call, $existingQueue, $customer);
@@ -169,7 +182,9 @@ final class RingCentralLeadCalls
                 continue;
             }
             DB::transaction(function () use ($call, $out, $digits, $line, $companyId, $franchiseId, $times, $i, $outcome, $lineNames) {
-                $lead = $this->leadFor($digits, $times[$i]) ?? Lead::create([
+                $lead = $this->leadFor($digits, $times[$i]);
+                $created = $lead === null;
+                $lead ??= Lead::create([
                     'organization_id' => app(\App\Support\Tenancy\TenantContext::class)->idOrFail(),
                     'company_id' => $companyId,
                     'franchise_id' => $franchiseId,
@@ -221,8 +236,18 @@ final class RingCentralLeadCalls
                 // 2026-10-15: "just report the Missed Calls instead from now on";
                 // 2026-10-16: menu hang-ups excluded, voicemails included).
                 if (($outcome === self::MISSED || $outcome === self::VOICEMAIL)
-                    && $times[$i]->gte(CarbonImmutable::now()->subMinutes(self::ANNOUNCE_WITHIN_MINUTES))) {
-                    $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => self::missed($lead, self::line($call, $lineNames), $times[$i])]);
+                    && $times[$i]->gte(CarbonImmutable::now()->subMinutes((int) SettingsResolver::forOrganization('leads.announce_minutes', $lead->organization_id)))) {
+                    RingCentralLeadCalls::firstMissedThisHour($lead) && $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => self::missed($lead, self::line($call, $lineNames), $times[$i])]);
+                }
+                // A new caller is a new lead like any other source's (UI-UX
+                // parity audit, 2026-11-06): never a repeat call, a menu
+                // hang-up, an existing client or a catch-up run. Its kind,
+                // ringcentral, keeps it out of every text auto-reply.
+                if ($created && ! $out && ! in_array($outcome, [self::POSSIBLE_SPAM, self::EXISTING_CLIENT], true)
+                    && $times[$i]->gte(CarbonImmutable::now()->subMinutes((int) SettingsResolver::forOrganization('leads.announce_minutes', $lead->organization_id)))) {
+                    $this->events->emitAfterCommit('lead.received', $lead, [
+                        'after' => $lead->only(['source', 'contact_name', 'phone', 'category', 'received_at']) + ['kind' => $lead->kind()],
+                    ]);
                 }
             });
             $filed++;
@@ -277,8 +302,8 @@ final class RingCentralLeadCalls
         }
         // Held back while it was live: told now that it ended unanswered.
         if ($was === self::WORDS[self::IN_PROGRESS] && ($outcome === self::MISSED || $outcome === self::VOICEMAIL)
-            && $at->gte(CarbonImmutable::now()->subMinutes(self::ANNOUNCE_WITHIN_MINUTES))) {
-            $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => self::missed($lead, self::line($call, $lineNames), $at)]);
+            && $at->gte(CarbonImmutable::now()->subMinutes((int) SettingsResolver::forOrganization('leads.announce_minutes', $lead->organization_id)))) {
+            RingCentralLeadCalls::firstMissedThisHour($lead) && $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => self::missed($lead, self::line($call, $lineNames), $at)]);
         }
     }
 
@@ -416,7 +441,7 @@ final class RingCentralLeadCalls
     /**
      * What a missed-call alert says: the line they dialled by its name (its
      * number when it has none) and who called, when the business knows them
-     * (Automations, 2026-10-20: "Missed Call: (219) 670-6463 · NJ - GMB").
+     * (Automations, 2026-10-20: "Missed Call: (219) 555-0101 · NJ - GMB").
      *
      * @param  array{line_number: ?string, line_name: ?string}  $line
      * @return array<string, ?string>
@@ -484,9 +509,31 @@ final class RingCentralLeadCalls
     }
 
     /** "NJ - GMB" => "NJ"; "AngiSweep" => "ANGISWEEP". */
-    public static function market(string $line): string
+    /**
+     * [company id, branch id] for an assignment "company:<id>" or
+     * "franchise:<id>"; [null, null] when unassigned or the place is gone.
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    public static function placeOf(?string $place, \Illuminate\Support\Collection $branches): array
     {
-        return strtoupper(trim(explode(' - ', $line)[0]));
+        [$type, $id] = array_pad(explode(':', (string) $place, 2), 2, '');
+        if ($type === 'franchise' && ($f = $branches->firstWhere('id', $id)) !== null) {
+            return [(string) $f->company_id, (string) $f->id];
+        }
+        if ($type === 'company' && \App\Models\Company::query()->whereKey($id)->exists()) {
+            return [$id, null];
+        }
+
+        return [null, null];
+    }
+
+    public static function market(string $line, array $brands = []): string
+    {
+        $parts = array_map(fn ($p) => strtoupper(trim($p)), explode(' - ', $line));
+
+        // "ED - MA - GBP": the brand first, then its market.
+        return isset($brands[$parts[0]]) ? ($parts[1] ?? '') : $parts[0];
     }
 
     /**
@@ -496,10 +543,16 @@ final class RingCentralLeadCalls
      *
      * @param  array<string, string>  $companies  id => name
      * @param  array<string, string>  $markets  code => branch name
+     * @param  array<string, string>  $brands  code => company id or name (leads.line_brands: "ED" for Everdoors)
      */
-    public static function companyFor(string $line, array $companies, array $markets = []): ?string
+    public static function companyFor(string $line, array $companies, array $markets = [], array $brands = []): ?string
     {
         $key = fn (string $s) => preg_replace('/[^a-z0-9]/', '', strtolower($s)) ?? '';
+        $brand = $brands[strtoupper(trim(explode(' - ', $line)[0]))] ?? null;
+        if ($brand !== null) {
+            return isset($companies[$brand]) ? (string) $brand
+                : (($id = array_search($key((string) $brand), array_map($key, $companies), true)) === false ? null : (string) $id);
+        }
         $name = $key(preg_replace('/^\d+\s+/', '', trim(explode(' - ', $line)[0])) ?? '');
         if (strlen($name) < 4 || isset($markets[self::market($line)])) {
             return null;
@@ -572,5 +625,15 @@ final class RingCentralLeadCalls
     private function leadFor(string $digits, CarbonImmutable $at): ?Lead
     {
         return CallerLead::find($digits, $at);
+    }
+
+    /**
+     * One missed-call event per caller per hour (Jose, 2026-11-17: a caller
+     * who rang five times in two minutes got five texts and every admin five
+     * bells). Atomic, so calls in one sync and parallel runs share it.
+     */
+    public static function firstMissedThisHour(Lead $lead): bool
+    {
+        return \Illuminate\Support\Facades\Cache::add('lead-missed-call:'.$lead->getKey(), 1, now()->addHour());
     }
 }

@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Task;
 use App\Models\TaskBoard;
+use App\Support\Tasks\TaskBoards;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Tests\Concerns\BuildsTenants;
@@ -37,7 +38,37 @@ class TaskBoardTest extends TestCase
         });
     }
 
-    public function test_boards_follow_the_current_view_and_never_show_a_sibling_company(): void
+    public function test_a_sub_company_and_its_branches_get_no_board_while_a_franchise_still_does(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        [$ace, $aceF1, $texas] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $ace = Company::create(['organization_id' => $tenant['org']->id, 'parent_company_id' => $tenant['company']->id, 'name' => 'Ace Fireplace', 'is_active' => true]);
+            $aceF1 = Franchise::create(['company_id' => $ace->id, 'name' => 'Ace F1']);
+            $texas = Franchise::create(['company_id' => $tenant['company']->id, 'name' => 'Alpha - Texas']);
+
+            return [$ace, $aceF1, $texas];
+        });
+
+        $this->inTenant($tenant['org'], function () use ($ace, $aceF1, $texas) {
+            Artisan::call('ezbizi:backfill-task-boards');
+            $this->assertFalse(TaskBoard::query()->where('kind', 'company')->where('company_id', $ace->id)->exists());
+            $this->assertFalse(TaskBoard::query()->where('kind', 'franchise')->where('franchise_id', $aceF1->id)->exists());
+            $this->assertTrue(TaskBoard::query()->where('kind', 'franchise')->where('franchise_id', $texas->id)->exists());
+        });
+
+        // A board made before the rule is hidden, not deleted.
+        $old = $this->inTenant($tenant['org'], fn () => app(TaskBoards::class)->ensureFor($ace));
+        $admin = $this->userWithRole($tenant, 'Lister', ['tasks.view', 'tasks.view_all']);
+        $names = collect($this->signedInAs($admin)->getJson('/api/v1/task-boards')->assertOk()->json('data'))->pluck('name');
+        $this->assertContains('Alpha Co', $names);
+        $this->assertContains('Alpha - Texas', $names);
+        $this->assertNotContains('Ace Fireplace', $names);
+        $this->assertNotContains('Ace F1', $names);
+        $this->inTenant($tenant['org'], fn () => $this->assertTrue(TaskBoard::query()->whereKey($old->id)->exists()));
+    }
+
+    /** Jose 11-25: "It should follow your own permissions and hierarchy": the list ignores the picker (was: followed it, 09-24). */
+    public function test_the_board_list_follows_reach_whatever_the_current_view(): void
     {
         $tenant = $this->provisionTenant('Alpha');
         [$beta, $betaF1] = $this->inTenant($tenant['org'], function () use ($tenant) {
@@ -55,10 +86,11 @@ class TaskBoardTest extends TestCase
             ->assertOk()
             ->json('data'))->pluck('name')->sort()->values()->all();
 
-        $this->assertSame(['Alpha Co', 'Alpha F1', 'Viewer'], $names('company:'.$tenant['company']->id));
-        $this->assertSame(['Alpha Co', 'Alpha F1', 'Viewer'], $names('franchise:'.$tenant['franchise']->id));
-        $this->assertSame(['Beta Co', 'Beta F1', 'Viewer'], $names('company:'.$beta->id));
-        $this->assertNotContains('Beta F1', $names('franchise:'.$tenant['franchise']->id));
+        // Reached at organization level: both companies in every view.
+        $all = ['Alpha Co', 'Alpha F1', 'Beta Co', 'Beta F1', 'Viewer'];
+        $this->assertSame($all, $names('company:'.$tenant['company']->id));
+        $this->assertSame($all, $names('franchise:'.$tenant['franchise']->id));
+        $this->assertSame($all, $names('company:'.$beta->id));
 
         $f1 = collect($this->signedInAs($viewer)->withHeader('X-EzBizi-View', 'franchise:'.$tenant['franchise']->id)
             ->getJson('/api/v1/task-boards')->json('data'))->firstWhere('name', 'Alpha F1');
@@ -86,6 +118,22 @@ class TaskBoardTest extends TestCase
         $this->assertSame(['Viewer'], $assignable('Viewer'));
         $this->assertContains('Viewer', $assignable('Alpha F1'));
         $this->assertNotContains('Outsider', $assignable('Alpha F1'));
+    }
+
+    public function test_assignable_says_who_has_a_photo_so_faces_without_one_ask_for_none(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['tasks.view']);
+        $pictured = $this->userWithRole($tenant, 'Pictured', ['tasks.view']);
+        $this->inTenant($tenant['org'], fn () => $pictured->forceFill(['avatar_path' => 'avatars/pictured.jpg'])->save());
+
+        $boards = $this->signedInAs($viewer)->getJson('/api/v1/task-boards')->json('data');
+        $id = collect($boards)->firstWhere('name', 'Alpha F1')['id'];
+        $people = collect($this->signedInAs($viewer)->getJson("/api/v1/task-boards/{$id}")->assertOk()->json('data.assignable'))
+            ->keyBy('name');
+
+        $this->assertTrue($people['Pictured']['has_avatar']);
+        $this->assertFalse($people['Viewer']['has_avatar']);
     }
 
     public function test_create_update_and_done_sets_and_clears_completed_at_and_emits(): void

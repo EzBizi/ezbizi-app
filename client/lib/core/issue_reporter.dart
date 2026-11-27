@@ -47,7 +47,16 @@ class IssueReporter {
   // compact JSON. Module keys and actions only: never what was typed or whose
   // record it was.
 
-  static final Stopwatch _uptime = Stopwatch()..start();
+  // Started by [markLaunch], not here: a static is created on first use,
+  // which was the first report, so every launch freeze read uptime_s 0
+  // (desk, 2026-11-11).
+  static final Stopwatch _uptime = Stopwatch();
+
+  /// The first line of `main()`: uptime counts from launch.
+  static void markLaunch() => _uptime.start();
+
+  @visibleForTesting
+  static bool get uptimeRunning => _uptime.isRunning;
   static final List<String> _breadcrumbs = [];
   static const int maxBreadcrumbs = 10;
 
@@ -352,6 +361,13 @@ class IssueReporter {
     return late;
   }
 
+  /// Whether a ping that took [took] to answer was the window frozen. Over a
+  /// minute is the computer asleep with the ping in flight, as [uiStall]
+  /// already says for the UI half (2026-11-11: a 3,630,650 ms "freeze" with
+  /// no taps). Pure, for the test.
+  static bool pingStalled(Duration took) =>
+      took >= freezeAfter && took <= const Duration(minutes: 1);
+
   static bool get _resumed {
     final state = WidgetsBinding.instance.lifecycleState;
     return state == null || state == AppLifecycleState.resumed;
@@ -370,7 +386,7 @@ class IssueReporter {
       await _watchdog.invokeMethod<void>('ping');
       final took = DateTime.now().difference(started);
       // Minimized or hidden while waiting: a slow answer is not a freeze.
-      if (took >= freezeAfter && _resumed && epoch == _awayEpoch) {
+      if (pingStalled(took) && _resumed && epoch == _awayEpoch) {
         record(
           'freeze',
           'The window did not respond for ${took.inMilliseconds} ms',

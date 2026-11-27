@@ -100,6 +100,8 @@ class MailboxConnection {
     required this.unavailableReason,
     required this.lastReachedAt,
     required this.lastReachedKnown,
+    this.sendCheckedAt,
+    this.sendProblem,
     required this.mailServer,
     required this.mayManage,
     required this.markReadAtSource,
@@ -149,6 +151,11 @@ class MailboxConnection {
 
   /// Why not, in the server's words. Null when it can.
   final String? unavailableReason;
+
+  /// When "can send" was last checked without sending, and why it failed.
+  /// Null [sendCheckedAt]: not checked yet (Jose 11-12).
+  final String? sendCheckedAt;
+  final String? sendProblem;
 
   /// ISO-8601 of the last time this address answered, or null for never.
   ///
@@ -204,6 +211,8 @@ class MailboxConnection {
         unavailableReason: json['unavailable_reason'] as String?,
         lastReachedAt: json['last_reached_at'] as String?,
         lastReachedKnown: json.containsKey('last_reached_at'),
+        sendCheckedAt: json['send_checked_at'] as String?,
+        sendProblem: json['send_problem'] as String?,
         mailServer: json['mail_server'] as Map<String, dynamic>? ?? const {},
         mayManage: json['may_manage'] == true,
         markReadAtSource: json['mark_read_at_source'] == true,
@@ -540,6 +549,31 @@ MailboxState stateOf(MailboxConnection mailbox) {
     sentence: null,
     trouble: false,
   );
+}
+
+/// The card's pass/fail line (Jose 11-12): Receive and Send, each ✓, ✗ with
+/// the reason, or still being checked. Null for an inbox not connected yet,
+/// whose state word already says so.
+({String receive, String send})? healthOf(
+  MailboxConnection mailbox,
+) {
+  if (mailbox.status == statusUnconfigured) return null;
+
+  final receive = switch (mailbox) {
+    // The reason is the card's own sentence, printed once, beside it.
+    _ when mailbox.status == statusBroken || !mailbox.canBeOpened =>
+      'Receive ✗',
+    _ when mailbox.lastReachedKnown && mailbox.lastReachedAt == null =>
+      'Receive: checking…',
+    _ => 'Receive ✓',
+  };
+  final send = switch (mailbox) {
+    _ when mailbox.sendCheckedAt == null => 'Send: checking…',
+    _ when mailbox.sendProblem != null => 'Send ✗ ${mailbox.sendProblem}',
+    _ => 'Send ✓',
+  };
+
+  return (receive: receive, send: send);
 }
 
 /// "Last reached 20 minutes ago · 2026-08-13 14:02", or null to draw no line.

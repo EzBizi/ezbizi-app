@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 /**
  * The one place a message is given a From, and the one place that is refused.
@@ -175,34 +176,22 @@ class MailDispatcher
      *
      * @throws CannotSendMail when this business has sent its hourly allowance
      */
-    public function platformForTenant(Model $scope, Mailable $message, string|array $to): void
+    public function platformForTenant(Model $scope, Mailable $message, string|array $to, ?string $fromName = null, ?string $replyTo = null): void
     {
         $this->withinHourlyAllowance($scope);
 
         $identity = $this->platform->identity();
 
-        /*
-         * Attribution WITHOUT a header the recipient can read.
-         *
-         * SES message tags need a configuration set to reach CloudWatch, and
-         * naming one that does not exist gets the message REJECTED — so the
-         * header only goes on when one is configured. Nothing is configured
-         * today, which is why this is a condition rather than a constant.
-         *
-         * No X-EzBizi-Tenant header: a recipient reads headers, and an internal
-         * id in one is a leak that buys us nothing we cannot get from the
-         * counter below.
-         */
-        $configurationSet = (string) config('mail.ses_configuration_set', '');
-
-        if ($configurationSet !== '') {
-            $message->withSymfonyMessage(function ($symfony) use ($configurationSet, $scope) {
-                $symfony->getHeaders()->addTextHeader('X-SES-CONFIGURATION-SET', $configurationSet);
-                $symfony->getHeaders()->addTextHeader(
-                    'X-SES-MESSAGE-TAGS',
-                    'source=automation,scope='.$this->resolver->scopeTypeOf($scope),
-                );
-            });
+        // EzBizi's address under the business's name, answered by its own inbox
+        // (booking confirmations, 2026-11-11). The address never changes here.
+        if ($fromName !== null || $replyTo !== null) {
+            $identity = new MailIdentity(
+                fromAddress: $identity->fromAddress,
+                fromName: $fromName ?? $identity->fromName,
+                replyTo: $replyTo ?? $identity->replyTo,
+                transport: $identity->transport,
+                state: $identity->state,
+            );
         }
 
         $this->handOver($identity, $message, $to);
@@ -624,6 +613,33 @@ class MailDispatcher
             $message->replyTo($identity->replyTo);
         }
 
-        Mail::mailer($this->platform->mailerName())->to($to)->send($message);
+        /*
+         * A refused send throws its connection away before it rethrows.
+         * Symfony keeps a failed SMTP connection, and a queue worker reuses it
+         * until it restarts. The worker listener in AppServiceProvider only
+         * sees a job that THROWS. ActionRunner catches this one into the rule's
+         * run log, and that is how a 451 on 2026-11-04 left failed_jobs empty.
+         *
+         * A 4xx is retried once on the fresh connection: the 451 of 2026-11-09
+         * was the first command on a connection SES had already timed out, so
+         * nothing was accepted and the second try is not a duplicate.
+         */
+        try {
+            Mail::mailer($this->platform->mailerName())->to($to)->send($message);
+        } catch (TransportExceptionInterface $e) {
+            app('mail.manager')->purge($this->platform->mailerName());
+
+            if ($e->getCode() < 400 || $e->getCode() >= 500) {
+                throw $e;
+            }
+
+            try {
+                Mail::mailer($this->platform->mailerName())->to($to)->send($message);
+            } catch (TransportExceptionInterface $retry) {
+                app('mail.manager')->purge($this->platform->mailerName());
+
+                throw $retry;
+            }
+        }
     }
 }

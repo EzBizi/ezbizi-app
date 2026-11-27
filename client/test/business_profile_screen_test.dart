@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/business_profile_screen.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -90,10 +91,12 @@ void main() {
     // Google's own word, in the error tone — SUSPENDED and UNVERIFIED need
     // different fixes, so collapsing them to "problem" would help nobody.
     final pill = tester.widget<StatusPill>(
-      find.descendant(
-        of: find.byKey(const ValueKey('gbp-row-loc-2')),
-        matching: find.byType(StatusPill),
-      ),
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('gbp-row-loc-2')),
+            matching: find.byType(StatusPill),
+          )
+          .first, // the Google column; WhatsApp's pill comes after it
     );
     expect(pill.label, 'Suspended');
     expect(pill.tone, Tone.bad);
@@ -160,11 +163,13 @@ void main() {
 
     final context = tester.element(find.byKey(const ValueKey('gbp-row-loc-2')));
     final tint = ToneColours.of(context, Tone.bad).fill;
+    // The pill carries the problem; the row stays neutral (desktop review
+    // 2026-11-13, Top 7: whole red rows read as an alarm for every listing).
     expect(
       tester
           .widget<Material>(find.byKey(const ValueKey('gbp-row-loc-2')))
           .color,
-      tint,
+      isNot(tint),
     );
     expect(
       tester
@@ -236,7 +241,8 @@ void main() {
     expect(find.text('No listings match'), findsOneWidget);
   });
 
-  testWidgets('WhatsApp links in bulk opens in the tab and comes back', (
+  // UI queue 164: WhatsApp is a column with ticks and one bar, no screen.
+  testWidgets('WhatsApp: tick a missing listing, pick a number, set it', (
     tester,
   ) async {
     await _pump(
@@ -245,15 +251,46 @@ void main() {
       notLive: 0,
       connections: connected,
     );
+    expect(find.byKey(const ValueKey('cx-open-wa-bulk')), findsNothing);
+    expect(find.byKey(const ValueKey('gbp-wa-bar')), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('cx-open-wa-bulk')));
+    await tester.tap(find.byKey(const ValueKey('gbp-wa-pick-missing')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('wa-bulk')), findsOneWidget);
+    expect(
+      tester
+          .widget<Checkbox>(find.byKey(const ValueKey('gbp-wa-tick-loc-1')))
+          .value,
+      isTrue,
+    );
+    await tester.tap(find.byKey(const ValueKey('gbp-wa-number-+15550100142')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('gbp-wa-apply')));
+    await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('wa-bulk-back')));
+    final apply = _sent.lastWhere((r) => r.url.path.endsWith('/apply'));
+    expect(jsonDecode(apply.body), {
+      'targets': ['loc-1'],
+      'link': 'https://wa.me/15550100142',
+    });
+    expect(find.byKey(const ValueKey('gbp-wa-result-loc-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('gbp-wa-bar')), findsNothing);
+  });
+
+  testWidgets('Phone check and the Google connection sit under more', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      locations: [showing],
+      notLive: 0,
+      connections: connected,
+    );
+    await tester.tap(find.byKey(const ValueKey('gbp-more')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('wa-bulk')), findsNothing);
-    expect(find.byKey(const ValueKey('gbp-row-loc-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('gbp-google-connection')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('cx-open-phone-check')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('gbp-more')), findsNothing);
   });
 
   testWidgets('opening a row shows its details in a pane beside the table', (
@@ -355,6 +392,41 @@ void main() {
     expect(find.byKey(const ValueKey('gbp-card-loc-1')), findsOneWidget);
   });
 
+  // Mobile review 2026-11-13: on a phone the counts wrapped beside the
+  // actions ("3 not sho…") and "Not showing · 3" took two lines.
+  testWidgets('on a phone the header and segments keep to one line', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      locations: [showing, suspended],
+      notLive: 1,
+      connections: connected,
+      size: const Size(390, 844),
+    );
+
+    final counts = tester.getRect(find.byKey(const ValueKey('gbp-counts')));
+    final check = tester.getRect(
+      find.byKey(const ValueKey('tour-customer_experience-check-google')),
+    );
+    expect(
+      check.top,
+      greaterThanOrEqualTo(counts.bottom),
+      reason: 'The actions go under the counts, not beside them.',
+    );
+    expect(counts.width, greaterThan(300));
+
+    final one = tester
+        .getSize(find.byKey(const ValueKey('gbp-show-all')))
+        .height;
+    expect(
+      tester.getSize(find.byKey(const ValueKey('gbp-show-not-showing'))).height,
+      lessThanOrEqualTo(one + 0.5),
+      reason: '"Not showing · N" is one line, as tall as "All".',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('every tour anchor is on screen', (tester) async {
     await _pump(
       tester,
@@ -428,7 +500,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(
-        of: find.byType(Dialog),
+        of: find.byType(SidePanel),
         matching: find.text('Brightside · Northgate'),
       ),
     );
@@ -482,7 +554,7 @@ void main() {
 
     await tester.tap(picker);
     await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(SidePanel), findsNothing);
     expect(_sent.where((r) => r.method != 'GET'), isEmpty);
   });
 
@@ -611,6 +683,28 @@ Future<void> _pump(
               {'id': 'fr-2', 'name': 'Northgate', 'company_id': 'co-1'},
             ],
           },
+        });
+      }
+
+      if (path.endsWith('/business-profile/whatsapp-links')) {
+        return json({
+          'proposed': 'https://wa.me/15550100100',
+          'numbers': [
+            {'number': '+15550100100', 'link': 'https://wa.me/15550100100'},
+            {'number': '+15550100142', 'link': 'https://wa.me/15550100142'},
+          ],
+          'data': [
+            for (final l in locations)
+              {'id': l['id'], 'current': null, 'state': 'missing'},
+          ],
+        });
+      }
+      if (path.endsWith('/business-profile/whatsapp-links/apply')) {
+        final targets = (jsonDecode(request.body) as Map)['targets'] as List;
+        return json({
+          'data': [
+            for (final t in targets) {'id': t, 'ok': true},
+          ],
         });
       }
 

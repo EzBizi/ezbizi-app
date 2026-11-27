@@ -93,6 +93,9 @@ class TaskBoardPermissionsTest extends TestCase
         $row = collect($this->signedInAs($with)->getJson('/api/v1/task-boards')->json('data'))->firstWhere('id', $place);
         $this->assertTrue($row['can_manage']);
         $this->assertSame('place', $row['section']);
+        // A company board the person reaches sits in Team boards (Jose 11-18), with no member row.
+        $company = $this->inTenant($tenant['org'], fn () => TaskBoard::query()->where('kind', 'company')->value('id'));
+        $this->assertSame('shared', collect($this->signedInAs($with)->getJson('/api/v1/task-boards')->json('data'))->firstWhere('id', $company)['section'] ?? null);
         $this->signedInAs($with)->postJson("/api/v1/task-boards/{$place}/members", ['user_id' => $target->id, 'role' => 'member'])->assertCreated();
     }
 

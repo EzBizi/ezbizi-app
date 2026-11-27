@@ -145,4 +145,56 @@ class AlertsTest extends TestCase
         $this->assertContains($sender->id, $names);
         $this->assertNotContains($other['admin']->id, $names);
     }
+
+    // Questions (Jose 11-18): ask with context and choices, answer, read back.
+    public function test_a_question_is_answered_once_by_the_person_asked_and_read_by_the_asker(): void
+    {
+        $tenant = $this->provisionTenant('Gamma');
+        $jose = $this->userWithRole($tenant, 'Asker', ['phone.alerts.view']);
+        $bar = $this->userWithRole($tenant, 'Bar');
+        $other = $this->userWithRole($tenant, 'Other');
+
+        $id = $this->signedInAs($jose)->postJson('/api/v1/alerts', [
+            'user_ids' => [$bar->id], 'kind' => 'question', 'message' => 'Which job source for the PPC jobs?',
+            'context' => 'EverDoors / A1 Garage Doors PPC', 'choices' => ['(a) new PPC source', '(b) existing source'],
+            'allow_text' => true,
+        ])->assertCreated()->json('data.id');
+
+        // The pop-up carries the question.
+        $this->signedInAs($bar)->getJson('/api/v1/notifications')->assertOk()
+            ->assertJsonFragment(['alert_id' => $id, 'choices' => ['(a) new PPC source', '(b) existing source']]);
+        $this->signedInAs($bar)->getJson('/api/v1/alerts/questions')
+            ->assertJsonPath('meta.unanswered', 1)->assertJsonPath('data.0.context', 'EverDoors / A1 Garage Doors PPC');
+
+        // Only the person asked may answer; a choice must be one offered.
+        $this->signedInAs($other)->postJson("/api/v1/alerts/{$id}/reply", ['choice' => '(a) new PPC source'])->assertNotFound();
+        $this->signedInAs($bar)->postJson("/api/v1/alerts/{$id}/reply", ['choice' => '(c) made up'])->assertUnprocessable();
+
+        $this->signedInAs($bar)->postJson("/api/v1/alerts/{$id}/reply", ['choice' => '(b) existing source', 'text' => 'Use Google PPC'])
+            ->assertCreated();
+        $this->signedInAs($bar)->postJson("/api/v1/alerts/{$id}/reply", ['choice' => '(a) new PPC source'])->assertStatus(409);
+
+        $this->signedInAs($bar)->getJson('/api/v1/alerts/questions')->assertJsonPath('meta.unanswered', 0);
+        $this->signedInAs($jose)->getJson("/api/v1/alerts/{$id}/replies")->assertOk()
+            ->assertJsonPath('data.replies.0.name', $bar->name)
+            ->assertJsonPath('data.replies.0.choice', '(b) existing source')
+            ->assertJsonPath('data.replies.0.text', 'Use Google PPC');
+        $this->signedInAs($other)->getJson("/api/v1/alerts/{$id}/replies")->assertNotFound();
+
+        // The asker's bell says who answered what; answering closed Bar's pop-up.
+        $this->assertContains("{$bar->name} answered: (b) existing source — Use Google PPC",
+            $this->inTenant($tenant['org'], fn () => Notification::query()->where('user_id', $jose->id)->pluck('title')->all()));
+        $this->assertSame(0, $this->inTenant($tenant['org'], fn () => Notification::query()
+            ->where('user_id', $bar->id)->where('source', 'alert')->whereNull('read_at')->count()));
+    }
+
+    public function test_a_question_with_no_way_to_answer_is_refused(): void
+    {
+        $tenant = $this->provisionTenant('Delta');
+        $jose = $this->userWithRole($tenant, 'Asker', ['phone.alerts.view']);
+        $bar = $this->userWithRole($tenant, 'Bar');
+
+        $this->signedInAs($jose)->postJson('/api/v1/alerts', ['user_ids' => [$bar->id], 'kind' => 'question', 'message' => '?'])
+            ->assertUnprocessable();
+    }
 }

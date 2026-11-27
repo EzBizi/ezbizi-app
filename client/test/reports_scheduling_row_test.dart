@@ -68,7 +68,7 @@ Future<List<String>> _pump(
   List<String> permissions = const [
     'reports.view',
     'reports.library.view',
-    'scheduling.overbooking.view',
+    'scheduling.rescheduling.view',
   ],
   List<Map<String, dynamic>> built = const [_built],
   bool refuseScheduling = false,
@@ -102,6 +102,8 @@ Future<List<String>> _pump(
               });
       }
       if (path == '/api/v1/reports') return _json({'data': built});
+      // Every report sent (2026-11-25): none here.
+      if (path == '/api/v1/reports/sent') return _json({'data': []});
       if (path.endsWith('/scheduling/overbooking')) {
         return _json({
           'data': {'overbooked': const [], 'fully_booked': const []},

@@ -1,3 +1,5 @@
+import '../../core/mask.dart';
+import '../../widgets/list_search.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -318,15 +320,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
         ),
         SizedBox(
           width: 280,
-          child: TextField(
+          child: ListSearch(
             key: const ValueKey('activity-search'),
             controller: _search,
+            hint: 'A customer, lead or setting',
             onChanged: _typed,
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'A customer, lead or setting',
-            ),
           ),
         ),
       ],
@@ -433,7 +431,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     // A sentence, never the server's code (UI queue 110).
-                    Text(rest),
+                    Text(maskContacts(rest)),
                     Text(
                       '${row['where'] ?? ''}',
                       maxLines: 1,
@@ -450,7 +448,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(what),
+                      Text(maskContacts(what)),
                       const SizedBox(height: 2),
                       Text(
                         [
@@ -576,43 +574,93 @@ class _ActivityDetailState extends State<ActivityDetail> {
     });
   }
 
+  /// Where the plain rule reads badly.
+  static const _named = {'assignee_user_id': 'Assigned to'};
+
+  /// `clocked_in_at` → "Clocked in" (Eve Sarfaty's suggestion 01a20df7,
+  /// 2026-11-24: "make the logs more understandable").
   static String _words(String key) {
-    final text = key.replaceAll('_', ' ').trim();
+    if (_named[key] case final name?) return name;
+    final text = key
+        .replaceFirst(RegExp(r'(_user)?_(id|at)$'), '')
+        .replaceAll('_', ' ')
+        .trim();
     return text.isEmpty ? key : text[0].toUpperCase() + text.substring(1);
   }
 
-  static String _value(Object? value) => switch (value) {
-    null => '(empty)',
-    String v when v.isEmpty => '(empty)',
+  static final _instant = RegExp(r'^\d{4}-\d{2}-\d{2}T');
+  static final _date = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+
+  /// A value as words: local times, "—" for nothing, never JSON.
+  String _value(Object? value) => switch (value) {
+    null => '—',
+    String v when v.isEmpty => '—',
+    String v when _instant.hasMatch(v) => formatStamp(
+      v,
+      v,
+      formats: widget.formats,
+    ),
+    String v when _date.hasMatch(v) => widget.formats.formatDate(
+      DateTime.parse(v),
+    ),
     String v => v,
     num v => '$v',
     bool v => v ? 'Yes' : 'No',
-    _ => jsonEncode(value),
+    List v when v.every((e) => e is! Map && e is! List) =>
+      v.isEmpty ? '—' : v.map(_value).join(', '),
+    List v => v.length == 1 ? '1 item' : '${v.length} items',
+    Map v => v.length == 1 ? '1 field' : '${v.length} fields',
+    _ => '$value',
   };
 
+  /// A logger that wrote the whole record twice (`{before: {…}, after:
+  /// {…}}`, as the time clock does) is read as one before → after per field.
+  static Object? _perField(Object? data) {
+    if (data is! Map ||
+        data.isEmpty ||
+        !data.keys.every((k) => k == 'before' || k == 'after') ||
+        !data.values.every((v) => v == null || v is Map)) {
+      return data;
+    }
+    final before = data['before'] as Map? ?? const {};
+    final after = data['after'] as Map? ?? const {};
+    return {
+      for (final k in {...before.keys, ...after.keys})
+        k: {'before': before[k], 'after': after[k]},
+    };
+  }
+
+  static bool _isChange(Object? value) =>
+      value is Map &&
+      (value.containsKey('before') || value.containsKey('after'));
+
   List<Widget> _pairs(ThemeData theme, Object? data, {required bool changes}) {
+    data = _perField(data);
     if (data is! Map || data.isEmpty) return const [];
     return [
       for (final MapEntry(:key, :value) in data.entries)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(_words('$key'), style: theme.textTheme.labelLarge),
-              const SizedBox(height: 2),
-              if (changes &&
-                  value is Map &&
-                  (value.containsKey('before') || value.containsKey('after')))
-                Text(
-                  '${_value(value['before'])}  →  ${_value(value['after'])}',
-                  key: ValueKey('change:$key'),
-                )
-              else
-                Text(_value(value), key: ValueKey('value:$key')),
-            ],
+        // Only what changed: a field the same on both sides is not news.
+        if (!(changes &&
+            _isChange(value) &&
+            jsonEncode((value as Map)['before']) == jsonEncode(value['after'])))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_words('$key'), style: theme.textTheme.labelLarge),
+                const SizedBox(height: 2),
+                if (changes && _isChange(value))
+                  Text(
+                    '${_value((value as Map)['before'])}  →  '
+                    '${_value(value['after'])}',
+                    key: ValueKey('change:$key'),
+                  )
+                else
+                  Text(_value(value), key: ValueKey('value:$key')),
+              ],
+            ),
           ),
-        ),
     ];
   }
 
@@ -632,7 +680,8 @@ class _ActivityDetailState extends State<ActivityDetail> {
     if (event == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    final changes = _pairs(theme, event['changes'], changes: true);
+    final recorded = event['changes'];
+    final changes = _pairs(theme, recorded, changes: true);
     final details = _pairs(theme, event['metadata'], changes: false);
 
     return Column(
@@ -648,7 +697,9 @@ class _ActivityDetailState extends State<ActivityDetail> {
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 16),
-        if (changes.isEmpty && details.isEmpty)
+        if (changes.isEmpty && recorded is Map && recorded.isNotEmpty)
+          Text('No field changed.', style: theme.textTheme.bodyMedium)
+        else if (changes.isEmpty && details.isEmpty)
           Text(
             'Nothing more was recorded for this one.',
             style: theme.textTheme.bodyMedium,

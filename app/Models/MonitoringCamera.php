@@ -31,6 +31,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MonitoringCamera extends Model implements StatesRetention
 {
     use BelongsToTenant, HasUuids;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'monitoring_cameras';
+
+    /** Filed where its site is; a camera on no site is organization-wide (ChangeFeed). */
+    public function changeFeedPlace(): array
+    {
+        $site = $this->site_id === null ? null
+            : CameraSite::withoutGlobalScopes()->find($this->site_id, ['id', 'company_id', 'franchise_id']);
+
+        return [$site?->company_id, $site?->franchise_id];
+    }
+
 
     protected $table = 'monitoring_cameras';
 

@@ -1,7 +1,9 @@
+import '../../widgets/list_search.dart';
 import '../../core/branch_options.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -40,10 +42,6 @@ class SchedulePane extends StatefulWidget {
 }
 
 class _SchedulePaneState extends State<SchedulePane> {
-  static const _weekdays = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-    'Sunday', //
-  ];
 
   static const double _techColumn = 190;
   static const double _windowColumn = 250;
@@ -58,6 +56,9 @@ class _SchedulePaneState extends State<SchedulePane> {
 
   /// The job whose panel is open, by mirror row.
   String? _openJobId;
+
+  /// The phone agenda's technician chip; null is Everyone.
+  String? _phoneTech;
   bool _busy = false;
   String? _dispatchError;
   String? _assignMemberId;
@@ -68,7 +69,17 @@ class _SchedulePaneState extends State<SchedulePane> {
   void initState() {
     super.initState();
     _load();
+    // A job booked, moved or assigned anywhere shows on the open day.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      (_) {
+        if (!_busy && _board != null) return _load();
+      },
+      active: () => widget.visible && LiveChanges.visible(this)(),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void didUpdateWidget(covariant SchedulePane old) {
@@ -78,14 +89,10 @@ class _SchedulePaneState extends State<SchedulePane> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _unassignedSearch.dispose();
     super.dispose();
   }
-
-  static String _ymd(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
 
   Future<void> _load() async {
     final ticket = ++_request;
@@ -95,7 +102,7 @@ class _SchedulePaneState extends State<SchedulePane> {
     });
 
     final response = await widget.api.get('/scheduling/board', {
-      'date': _ymd(_day),
+      'date': formatCalendarDay(_day),
       'franchise_id': ?_franchiseId,
     });
     if (!mounted || ticket != _request) return;
@@ -165,7 +172,13 @@ class _SchedulePaneState extends State<SchedulePane> {
                       )
                     : ListView(
                         children: [
-                          SizedBox(height: 420, child: grid),
+                          // A phone gets one technician after another: the
+                          // grid at 390 px showed one time column and three
+                          // technicians (phone audit 2026-11-04).
+                          if (box.maxWidth < 600)
+                            ..._phoneList(theme, board)
+                          else
+                            SizedBox(height: 420, child: grid),
                           const Divider(height: 1),
                           panel,
                         ],
@@ -182,7 +195,7 @@ class _SchedulePaneState extends State<SchedulePane> {
     final franchises = (board?['franchises'] as List? ?? const [])
         .cast<Map<String, dynamic>>();
     final label =
-        '${_weekdays[_day.weekday - 1]}, ${shortMonths[_day.month - 1]} '
+        '${longWeekdays[_day.weekday - 1]}, ${shortMonths[_day.month - 1]} '
         '${_day.day}, ${_day.year}';
 
     return Padding(
@@ -419,6 +432,202 @@ class _SchedulePaneState extends State<SchedulePane> {
     );
   }
 
+  /// The board on a phone (design 207 S1, after Workiz): a week strip to
+  /// pick the day, one chip per technician, then the day's jobs in time
+  /// order, each edged in its technician's colour.
+  List<Widget> _phoneList(ThemeData theme, Map<String, dynamic> board) {
+    final windows = (board['windows'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final techs = (board['technicians'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final cards = (board['scheduled'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final muted = theme.colorScheme.onSurfaceVariant;
+    if (techs.isEmpty) {
+      return [
+        SizedBox(height: 160, child: _empty(theme, 'No technicians in this view.')),
+      ];
+    }
+    String windowLabel(Object? w) {
+      if (w is! int || w < 0 || w >= windows.length) return 'No time set';
+      return '${_time(windows[w]['start_time'] as String)} – '
+          '${_time(windows[w]['end_time'] as String)}';
+    }
+
+    final index = {for (final (i, t) in techs.indexed) t['id']: i};
+    final names = {for (final t in techs) t['id']: '${t['name'] ?? ''}'};
+    Color colourOf(Object? id) => EzBiziTheme
+        .avatarPalette[(index[id] ?? 0) % EzBiziTheme.avatarPalette.length];
+    final shown = [
+      for (final c in cards)
+        if (_phoneTech == null || c['technician_id'] == _phoneTech) c,
+    ]..sort((a, b) {
+        final w = ((a['window'] as int?) ?? 99).compareTo(
+          (b['window'] as int?) ?? 99,
+        );
+        return w != 0
+            ? w
+            : '${a['time'] ?? ''}'.compareTo('${b['time'] ?? ''}');
+      });
+    final monday = _day.subtract(Duration(days: _day.weekday - 1));
+    final today = DateUtils.dateOnly(DateTime.now());
+
+    return [
+      // The week, Monday first; the arrows move a week (Workiz's strip).
+      Padding(
+        key: const ValueKey('schedule-phone-week'),
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: 'Previous week',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.chevron_left),
+              onPressed: () => _go(_day.subtract(const Duration(days: 7))),
+            ),
+            for (var i = 0; i < 7; i++)
+              Expanded(
+                child: _weekDay(
+                  theme,
+                  DateUtils.addDaysToDate(monday, i),
+                  today: today,
+                ),
+              ),
+            IconButton(
+              tooltip: 'Next week',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.chevron_right),
+              onPressed: () => _go(_day.add(const Duration(days: 7))),
+            ),
+          ],
+        ),
+      ),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            for (final (id, label) in [
+              (null, 'Everyone'),
+              for (final t in techs) (t['id'] as String?, '${t['name'] ?? ''}'),
+            ])
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ChoiceChip(
+                  key: ValueKey('schedule-phone-tech-${id ?? 'all'}'),
+                  label: Text(label),
+                  avatar: id == null
+                      ? null
+                      : CircleAvatar(backgroundColor: colourOf(id), radius: 5),
+                  showCheckmark: false,
+                  selected: _phoneTech == id,
+                  onSelected: (_) => setState(() => _phoneTech = id),
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 6),
+      if (shown.isEmpty)
+        SizedBox(height: 120, child: _empty(theme, 'Nothing booked this day.')),
+      for (final c in shown)
+        Padding(
+          key: ValueKey('schedule-phone-job-${c['job_id'] ?? c['id']}'),
+          padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 84,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        windowLabel(c['window']),
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: muted,
+                        ),
+                      ),
+                      Text(
+                        names[c['technician_id']] ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      left: BorderSide(
+                        color: colourOf(c['technician_id']),
+                        width: 4,
+                      ),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: _jobCard(theme, c),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
+
+  /// One day in the week strip: its letter and date, filled when chosen.
+  Widget _weekDay(ThemeData theme, DateTime day, {required DateTime today}) {
+    final on = DateUtils.isSameDay(day, _day);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Material(
+        color: on ? scheme.primary : scheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: DateUtils.isSameDay(day, today)
+                ? scheme.primary
+                : EzBiziTheme.edge(context),
+          ),
+        ),
+        child: InkWell(
+          key: ValueKey('schedule-phone-day-${day.day}'),
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _go(day),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(
+              children: [
+                Text(
+                  shortWeekdays[day.weekday - 1].substring(0, 1),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: on ? scheme.onPrimary : scheme.onSurfaceVariant,
+                  ),
+                ),
+                Text(
+                  '${day.day}',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: on ? scheme.onPrimary : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _unassignedPanel(
     ThemeData theme,
     Map<String, dynamic> board, {
@@ -468,15 +677,10 @@ class _SchedulePaneState extends State<SchedulePane> {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: TextField(
+          child: ListSearch(
             key: const Key('schedule-unassigned-search'),
             controller: _unassignedSearch,
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Customer, job #, address',
-              border: OutlineInputBorder(),
-            ),
+            hint: 'Customer, job #, address',
             onChanged: (_) => setState(() {}),
           ),
         ),
@@ -484,8 +688,8 @@ class _SchedulePaneState extends State<SchedulePane> {
           padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
           child: Text(
             board['can_dispatch'] == true
-                ? 'Tap a job to assign, unassign or move it. Changes go '
-                      'straight to Workiz.'
+                ? 'Tap a job to assign, unassign or move it. Changes are '
+                      'saved here and copied to Workiz.'
                 : 'Jobs are assigned in Workiz; this board shows what is '
                       'booked.',
             style: theme.textTheme.bodySmall?.copyWith(
@@ -715,7 +919,7 @@ class _SchedulePaneState extends State<SchedulePane> {
 
     final moveLabel = _moveDay == null
         ? 'Pick a day'
-        : '${_weekdays[_moveDay!.weekday - 1].substring(0, 3)}, '
+        : '${longWeekdays[_moveDay!.weekday - 1].substring(0, 3)}, '
               '${shortMonths[_moveDay!.month - 1]} ${_moveDay!.day}';
 
     final children = <Widget>[
@@ -851,7 +1055,7 @@ class _SchedulePaneState extends State<SchedulePane> {
                     _moveWindow! >= windows.length
                 ? null
                 : () => _dispatch('reschedule', {
-                    'date': _ymd(_moveDay!),
+                    'date': formatCalendarDay(_moveDay!),
                     'start_time': windows[_moveWindow!]['start_time'],
                     'end_time': windows[_moveWindow!]['end_time'],
                   }),

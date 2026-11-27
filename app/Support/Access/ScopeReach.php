@@ -100,7 +100,8 @@ class ScopeReach
      */
     private function reachOf(User $actor): array
     {
-        return $this->memo[$actor->getKey()] ??= [
+        // Keyed by role too: a View-as role clone shares its actor's id (ViewAsUser).
+        return $this->memo[$actor->getKey().'|'.$actor->role_id] ??= [
             'organization' => $actor->canActOnOrganization($actor->organization),
             'companies'    => $actor->reachableCompanies()->modelKeys(),
             'franchises'   => $actor->reachableFranchises()->modelKeys(),
@@ -224,24 +225,30 @@ class ScopeReach
     public function optionsFor(User $actor): array
     {
         $organization = $actor->organization;
+        // Switched off by the one rule (a Sub Company under a parent that is
+        // off is off too), so a picker can leave them out (Jose, 2026-11-10).
+        $companies = $actor->reachableCompanies();
+        $franchises = $actor->reachableFranchises();
+        $offCompanies = Company::query()->whereKey($companies->pluck('id')->all())->switchedOff()->pluck('id')->all();
+        $offPlaces = Franchise::query()->whereKey($franchises->pluck('id')->all())->switchedOff()->pluck('id')->all();
 
         return [
             'organization' => $actor->canActOnOrganization($organization)
                 ? ['id' => $organization->getKey(), 'name' => $organization->name]
                 : null,
 
-            'companies' => $actor->reachableCompanies()->map(fn (Company $c) => [
+            'companies' => $companies->map(fn (Company $c) => [
                 'id'                => $c->getKey(),
                 'name'              => $c->name,
                 'parent_company_id' => $c->parent_company_id,
-                'is_active'         => $c->is_active,
+                'is_active'         => ! in_array($c->getKey(), $offCompanies, true),
             ])->values()->all(),
 
-            'franchises' => $actor->reachableFranchises()->map(fn (Franchise $f) => [
+            'franchises' => $franchises->map(fn (Franchise $f) => [
                 'id'         => $f->getKey(),
                 'name'       => $f->name,
                 'company_id' => $f->company_id,
-                'is_active'  => $f->is_active,
+                'is_active'  => ! in_array($f->getKey(), $offPlaces, true),
             ])->values()->all(),
         ];
     }

@@ -185,7 +185,8 @@ class PhoneSmsTest extends TestCase
         $this->assertSame('outbound', $response->json('data.direction'));
         $this->assertSame('+12035551004', $response->json('data.from_e164'));
         $this->assertSame($to, $response->json('data.to_e164'));
-        $this->assertSame('See you at two.', $response->json('data.body'));
+        // The first text to a number carries the opt-out line (SmsConsent).
+        $this->assertSame('See you at two.'."\n\n".\App\Support\Phone\SmsConsent::FOOTER, $response->json('data.body'));
         $this->assertSame($customer->id, $response->json('data.customer_id'));
         $this->assertArrayNotHasKey('credentials', $response->json() ?? []);
         $this->assertArrayNotHasKey('auth_token', $response->json() ?? []);
@@ -195,7 +196,7 @@ class PhoneSmsTest extends TestCase
         $this->assertSame($number->connection_id, $send['args'][0]);
         $this->assertSame('+12035551004', $send['args'][1]);
         $this->assertSame($to, $send['args'][2]);
-        $this->assertSame('See you at two.', $send['args'][3]);
+        $this->assertSame('See you at two.'."\n\n".\App\Support\Phone\SmsConsent::FOOTER, $send['args'][3]);
 
         $this->inTenant($t['org'], function () use ($number, $customer, $to, $response) {
             $message = PhoneMessage::query()->find($response->json('data.id'));
@@ -213,6 +214,31 @@ class PhoneSmsTest extends TestCase
             $this->assertSame($message->id, $event->subject_id);
             $this->assertSame(PhoneMessage::class, $event->subject_type);
         });
+    }
+
+    /** Twilio's region refusal reads as a plain sentence (health sweep 11-09, a Puerto Rico number; Jose: we do not serve Puerto Rico, the permission stays off). */
+    public function test_a_region_refusal_reads_as_a_plain_sentence(): void
+    {
+        $t = $this->provisionTenant();
+        $desk = $this->userWithRole($t, 'Desk region', ['phone.view']);
+
+        $number = $this->inTenant($t['org'], function () use ($t, $desk) {
+            [, $number] = $this->openLine($t, e164: '+12035551005');
+            $number->update(['sms_outbound_allowed' => true]);
+            PhoneNumberGrant::create(['organization_id' => $t['org']->id, 'number_id' => $number->id, 'role_id' => $desk->role_id]);
+
+            return $number->fresh();
+        });
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+        $gateway->failSendMessageWith = "[HTTP 400] Unable to create record: Permission to send an SMS has not been enabled for the region indicated by the 'To' number: +17873700000";
+
+        $this->signedInAs($desk)->postJson('/api/v1/phone/messages', [
+            'number_id' => $number->id,
+            'to' => '+17873700000',
+            'body' => 'Hi',
+        ])->assertStatus(502)->assertJsonFragment(['message' => "Texts to that number's country are switched off on this phone account, so nothing was sent."]);
     }
 
     /**
@@ -233,7 +259,7 @@ class PhoneSmsTest extends TestCase
                 'role_id' => $desk->role_id,
             ]);
 
-            $desk->update(['name' => 'Chaim Perez', 'phone' => '(308) 708-9100']);
+            $desk->update(['name' => 'Chaim Perez', 'phone' => '(308) 555-0100']);
             Customer::create([
                 'owning_franchise_id' => $t['franchise']->id,
                 'number' => 'C-sms-peer',
@@ -241,7 +267,7 @@ class PhoneSmsTest extends TestCase
                 'phone' => '+15557650000',
             ]);
 
-            foreach (['+13087089100', '+15557650000', '+15550009999'] as $i => $peer) {
+            foreach (['+13085550100', '+15557650000', '+15550009999'] as $i => $peer) {
                 PhoneMessage::query()->create([
                     'connection_id' => $line->connection_id,
                     'number_id' => $line->id,
@@ -259,7 +285,7 @@ class PhoneSmsTest extends TestCase
             ->json('data'))
             ->pluck('peer_name', 'to_e164');
 
-        $this->assertSame('Chaim Perez', $names['+13087089100']);
+        $this->assertSame('Chaim Perez', $names['+13085550100']);
         $this->assertSame('Phone-Only Customer', $names['+15557650000']);
         $this->assertNull($names['+15550009999']);
     }
@@ -342,6 +368,12 @@ class PhoneSmsTest extends TestCase
         $this->assertSame('Thursday Customer', collect($all)->firstWhere('id', $kept->id)['customer_name']);
         $this->assertNull(collect($all)->firstWhere('id', $hidden->id)['customer_name']);
         $this->assertArrayNotHasKey('credentials', $all[0]);
+
+        // Paged on request (Desk 11-13: the whole history froze the screen).
+        $page = fn (int $n) => array_column($this->signedInAs($desk)
+            ->getJson('/api/v1/phone/messages?per_page=2&page='.$n)->assertOk()->json('data'), 'id');
+        $this->assertCount(2, $page(1));
+        $this->assertSame(array_column($all, 'id'), [...$page(1), ...$page(2)]);
 
         $thread = $this->signedInAs($desk)
             ->getJson('/api/v1/phone/messages?'.http_build_query([

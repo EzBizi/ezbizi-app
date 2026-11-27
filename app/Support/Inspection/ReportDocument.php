@@ -3,7 +3,10 @@
 namespace App\Support\Inspection;
 
 use App\Models\Attachment;
+use App\Models\BusinessLocation;
+use App\Models\Company;
 use App\Models\InspectionReport;
+use App\Models\WebLocation;
 use App\Support\Files\FileStore;
 
 /**
@@ -128,7 +131,21 @@ final class ReportDocument
             $body = '<p class="empty">This inspection had no questions.</p>';
         }
 
-        return $this->page($report, $this->summary($screens, $answers).$body.$this->table($screens, $answers));
+        return $this->page($report, $this->summary($screens, $answers).$body.$this->beforeAfter($report).$this->table($screens, $answers));
+    }
+
+    /** Side by side, one row per pair; nothing at all when there are no pairs. */
+    private function beforeAfter(InspectionReport $report): string
+    {
+        $rows = '';
+
+        foreach (BeforeAfter::pairs($report) as $pair) {
+            $rows .= '<tr><td colspan="2" class="l">'.$this->text($pair['label']).'</td></tr>'
+                .'<tr><td style="width:50%">Before'.$this->photo($pair['before']).'</td>'
+                .'<td style="width:50%">After'.$this->photo($pair['after']).'</td></tr>';
+        }
+
+        return $rows === '' ? '' : '<h2>Before &amp; after</h2><table class="ba" style="width:100%">'.$rows.'</table>';
     }
 
     /**
@@ -263,6 +280,28 @@ final class ReportDocument
      * @param  array<string, mixed>  $answers
      * @return array{label?: string, variant?: string}
      */
+    /**
+     * Each choice field's result as the PDF badges it, keyed by field key, so
+     * the in-app report shows the same PASS/FAIL/N/A without re-deriving it.
+     *
+     * @param  list<array<string, mixed>>  $screens
+     * @param  array<string, mixed>  $answers
+     * @return array<string, array{label?: string, variant?: string}>
+     */
+    public function findings(array $screens, array $answers): array
+    {
+        $out = [];
+        foreach ($screens as $screen) {
+            foreach ($screen['fields'] ?? [] as $field) {
+                if (is_array($field) && ($chosen = $this->chosenOption($field, $answers)) !== []) {
+                    $out[(string) $field['key']] = $chosen;
+                }
+            }
+        }
+
+        return $out;
+    }
+
     private function chosenOption(array $field, array $answers): array
     {
         if (($field['type'] ?? '') !== FieldType::CHOICE) {
@@ -494,7 +533,7 @@ final class ReportDocument
 
         return '<div class="note">'
             .($title === '' ? '' : '<span class="ct">'.$this->text($title).'</span>')
-            .($bodyText === '' ? '' : ' '.$this->text($bodyText))
+            .($bodyText === '' ? '' : ' '.nl2br($this->text($bodyText)))
             .'</div>';
     }
 
@@ -595,6 +634,8 @@ final class ReportDocument
         // — heads and foots every page with its logo and phone, as A1's own
         // report does. Nothing found prints the page without them.
         $company = $report->job?->franchise?->company ?? $report->customer?->owningFranchise?->company;
+        // One shared terms text for every branch (Jose 11-03) names each branch's own company.
+        $body = str_replace('{{company_name}}', $this->text($company?->name ?? 'the company'), $body);
         $logo = $this->logo($company?->logo_path);
         $when = $report->job?->scheduled_for ?? $report->submitted_at;
         $top = implode(' | ', array_filter([
@@ -656,7 +697,7 @@ final class ReportDocument
             .'<td style="text-align:right;vertical-align:middle">'.$this->text($top).'</td>'
             .'</tr></table></div>'
             .'<div id="pf"><table style="width:100%"><tr>'
-            .'<td>'.$this->text(implode(' | ', array_filter([$company?->name, $company?->phone]))).'</td>'
+            .'<td>'.$this->text(implode(' | ', array_filter([$company?->name, ...$this->contact($report, $company)]))).'</td>'
             .'<td class="pn" style="text-align:right"></td>'
             .'</tr></table></div>'
             .'<h1>'.$this->text($report->definition_name).'</h1>'
@@ -664,6 +705,38 @@ final class ReportDocument
             .($intro === '' ? '' : '<div class="intro">'.nl2br($this->text($intro)).'</div>')
             .$body
             .'</body></html>';
+    }
+
+    /**
+     * The branch's phone and email for the footer, as A1's reports print them.
+     *
+     * Jose (2026-11-02): they already live in Web Management. The company's
+     * web location in the client's city first, then any of its locations with
+     * a phone, then the branch's Google profile, then the company's own phone.
+     *
+     * @return list<string>
+     */
+    private function contact(InspectionReport $report, ?Company $company): array
+    {
+        if ($company === null) {
+            return [];
+        }
+
+        $city = $report->customer?->city;
+        $place = WebLocation::query()
+            ->where('company_id', $company->getKey())
+            ->where(fn ($q) => $q->whereNotNull('phone')->orWhereNotNull('email'))
+            ->when($city, fn ($q) => $q->orderByRaw('city = ? desc', [$city]))
+            ->orderBy('sort_order')
+            ->first();
+
+        $franchiseId = $report->job?->franchise_id ?? $report->customer?->owning_franchise_id;
+        $phone = $place?->phone
+            ?: ($franchiseId === null ? null : BusinessLocation::query()
+                ->where('franchise_id', $franchiseId)->whereNotNull('phone')->value('phone'))
+            ?: $company->phone;
+
+        return array_values(array_filter([$phone, $place?->email], fn ($v) => filled($v)));
     }
 
     /** The company logo as an inline PNG/JPEG, or nothing. */

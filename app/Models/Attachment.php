@@ -87,8 +87,8 @@ class Attachment extends Model implements HoldsPersonalData
                     .'A file that is evidence refuses to be removed and is reported instead; '
                     .'everything else goes, bytes and row together.'),
                 tenantDefined: true),
-            new PersonalDataEntry('original_name', PersonalDataEntry::CONTENT,
-                'What the person called the file, which often names its subject — '
+            new PersonalDataEntry('original_name, sealed_name', PersonalDataEntry::CONTENT,
+                'What the person called the file (encrypted in sealed_name on a sensitive task), which often names its subject — '
                 .'"marta-licence.pdf" says something even before it is opened.',
                 Erasure::drop('Goes with the file it names. Keeping the row for its '
                     .'filename alone would keep the one part of it that is readable '
@@ -228,11 +228,40 @@ class Attachment extends Model implements HoldsPersonalData
         'attachable_type', 'attachable_id',
         'original_name', 'mime',
         'uploaded_by_user_id',
+        // 'before' or 'after': which side of the work a photo shows.
+        'label',
     ];
 
     protected function casts(): array
     {
-        return ['size_bytes' => 'integer'];
+        return ['size_bytes' => 'integer', 'encrypted' => 'boolean'];
+    }
+
+    /**
+     * What the person called the file. A sensitive task's file is called
+     * "Locked file" in original_name and its real name is sealed; only a
+     * caller that has passed SensitiveTasks::reveal asks for this.
+     */
+    public function realName(): string
+    {
+        $name = $this->sealed_name !== null
+            ? (string) \App\Support\Tasks\SensitiveTasks::open($this->sealed_name)
+            : (string) $this->original_name;
+        // Monday assets often arrive without an extension (Adeline 11-24): add the mime's.
+        if (pathinfo($name, PATHINFO_EXTENSION) === '' && $this->mime) {
+            $ext = (new \Symfony\Component\Mime\MimeTypes)->getExtensions($this->mime)[0] ?? null;
+            $name .= $ext ? '.'.$ext : '';
+        }
+
+        return $name;
+    }
+
+    /** The file's bytes, decrypted when stored encrypted; null when it has gone. */
+    public function bytes(): ?string
+    {
+        $stored = app(\App\Support\Files\FileStore::class)->contents($this->path, $this->disk);
+
+        return $stored !== null && $this->encrypted ? \Illuminate\Support\Facades\Crypt::decryptString($stored) : $stored;
     }
 
     /**
@@ -278,6 +307,13 @@ class Attachment extends Model implements HoldsPersonalData
      */
     protected static function booted(): void
     {
+        // A Task Board video gets a poster frame for the Gallery (Jose 2026-11-12).
+        static::created(function (self $attachment) {
+            if (\App\Jobs\MakeVideoPoster::wants($attachment)) {
+                \App\Jobs\MakeVideoPoster::dispatch($attachment->getKey())->afterCommit();
+            }
+        });
+
         static::deleting(function (self $attachment) {
             $refusal = $attachment->deletionRefusal();
 
@@ -324,6 +360,7 @@ class Attachment extends Model implements HoldsPersonalData
             ],
             'original_name' => $this->original_name,
             'mime'          => $this->mime,
+            'label'         => $this->label,
             'size_bytes'    => $this->size_bytes,
             'checksum'      => $this->checksum,
             'uploaded_by'   => [

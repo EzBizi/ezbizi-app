@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -50,9 +51,26 @@ Future<void> init() async {
   } catch (_) {
     _cache = {};
   }
+  // A second window (app_window.dart) is handed the first one's session,
+  // which may be on no disk. Memory only: nothing here is written back.
+  final handed = Platform.environment['EZBIZI_TOKEN'];
+  if (handed != null && handed.isNotEmpty) _cache['ezbizi.token'] = handed;
 }
 
 String? readItem(String key) => _cache[key];
+
+/// What the keychain itself holds for [key], read past the cache.
+///
+/// Throws when the keychain cannot answer, rather than returning null: the
+/// caller compares this with what it expects, and "could not read" must not
+/// look the same as "it is gone".
+Future<String?> readPersisted(String key) => _storage.read(key: key);
+
+/// Forget the in-memory copy so a test can run [init] again.
+void debugReset() {
+  _cache = {};
+  _ready = false;
+}
 
 /// [persist] is the "keep me signed in" tick, and it means the same thing here
 /// as on the web: off, the token lives only for as long as this process does;

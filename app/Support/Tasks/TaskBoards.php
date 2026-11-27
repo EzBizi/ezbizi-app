@@ -8,6 +8,7 @@ use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\Task;
 use App\Models\TaskBoard;
+use App\Models\TaskBoardFolder;
 use App\Models\TaskBoardMember;
 use App\Models\TaskGroup;
 use App\Models\TaskStatus;
@@ -23,7 +24,9 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Which boards exist, and which ones a person sees and may write.
  *
- * Every company, franchise and person has exactly one board. `ensureFor` is
+ * Every top-level company, its franchises and every person has exactly one
+ * board; a Sub Company and its franchises have none (Jose, 2026-11-06), see
+ * `hasPlaceBoard`. Older Sub Company boards are hidden, not deleted. `ensureFor` is
  * idempotent and is called from the model `created` events (AppServiceProvider)
  * and from `ezbizi:backfill-task-boards`.
  *
@@ -36,10 +39,10 @@ class TaskBoards
 {
     public const DEFAULT_GROUPS = [
         ['Open Tasks', '#579BFC'],
-        ['Recurring Tasks', '#A25DDC'],
+        ['Recurring Tasks', '#00A9B5'],
         ['Completed Tasks', '#00C875'],
         ['Company Files', '#FDAB3D'],
-        ['Guidelines', '#784BD1'],
+        ['Guidelines', '#7F5347'],
     ];
 
     /** key, name, colour, is_done — every new board starts with these. */
@@ -52,6 +55,30 @@ class TaskBoards
 
     public function __construct(private readonly TenantContext $tenant) {}
 
+    /**
+     * A company keeps a board only when it is top-level; a franchise only when
+     * its company is (Jose, 2026-11-06: A-1 Chimney and A-1 Chimney - Texas
+     * do, Sub Company Ace Fireplace does not).
+     */
+    public static function hasPlaceBoard(Company|Franchise $place): bool
+    {
+        $company = $place instanceof Company ? $place
+            : Company::query()->withoutGlobalScopes()->find($place->company_id);
+
+        return $company !== null && $company->parent_company_id === null;
+    }
+
+    /** Hides the boards of Sub Companies and their franchises. */
+    private function withoutSubCompanyBoards(Builder $query): Builder
+    {
+        $subCompanies = Company::query()->whereNotNull('parent_company_id')->select('id');
+
+        return $query
+            ->whereNot(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_COMPANY)->whereIn('company_id', $subCompanies))
+            ->whereNot(fn (Builder $f) => $f->where('kind', TaskBoard::KIND_FRANCHISE)
+                ->whereIn('franchise_id', Franchise::query()->whereIn('company_id', $subCompanies)->select('id')));
+    }
+
     public function ensureFor(Company|Franchise|User $owner): TaskBoard
     {
         $organization = Organization::query()->withoutGlobalScopes()->findOrFail($owner->organization_id);
@@ -63,15 +90,18 @@ class TaskBoards
                 default => [TaskBoard::KIND_USER, 'owner_user_id'],
             };
 
-            $board = TaskBoard::query()->firstOrCreate(
-                ['kind' => $kind, $column => $owner->getKey()],
-                [
-                    'organization_id' => $owner->organization_id,
-                    'name' => $owner->name ?: 'Tasks',
-                    'auto_key' => $kind.':'.$owner->getKey(),
-                    'visibility' => TaskBoard::MAIN,
-                ],
-            );
+            // A board named to stand for this place (A-1's is Monday's "A1 - Operatrion",
+            // Jose 11-19/11-23: one board, not two) holds its key: writers land there.
+            $board = TaskBoard::query()->where('auto_key', $kind.':'.$owner->getKey())->where('kind', '!=', $kind)->first()
+                ?? TaskBoard::query()->firstOrCreate(
+                    ['kind' => $kind, $column => $owner->getKey()],
+                    [
+                        'organization_id' => $owner->organization_id,
+                        'name' => $owner->name ?: 'Tasks',
+                        'auto_key' => $kind.':'.$owner->getKey(),
+                        'visibility' => TaskBoard::MAIN,
+                    ],
+                );
 
             if ($board->wasRecentlyCreated) {
                 $this->seed($board);
@@ -155,8 +185,8 @@ class TaskBoards
         }
 
         return TaskBoardMember::query()->where('board_id', $board->getKey())
-            ->where('user_id', $user->getKey())->value('role')
-            ?? ($this->implicitUserIds($board)?->where('user_id', $user->getKey())->exists()
+            ->where('user_id', $user->ownRowsKey())->value('role')
+            ?? ($this->implicitUserIds($board)?->where('user_id', $user->ownRowsKey())->exists()
                 ? TaskBoardMember::MEMBER : null);
     }
 
@@ -256,7 +286,7 @@ class TaskBoards
     /** Ids of boards the person is a member, owner or viewer of. */
     private function membershipIds(User $user)
     {
-        return TaskBoardMember::query()->where('user_id', $user->getKey())->select('board_id');
+        return TaskBoardMember::query()->where('user_id', $user->ownRowsKey())->select('board_id');
     }
 
     /**
@@ -274,6 +304,11 @@ class TaskBoards
         }
         if ($board->kind === TaskBoard::KIND_USER || $board->isPrivate()) {
             return 'everyone';
+        }
+        // A company board the person reaches by role sits with their team boards, first by
+        // position (Jose 11-18: A-1 Chimney at the top), with no membership row to widen anything.
+        if ($board->kind === TaskBoard::KIND_COMPANY) {
+            return 'shared';
         }
 
         return 'place';
@@ -309,6 +344,15 @@ class TaskBoards
      */
     public function assignable(TaskBoard $board): Collection
     {
+        // Jose 11-24: removed and deactivated accounts are nobody to give a task to.
+        $all = $this->assignableAll($board);
+        $active = User::query()->whereKey($all->pluck('id'))->where('is_active', true)->pluck('id')->flip();
+
+        return $all->filter(fn ($u) => $active->has($u->id))->values();
+    }
+
+    private function assignableAll(TaskBoard $board): Collection
+    {
         if ($board->kind === TaskBoard::KIND_USER || $board->isPrivate()) {
             return User::query()->orderBy('name')
                 ->whereIn('id', $board->members()->whereIn('role', [TaskBoardMember::OWNER, TaskBoardMember::MEMBER])->select('user_id'))
@@ -321,31 +365,59 @@ class TaskBoards
         )->unique('id')->sortBy('name')->values();
     }
 
+    /**
+     * Monday parity: tagging somebody in an update on a shared board makes
+     * them a member (a subscriber there), so they can open what they were
+     * tagged on. Never on a personal or private board (only its owner invites
+     * there, as on Monday; desk 11-23), never somebody an
+     * admin took off this board.
+     *
+     * @param  list<string>  $ids
+     */
+    public function addMentioned(TaskBoard $board, array $ids): void
+    {
+        if ($board->kind === TaskBoard::KIND_USER || $board->isPrivate() || $ids === []) {
+            return;
+        }
+        $skip = [...$board->members()->pluck('user_id')->all(), ...(array) ($board->builtin_columns['_removed'] ?? [])];
+        foreach (User::query()->whereIn('id', array_diff($ids, $skip))->where('is_active', true)->get() as $user) {
+            if (! $this->canView($user, $board)) {
+                TaskBoardMember::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id,
+                    'user_id' => $user->id, 'role' => TaskBoardMember::MEMBER]);
+            }
+        }
+    }
+
     /** @return Builder<TaskBoard> */
-    public function visibleTo(User $user): Builder
+    /**
+     * @param  bool  $byReach  the board LIST (Jose 11-25: "It should follow your own permissions and
+     *                         hierarchy"): every place the person reaches, not the Company·Branch picker's view.
+     */
+    public function visibleTo(User $user, bool $byReach = false): Builder
     {
         // My personal board, and any board I have been added to (of any kind,
         // even a place my reach does not cover).
         $mine = fn (Builder $q) => $q->where(fn (Builder $o) => $o->where('kind', TaskBoard::KIND_USER)
-            ->where('owner_user_id', $user->getKey()))
+            ->where('owner_user_id', $user->ownRowsKey()))
             ->orWhereIn('id', $this->membershipIds($user))
             // Implicit members: assigned at exactly the board's company or franchise.
             ->orWhere(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_COMPANY)
-                ->whereIn('company_id', Assignment::query()->where('user_id', $user->getKey())->whereNotNull('assigned_company_id')->select('assigned_company_id')))
+                ->whereIn('company_id', Assignment::query()->where('user_id', $user->ownRowsKey())->whereNotNull('assigned_company_id')->select('assigned_company_id')))
             ->orWhere(fn (Builder $f) => $f->where('kind', TaskBoard::KIND_FRANCHISE)
-                ->whereIn('franchise_id', Assignment::query()->where('user_id', $user->getKey())->whereNotNull('assigned_franchise_id')->select('assigned_franchise_id')));
+                ->whereIn('franchise_id', Assignment::query()->where('user_id', $user->ownRowsKey())->whereNotNull('assigned_franchise_id')->select('assigned_franchise_id')));
 
         if (! $user->hasPermission('tasks.view')) {
-            return TaskBoard::query()->where($mine);
+            return $this->withoutSubCompanyBoards(TaskBoard::query()->where($mine));
         }
 
-        [$companyIds, $franchiseIds] = $this->placesInView($user);
+        [$companyIds, $franchiseIds] = $this->placesInView($user, $byReach);
         $all = $user->hasPermission('tasks.view_all');
 
-        return TaskBoard::query()->where(fn (Builder $q) => $q
+        return $this->withoutSubCompanyBoards(TaskBoard::query())->where(fn (Builder $q) => $q
             ->where($mine)
-            // tasks.view_all: everybody's personal board.
-            ->when($all, fn (Builder $e) => $e->orWhere('kind', TaskBoard::KIND_USER))
+            // tasks.view_all: everybody's personal board, but not a removed account's (desk 11-23).
+            ->when($all, fn (Builder $e) => $e->orWhere(fn (Builder $u) => $u->where('kind', TaskBoard::KIND_USER)
+                ->whereNotIn('owner_user_id', User::query()->removed()->select('id'))))
             ->orWhere(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_COMPANY)->whereIn('company_id', $companyIds))
             ->orWhere(fn (Builder $f) => $f->where('kind', TaskBoard::KIND_FRANCHISE)->whereIn('franchise_id', $franchiseIds))
             // A custom board: its place is in view (or it is organization-level),
@@ -356,13 +428,14 @@ class TaskBoards
                     ->orWhere(fn (Builder $o) => $o->whereNull('company_id')->whereNull('franchise_id')))
                 ->when(! $all, fn (Builder $v) => $v->where(fn (Builder $m) => $m
                     ->where('visibility', TaskBoard::MAIN)
-                    ->orWhereIn('id', TaskBoardMember::query()->where('user_id', $user->getKey())->select('board_id'))))));
+                    ->orWhereIn('id', TaskBoardMember::query()->where('user_id', $user->ownRowsKey())->select('board_id'))))));
     }
 
     public function canView(User $user, TaskBoard $board): bool
     {
         return $board->organization_id === $user->organization_id
-            && $this->visibleTo($user)->whereKey($board->getKey())->exists();
+            // A listed board opens: the list follows reach, not the picker (Jose 11-25).
+            && $this->visibleTo($user, byReach: true)->whereKey($board->getKey())->exists();
     }
 
     /**
@@ -425,8 +498,16 @@ class TaskBoards
     }
 
     /** @return array{0: string[], 1: string[]} company ids, franchise ids */
-    private function placesInView(User $user): array
+    private function placesInView(User $user, bool $byReach = false): array
     {
+        if ($byReach) {
+            $franchises = $user->reachableFranchises();
+
+            return [
+                $user->reachableCompanies()->pluck('id')->merge($franchises->pluck('company_id'))->unique()->values()->all(),
+                $franchises->pluck('id')->values()->all(),
+            ];
+        }
         $view = ViewScope::forUser($user);
         $franchiseIds = $view->franchiseIds();
 
@@ -439,6 +520,45 @@ class TaskBoards
         };
 
         return [array_values($companyIds), $franchiseIds];
+    }
+
+    /**
+     * Row 66 (Jose 11-25): which company each root folder belongs to (its name, "A1 Chimney" =
+     * "A-1 Chimney"), sub-folders inheriting, and which board is each company's working board:
+     * Monday's "… - Operation" board in that company's folder, else its kind=company board.
+     *
+     * @return array{folders: array<string, string>, boards: array<string, string>} folder id => company id; board id => company id
+     */
+    public function companyMap(): array
+    {
+        $norm = fn (?string $s) => preg_replace('/[^a-z0-9]/', '', mb_strtolower((string) $s));
+        $companies = Company::query()->get(['id', 'name'])->mapWithKeys(fn ($c) => [$norm($c->name) => (string) $c->id])->all();
+        $folders = TaskBoardFolder::query()->get(['id', 'parent_id', 'name']);
+        $parent = $folders->pluck('parent_id', 'id')->all();
+        $own = $folders->mapWithKeys(fn ($f) => [(string) $f->id => $companies[$norm($f->name)] ?? null])->all();
+        $folderCompany = [];
+        foreach ($folders as $f) {
+            for ($at = (string) $f->id, $hops = 0; $at !== '' && $hops < 20; $at = (string) ($parent[$at] ?? ''), $hops++) {
+                if (($own[$at] ?? null) !== null) {
+                    $folderCompany[(string) $f->id] = $own[$at];
+                    break;
+                }
+            }
+        }
+        $boards = [];
+        foreach (TaskBoard::query()->where('kind', TaskBoard::KIND_CUSTOM)->whereNotNull('folder_id')->where('name', 'like', '% - Operation')->get(['id', 'folder_id']) as $b) {
+            $company = $folderCompany[(string) $b->folder_id] ?? null;
+            if ($company !== null && ! in_array($company, $boards, true)) {
+                $boards[(string) $b->id] = $company;
+            }
+        }
+        foreach (TaskBoard::query()->where('kind', TaskBoard::KIND_COMPANY)->whereNotNull('company_id')->get(['id', 'company_id']) as $b) {
+            if (! in_array((string) $b->company_id, $boards, true)) {
+                $boards[(string) $b->id] = (string) $b->company_id;
+            }
+        }
+
+        return ['folders' => $folderCompany, 'boards' => $boards];
     }
 
     /** The company a franchise board's tasks are filed under. */

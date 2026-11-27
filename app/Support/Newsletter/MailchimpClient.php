@@ -68,6 +68,48 @@ class MailchimpClient
     }
 
     /**
+     * An audience for an account that has none, so Connect leaves one chosen
+     * and a newsletter has somewhere to go. Mailchimp requires a postal
+     * contact and sender defaults; both come from the account's own profile.
+     *
+     * @return array{id: string, name: string, members: int}
+     */
+    public function createList(string $apiKey, string $name): array
+    {
+        $account = $this->call($apiKey, 'get', '/');
+        $contact = (array) ($account['contact'] ?? []);
+        $email = (string) ($account['email'] ?? '');
+
+        $list = $this->call($apiKey, 'post', '/lists', [
+            'name' => $name,
+            'contact' => [
+                'company' => (string) ($contact['company'] ?? $account['account_name'] ?? $name),
+                'address1' => (string) ($contact['addr1'] ?? ''),
+                'city' => (string) ($contact['city'] ?? ''),
+                'state' => (string) ($contact['state'] ?? ''),
+                'zip' => (string) ($contact['zip'] ?? ''),
+                'country' => (string) ($contact['country'] ?? 'US'),
+            ],
+            'permission_reminder' => 'You are receiving this because you are a customer of '
+                .(string) ($contact['company'] ?? $account['account_name'] ?? $name).'.',
+            'campaign_defaults' => [
+                'from_name' => (string) ($contact['company'] ?? $account['account_name'] ?? $name),
+                'from_email' => $email,
+                'subject' => '',
+                'language' => 'en',
+            ],
+            'email_type_option' => false,
+        ]);
+
+        $id = (string) ($list['id'] ?? '');
+        if ($id === '') {
+            throw new NewsletterSendFailed('Mailchimp did not create the audience.');
+        }
+
+        return ['id' => $id, 'name' => (string) ($list['name'] ?? $name), 'members' => 0];
+    }
+
+    /**
      * Put addresses into one of the account's audiences.
      *
      * Only new members receive a subscription status. Existing provider opt-outs
@@ -102,6 +144,83 @@ class MailchimpClient
         return $accepted;
     }
 
+    /**
+     * Put a newsletter's customers into one of the account's audiences, 500 per call.
+     *
+     * Batch subscribe (`POST /lists/{id}`) rather than one PUT per person: a
+     * PUT each took a 1,200-customer list past the worker's timeout. The
+     * subscription status applies to NEW members only: `update_existing` is
+     * false, so a member who unsubscribed or was cleaned at Mailchimp keeps that
+     * status. Mailchimp reports those as "already a member", which is not a
+     * refusal.
+     * https://mailchimp.com/developer/marketing/api/lists/batch-subscribe-or-unsubscribe/
+     *
+     * One bad address is reported per member and skipped; it does not stop the
+     * rest of the list.
+     *
+     * @param  array<int, array{email: string, first_name?: string, last_name?: string}>  $people
+     * @return list<string> the addresses Mailchimp refused, lowercased
+     */
+    public function batchSubscribe(string $apiKey, string $listId, array $people): array
+    {
+        $refused = [];
+        foreach (array_chunk($people, 500) as $chunk) {
+            $body = $this->call($apiKey, 'post', '/lists/'.rawurlencode($listId), [
+                'update_existing' => false,
+                'members' => array_map(fn (array $p) => [
+                    'email_address' => mb_strtolower(trim($p['email'])),
+                    'status' => 'subscribed',
+                    'merge_fields' => (object) array_filter([
+                        'FNAME' => $p['first_name'] ?? null,
+                        'LNAME' => $p['last_name'] ?? null,
+                    ], fn ($v) => $v !== null && $v !== ''),
+                ], $chunk),
+            ]);
+            foreach ((array) ($body['errors'] ?? []) as $error) {
+                if (($error['error_code'] ?? '') === 'ERROR_CONTACT_EXISTS') {
+                    continue;
+                }
+                $refused[] = mb_strtolower(trim((string) ($error['email_address'] ?? '')));
+            }
+        }
+
+        return array_values(array_unique(array_filter($refused)));
+    }
+
+    /**
+     * Addresses that left this list at Mailchimp: unsubscribed or cleaned.
+     *
+     * Only members Mailchimp itself reports in that status are returned.
+     *
+     * @return list<string> lowercased
+     */
+    public function leftMembers(string $apiKey, string $listId): array
+    {
+        $emails = [];
+        foreach (['unsubscribed', 'cleaned'] as $status) {
+            $offset = 0;
+            do {
+                $body = $this->call($apiKey, 'get', '/lists/'.rawurlencode($listId).'/members', [
+                    'status' => $status, 'count' => 1000, 'offset' => $offset,
+                    'fields' => 'members.email_address,members.status,total_items',
+                ]);
+                $members = $body['members'] ?? [];
+                if (! is_array($members) || ! isset($body['total_items'])) {
+                    throw new NewsletterSendFailed('Mailchimp did not return who unsubscribed. Nothing was sent.');
+                }
+                foreach ($members as $member) {
+                    $email = mb_strtolower(trim((string) ($member['email_address'] ?? '')));
+                    if (($member['status'] ?? '') === $status && $email !== '') {
+                        $emails[] = $email;
+                    }
+                }
+                $offset += count($members);
+            } while ($members !== [] && $offset < (int) $body['total_items']);
+        }
+
+        return array_values(array_unique($emails));
+    }
+
     /** @return list<string> Current subscribed addresses, all pages; other statuses stay excluded. */
     public function subscribedMembers(string $apiKey, string $listId): array
     {
@@ -132,6 +251,46 @@ class MailchimpClient
     }
 
     /** A separate immutable segment per send prevents simultaneous mailings changing each other's recipients. */
+    /**
+     * Subscribed addresses carrying one Mailchimp tag. Tags are static
+     * segments at Mailchimp, so the tag is found by name among them.
+     *
+     * @return array<int, string>
+     */
+    public function taggedMembers(string $apiKey, string $listId, string $tag): array
+    {
+        $segments = $this->call($apiKey, 'get', '/lists/'.rawurlencode($listId).'/segments', [
+            'type' => 'static', 'count' => 1000, 'fields' => 'segments.id,segments.name',
+        ])['segments'] ?? [];
+        $found = collect(is_array($segments) ? $segments : [])
+            ->first(fn ($s) => mb_strtolower(trim((string) ($s['name'] ?? ''))) === mb_strtolower($tag));
+        if ($found === null) {
+            throw new NewsletterSendFailed('Mailchimp has no tag called "'.$tag.'" on that list. Nothing was sent.');
+        }
+
+        $emails = [];
+        $offset = 0;
+        do {
+            $body = $this->call($apiKey, 'get', '/lists/'.rawurlencode($listId).'/segments/'.(int) $found['id'].'/members', [
+                'count' => 1000, 'offset' => $offset,
+                'fields' => 'members.email_address,members.status,total_items',
+            ]);
+            $members = $body['members'] ?? [];
+            if (! is_array($members) || ! isset($body['total_items'])) {
+                throw new NewsletterSendFailed('Mailchimp did not return the tagged members. Nothing was sent.');
+            }
+            foreach ($members as $member) {
+                $email = mb_strtolower(trim((string) ($member['email_address'] ?? '')));
+                if (($member['status'] ?? '') === 'subscribed' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    $emails[] = $email;
+                }
+            }
+            $offset += count($members);
+        } while ($members !== [] && $offset < (int) $body['total_items']);
+
+        return array_values(array_unique($emails));
+    }
+
     public function recipientSegment(string $apiKey, string $listId, array $emails): int
     {
         if ($emails === []) {
@@ -214,6 +373,56 @@ class MailchimpClient
     }
 
     /**
+     * One test email to the addresses given, through Mailchimp's own test path.
+     *
+     * A campaign must exist to be tested, so a draft is created on the list,
+     * tested, and deleted again. `actions/test` never mails the list: it goes
+     * to `test_emails` only, with merge tags such as `*|UNSUB|*` filled.
+     *
+     * @param  list<string>  $emails
+     */
+    public function sendTest(
+        string $apiKey,
+        string $listId,
+        string $subject,
+        string $fromName,
+        string $replyTo,
+        string $html,
+        array $emails,
+    ): void {
+        $campaign = $this->call($apiKey, 'post', '/campaigns', [
+            'type' => 'regular',
+            'recipients' => ['list_id' => $listId],
+            'settings' => [
+                'subject_line' => '[Test] '.$subject,
+                'title' => '[Test] '.$subject,
+                'from_name' => $fromName,
+                'reply_to' => $replyTo,
+            ],
+        ]);
+
+        $id = (string) ($campaign['id'] ?? '');
+
+        if ($id === '') {
+            throw new NewsletterSendFailed('Mailchimp created no test campaign and said nothing about why.');
+        }
+
+        try {
+            $this->call($apiKey, 'put', "/campaigns/{$id}/content", ['html' => $html]);
+            $this->call($apiKey, 'post', "/campaigns/{$id}/actions/test", [
+                'test_emails' => array_values($emails),
+                'send_type' => 'html',
+            ]);
+        } finally {
+            try {
+                $this->call($apiKey, 'delete', "/campaigns/{$id}");
+            } catch (NewsletterSendFailed) {
+                // A leftover draft in their account is harmless; the test outcome is what matters.
+            }
+        }
+    }
+
+    /**
      * The host for this key, or a refusal naming what is wrong with it.
      */
     public function datacentre(string $apiKey): string
@@ -247,6 +456,7 @@ class MailchimpClient
             $response = match ($method) {
                 'get' => $request->get($url, $payload),
                 'put' => $request->put($url, $payload),
+                'delete' => $request->delete($url, $payload),
                 default => $request->post($url, $payload),
             };
         } catch (ConnectionException) {

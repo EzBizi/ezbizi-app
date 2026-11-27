@@ -65,7 +65,7 @@ class ReviewsController extends Controller
         // The filter the work actually uses. Somebody opening this tab is
         // usually looking for the ones nobody has answered, not browsing.
         if ($request->query('answered') === 'no') {
-            $query->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED));
+            self::awaitingReply($query);
         }
 
         $rating = $request->query('rating');
@@ -81,12 +81,16 @@ class ReviewsController extends Controller
         if ($replied === 'yes') {
             $query->whereHas('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED));
         } elseif ($replied === 'no') {
-            $query->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED));
+            self::awaitingReply($query);
         }
 
         // A location is its `locations/<id>`: the account part differs by grant.
         if (is_string($location = $request->query('location')) && $location !== '') {
             $query->where('location_name', 'like', '%/'.addcslashes($location, '%_'));
+        }
+        // Where it was written: the eKomi screen's Reviews tab (design 165).
+        if (is_string($source = $request->query('source')) && $source !== '') {
+            $query->where('source', $source);
         }
 
         match ($request->query('matched')) {
@@ -116,6 +120,9 @@ class ReviewsController extends Controller
         }
 
         $locations = $this->locations(clone $query);
+        // The Unanswered chip counts within every OTHER filter in play (Adeline, approved by Jose 2026-11-19:
+        // "fix the counter when multiple filters selected").
+        $unanswered = self::awaitingReply(clone $query)->count();
 
         // UI queue 101 (2026-10-16): newest, oldest, highest, lowest.
         match ($request->query('sort')) {
@@ -132,7 +139,7 @@ class ReviewsController extends Controller
             'data' => array_map(fn (Review $r) => $this->present($r), $reviews->items()),
             'meta' => [
                 ...$this->pageMeta($reviews),
-                'unanswered'   => $this->unansweredCount($user),
+                'unanswered'   => $unanswered,
                 'locations'    => $locations,
                 'stats'        => $stats,
                 'connections'  => $this->access->presentableInView($user, SocialProvider::GoogleBusinessProfile),
@@ -213,6 +220,58 @@ class ReviewsController extends Controller
             'customer_match' => $customer === null ? null : 'manual',
             'job_id' => $customer === null ? null : self::jobFor($customer, $review),
         ])->save();
+
+        return $this->show($review);
+    }
+
+    /**
+     * GET /api/v1/reviews/auto-replies — every review EzBizi's AI answered or drafted, with our reply
+     * (Jose, 2026-11-10: "are auto-replies going out? ... shows the customer review and our reply").
+     * ?status=published|draft|failed, branch, stars, from, to, q; counts for the three states.
+     */
+    public function autoReplies(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Review::class);
+        $input = $request->validate(['status' => ['nullable', 'in:published,draft,failed'], 'branch' => ['nullable', 'uuid'],
+            'stars' => ['nullable', 'integer', 'between:1,5'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date'],
+            'q' => ['nullable', 'string', 'max:100'], 'page' => ['nullable', 'integer', 'min:1']]);
+        $ai = fn ($q) => $q->whereIn('drafted_by', [ReviewReply::BY_AUTOMATION, ReviewReply::BY_DRAFTING_JOB]);
+        $base = Review::query()->whereHas('reply', $ai)
+            ->when($input['branch'] ?? null, fn ($q, $b) => $q->where('franchise_id', $b))
+            ->when($input['stars'] ?? null, fn ($q, $s) => $q->where('rating', $s))
+            ->when($input['from'] ?? null, fn ($q, $d) => $q->where('reviewed_at', '>=', $d))
+            ->when($input['to'] ?? null, fn ($q, $d) => $q->where('reviewed_at', '<=', $d))
+            ->when(trim((string) ($input['q'] ?? '')), fn ($q, $t) => $q->where(fn ($w) => $w
+                ->where('reviewer_name', 'like', '%'.addcslashes($t, '%_').'%')->orWhere('comment', 'like', '%'.addcslashes($t, '%_').'%')));
+        \App\Support\CustomerExperience\Places::scope($base, $request->user());
+
+        $counts = [];
+        foreach ([ReviewReply::STATUS_PUBLISHED, ReviewReply::STATUS_DRAFT, ReviewReply::STATUS_FAILED] as $status) {
+            $counts[$status] = (clone $base)->whereHas('reply', fn ($q) => $ai($q)->where('status', $status))->count();
+        }
+        $page = (clone $base)->when($input['status'] ?? null, fn ($q, $s) => $q->whereHas('reply', fn ($r) => $ai($r)->where('status', $s)))
+            ->with(['reply', 'company:id,name', 'franchise:id,name', 'customer', 'job.performedBy'])
+            ->orderByDesc('reviewed_at')->paginate(50);
+
+        return response()->json(['data' => collect($page->items())->map(fn (Review $r) => $this->present($r))->all(),
+            'meta' => ['counts' => $counts, 'total' => $page->total(), 'last_page' => $page->lastPage(),
+                // Why drafts wait, in one line (desk, 2026-11-10).
+                'drafts_note' => 'Drafts wait for one of three reasons: 3 stars or less are never posted by themselves; '
+                    .'"Draft replies" in Reviews writes drafts for a person to post; and a review on a listing that is '
+                    .'not on a Google profile connected in Integrations (today: Roofirst) cannot be answered.']]);
+    }
+
+    /** PUT /api/v1/reviews/{review}/link-match {confirmed: bool}: a person settles the inferred match. */
+    public function settleLinkMatch(Request $request, Review $review): JsonResponse
+    {
+        $this->authorize('manage', $review);
+        $confirmed = (bool) $request->validate(['confirmed' => ['required', 'boolean']])['confirmed'];
+        $match = \App\Models\ReviewLinkMatch::query()->where('review_id', $review->id)->firstOrFail();
+        $match->forceFill(['status' => $confirmed ? 'confirmed' : 'rejected'])->save();
+        // A rejected match takes back the customer it set, never one a person chose.
+        if (! $confirmed && $review->customer_match === 'link') {
+            $review->forceFill(['customer_id' => null, 'job_id' => null, 'customer_match' => null])->save();
+        }
 
         return $this->show($review);
     }
@@ -441,9 +500,6 @@ class ReviewsController extends Controller
     public function publishReply(Request $request, Review $review): JsonResponse
     {
         $this->authorize('publish', $review);
-        if (($review->source ?? Review::SOURCE_GOOGLE) !== Review::SOURCE_GOOGLE) {
-            return response()->json(['message' => 'Only Google reviews can be answered from EzBizi.'], Response::HTTP_CONFLICT);
-        }
 
         $reply = $review->reply;
 
@@ -456,11 +512,22 @@ class ReviewsController extends Controller
         if ($reply->isPublished()) {
             return response()->json(['data' => $this->present($review->load('reply'))]);
         }
+        if (($blocked = self::replyBlocked($review)) !== null) {
+            return response()->json(['message' => $blocked], $review->removed_at ? Response::HTTP_GONE : Response::HTTP_CONFLICT);
+        }
 
 
         try {
             $this->google->publish($reply);
         } catch (RuntimeException $e) {
+            // A 404 can mean the review itself is gone from Google (Adeline, 2026-11-23: Tracy Dupuis, removed
+            // after we read it). Asked directly: gone means it is marked removed and said so, with the draft kept.
+            if (str_contains($e->getMessage(), 'HTTP 404') && $this->google->reviewIsGone($review)) {
+                $review->forceFill(['removed_at' => $review->removed_at ?? now()])->save();
+
+                return response()->json(['message' => 'This review is no longer on Google: the reviewer or Google removed it, '
+                    .'so there is nothing to reply to. Your draft is kept.'], Response::HTTP_GONE);
+            }
             // The text is kept. A refusal usually means quota or an expired
             // connection, and losing what somebody wrote because Google was
             // briefly unavailable would be its own small betrayal.
@@ -586,16 +653,31 @@ class ReviewsController extends Controller
         return response()->json($payload, $failedOut ? Response::HTTP_BAD_GATEWAY : Response::HTTP_OK);
     }
 
-    private function unansweredCount($user): int
+    /**
+     * Unanswered = a reply can still be posted (Jose, 2026-11-23: Adeline's last 8). A review Google removed,
+     * or one from eKomi, never gets a Google reply, so it is not waiting for one.
+     */
+    private static function awaitingReply($query)
     {
-        $query = Review::query()->whereDoesntHave(
-            'reply',
-            fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED),
-        );
+        return $query->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED))
+            ->whereNull('removed_at')
+            ->where(fn ($w) => $w->whereNull('source')->orWhere('source', Review::SOURCE_GOOGLE));
+    }
 
-        \App\Support\CustomerExperience\Places::scope($query, $user);
+    /** Why no reply can be posted on Google for this review, in words for the screen; null when it can. */
+    private static function replyBlocked(Review $review): ?string
+    {
+        if (($review->source ?? Review::SOURCE_GOOGLE) !== Review::SOURCE_GOOGLE) {
+            return 'This review came from '.ucfirst((string) $review->source).', not Google, so it cannot be answered from EzBizi.';
+        }
+        if ($review->removed_at !== null) {
+            return 'Removed from Google on '.$review->removed_at->format('M j, Y').'; no reply possible.';
+        }
+        if ($review->connection_id === null) {
+            return 'Connect '.($review->company?->name ?? 'this company')."'s Google Business Profile to reply.";
+        }
 
-        return (int) $query->count();
+        return null;
     }
 
     /** @return array<string, mixed> */
@@ -606,6 +688,8 @@ class ReviewsController extends Controller
         return [
             'id'            => $review->id,
             'source'        => $review->source ?? Review::SOURCE_GOOGLE,
+            'removed_at'    => $review->removed_at?->toIso8601String(),
+            'reply_blocked' => self::replyBlocked($review),
             'reviewer_name' => $review->reviewer_name,
             'reviewer_photo_url' => $review->reviewer_photo_url,
             'rating'        => $review->rating,
@@ -620,11 +704,14 @@ class ReviewsController extends Controller
             'note_count'    => (int) ($review->notes_count ?? 0),
             'customer'      => $review->customer?->only(['id', 'name', 'phone', 'email']),
             'match'         => $review->customer_match,
+            // Which review link probably produced this review, for Confirm / Reject (Jose, 2026-11-09).
+            'link_match'    => ($lm = \App\Models\ReviewLinkMatch::query()->where('review_id', $review->id)->first()) === null ? null
+                : $lm->only(['id', 'confidence', 'clicked', 'status']) + ['sent_at' => $lm->sent_at?->toIso8601String()],
             'job'           => $review->job === null ? null : [
                 'id'         => $review->job->id,
                 'number'     => $review->job->number,
                 'starts_at'  => $review->job->scheduled_for?->toIso8601String(),
-                'tech'       => $review->job->performedBy?->name,
+                'tech'       => Job::technicianNames([$review->job->id])[$review->job->id] ?? null,
                 'workiz_url' => null,
             ],
             'reported_at'   => $review->reported_at?->toIso8601String(),

@@ -66,3 +66,12 @@ class ClientPlatform {
   /// itself, which is the entire reason the two remedies differ.
   static bool reload() => impl.reload();
 }
+
+/// The phone's operating system and version, as Dart reports it, for the
+/// Field technician bar; null off a phone.
+///
+/// Not device_info_plus: 13.x calls `isiOSAppOnVision`, which the release
+/// Mac's Xcode 26.0.1 SDK does not declare (0.0.0325's iOS build failed on
+/// it), and 12.x cannot be resolved beside flutter_secure_storage's win32.
+/// So the model name is not sent until one of those changes.
+String? fieldOsVersion() => impl.osVersion();

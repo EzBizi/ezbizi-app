@@ -34,6 +34,8 @@ class ConditionEvaluator
         'eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte',
         'contains', 'not_contains', 'is_empty', 'is_not_empty',
         'changed', 'changed_to', 'changed_from',
+        // Tags, on any trigger (Jose, 2026-11-03: automations "by tag").
+        'has_tag', 'not_has_tag', 'tag_added',
     ];
 
     /**
@@ -119,6 +121,11 @@ class ConditionEvaluator
             'lte'          => $this->numeric($after) <= $this->numeric($expected),
             'contains'     => str_contains(strtolower((string) $after), strtolower((string) $expected)),
             'not_contains' => ! str_contains(strtolower((string) $after), strtolower((string) $expected)),
+            'has_tag'      => in_array($this->tagKey($expected), $this->tagsOf($after), strict: true),
+            'not_has_tag'  => ! in_array($this->tagKey($expected), $this->tagsOf($after), strict: true),
+            'tag_added'    => array_key_exists($field, $payload['before'] ?? [])
+                              && in_array($this->tagKey($expected), $this->tagsOf($after), strict: true)
+                              && ! in_array($this->tagKey($expected), $this->tagsOf($before), strict: true),
             'is_empty'     => blank($after),
             'is_not_empty' => filled($after),
 
@@ -262,6 +269,19 @@ class ConditionEvaluator
         }
 
         return (string) $value;
+    }
+
+    /** A tag list, as stored (array) or typed ("a, b"), compared without case. */
+    private function tagsOf(mixed $value): array
+    {
+        $list = is_array($value) ? $value : explode(',', (string) $value);
+
+        return array_values(array_filter(array_map(fn ($t) => $this->tagKey($t), $list), fn ($t) => $t !== ''));
+    }
+
+    private function tagKey(mixed $tag): string
+    {
+        return mb_strtolower(trim(is_scalar($tag) ? (string) $tag : ''));
     }
 
     private function numeric(mixed $value): float

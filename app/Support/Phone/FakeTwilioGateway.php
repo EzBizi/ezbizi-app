@@ -264,7 +264,7 @@ final class FakeTwilioGateway implements TwilioGateway
      */
     public array $incomingDetail = [];
 
-    public function fetchIncoming(PhoneConnection $connection, string $incomingSid): array
+    public function fetchIncoming(PhoneConnection $connection, string $incomingSid, ?string $accountSid = null): array
     {
         $this->record(__FUNCTION__, [$connection->id, $incomingSid]);
 
@@ -326,6 +326,31 @@ final class FakeTwilioGateway implements TwilioGateway
         return $this->incoming;
     }
 
+    /** @var array<string, list<array{sid: string, phone_number: string, friendly_name: string, voice_url: string, sms_url: string}>> */
+    public array $accountIncoming = [];
+
+    public function listAccountIncoming(string $accountSid): array
+    {
+        $this->record(__FUNCTION__, [$accountSid]);
+
+        return $this->accountIncoming[$accountSid] ?? [];
+    }
+
+    /** @var array<string, array{status: string, duration: int}> keyed by the number dialled */
+    public array $platformCallResults = [];
+
+    public function platformCall(string $accountSid, string $from, string $to, string $twiml): string
+    {
+        $this->record(__FUNCTION__, [$accountSid, $from, $to, $twiml]);
+
+        return 'CA'.$to;
+    }
+
+    public function platformCallStatus(string $accountSid, string $callSid): array
+    {
+        return $this->platformCallResults[substr($callSid, 2)] ?? ['status' => 'completed', 'duration' => 8];
+    }
+
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array
     {
         $this->record(__FUNCTION__, [$connection->id, $phoneNumber, $params]);
@@ -339,7 +364,13 @@ final class FakeTwilioGateway implements TwilioGateway
     public function updateIncoming(PhoneConnection $connection, string $incomingSid, array $params): void
     {
         $this->record(__FUNCTION__, [$connection->id, $incomingSid, $params]);
+        if ($this->failUpdateIncomingWith !== null) {
+            throw new RuntimeException($this->failUpdateIncomingWith);
+        }
     }
+
+    /** When set, updateIncoming throws this message (E911 refusal tests). */
+    public ?string $failUpdateIncomingWith = null;
 
     public ?string $failMoveIncomingWith = null;
 
@@ -467,11 +498,12 @@ final class FakeTwilioGateway implements TwilioGateway
         return ['sid' => 'SM'.bin2hex(random_bytes(16))];
     }
 
-    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null): array
+    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null, array $mediaUrls = []): array
     {
         $this->record(__FUNCTION__, array_merge(
             [$connection->id, $from, $to, $body],
             $accountSid === null ? [] : [$accountSid],
+            $mediaUrls === [] ? [] : [['media' => $mediaUrls]],
         ));
 
         if ($this->failSendMessageWith !== null) {

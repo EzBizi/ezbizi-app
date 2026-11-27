@@ -51,6 +51,8 @@ void main() {
       'id': 'u1',
       'body': 'Photos from the roof',
       'author': {'id': 'me', 'name': 'Maya Lopez'},
+      'can_edit': true,
+      'can_delete': true,
       'created_at': '2026-10-27T14:10:00Z',
       'attachments': [
         {
@@ -243,7 +245,15 @@ void main() {
   }
 
   Future<void> openTask(WidgetTester tester) async {
-    await tapKey(tester, find.byKey(const ValueKey('task-t1')));
+    // The name opens the task; Owner and About edit in place (Jose, 2026-11-13).
+    await tester.ensureVisible(find.byKey(const ValueKey('task-t1')));
+    await tester.pumpAndSettle();
+    final open = find.byKey(const ValueKey('task-open-t1'));
+    if (open.evaluate().isNotEmpty) {
+      await tester.tap(open);
+    } else {
+      await tester.tap(find.byKey(const ValueKey('task-t1'))); // a phone card
+    }
     await tester.pumpAndSettle();
   }
 
@@ -255,17 +265,43 @@ void main() {
     expect(find.text('OWNER'), findsOneWidget);
     expect(find.text('ASSIGNED'), findsOneWidget);
     final person = find.byKey(const ValueKey('task-creator-t1'));
+    // A person who made it is a face; the name is its label and hover card.
     expect(
       find.descendant(of: person, matching: find.text('Maya Lopez')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: person,
+        matching: find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.label == 'Maya Lopez',
+        ),
+      ),
       findsOneWidget,
     );
     final rule = find.byKey(const ValueKey('task-creator-t2'));
+    // A rule's task was made by EzBizi (Jose 11-17): the mark, the rule on hover.
     expect(
       find.descendant(of: rule, matching: find.text('New lead follow-up')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: rule,
+        matching: find.byWidgetPredicate(
+          (w) => w is Tooltip && w.message == 'EzBizi · New lead follow-up',
+        ),
+      ),
       findsOneWidget,
     );
-    // The assigned cell keeps the assignee.
-    expect(find.text('Omar'), findsOneWidget);
+    // The assigned cell keeps the assignee, as a face.
+    expect(find.text('Omar'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Semantics && (w.properties.label ?? '').contains('Omar'),
+      ),
+      findsWidgets,
+    );
   });
 
   testWidgets('files go as files[] beside an optional body, chosen ones '
@@ -397,14 +433,14 @@ void main() {
 
     await tapKey(tester, find.byKey(const ValueKey('task-attachment-a-img')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('task-attachment-viewer')), findsOneWidget);
-    expect(find.byKey(const Key('task-attachment-image')), findsOneWidget);
-    await tapKey(tester, find.byKey(const Key('task-attachment-download')));
+    // Adeline 11-24: an image opens in Monday's centred lightbox.
+    expect(find.byKey(const Key('task-image-lightbox')), findsOneWidget);
+    expect(find.byKey(const ValueKey('lightbox-image-a-img')), findsOneWidget);
+    await tapKey(tester, find.byKey(const Key('lightbox-download')));
     expect(saved, ['roof.jpg']);
-    Navigator.of(
-      tester.element(find.byKey(const Key('task-attachment-viewer'))),
-    ).pop();
+    await tapKey(tester, find.byKey(const Key('lightbox-close')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('task-image-lightbox')), findsNothing);
 
     await tapKey(tester, find.byKey(const ValueKey('task-attachment-a-pdf')));
     await tester.pumpAndSettle();
@@ -460,5 +496,63 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('task-attachment-download')), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Select files picks several attachments and downloads each', (
+    tester,
+  ) async {
+    final saved = <String>[];
+    Files.debugOnDownload = (name, _) => saved.add(name);
+    await pumpBoard(tester);
+    await openTask(tester);
+    await tester.ensureVisible(
+      find.byKey(const Key('task-attachments-select')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('task-attachments-select')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('task-attachment-pick-a-pdf')));
+    await tester.tap(find.byKey(const ValueKey('task-attachment-pick-a-doc')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('task-attachments-download')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('task-attachments-download')));
+    await tester.pumpAndSettle();
+    expect(saved, containsAll(['quote.pdf', 'notes-for-the-crew.docx']));
+    expect(saved, isNot(contains('roof.jpg')));
+  });
+
+  testWidgets('an update body is selectable text', (tester) async {
+    await pumpBoard(tester);
+    await openTask(tester);
+    final body = find.byKey(const ValueKey('task-update-body-u1'));
+    expect(
+      tester.widget<SelectableText>(body).textSpan!.toPlainText(),
+      'Photos from the roof',
+    );
+  });
+
+  testWidgets('the author edits an update from its menu (row 43, Sheryl)', (
+    tester,
+  ) async {
+    await pumpBoard(tester);
+    await openTask(tester);
+    await tester.tap(find.byKey(const ValueKey('task-update-menu-u1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('task-update-edit-field')),
+      'Photos from the roof, and the crown',
+    );
+    await tester.tap(find.byKey(const Key('task-update-edit-save')));
+    await tester.pumpAndSettle();
+    final patch = sent.singleWhere((r) => r.method == 'PATCH');
+    expect(patch.url.path, endsWith('/tasks/t1/updates/u1'));
+    expect(jsonDecode(patch.body), {
+      'body': 'Photos from the roof, and the crown',
+    });
   });
 }

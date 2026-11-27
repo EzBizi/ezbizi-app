@@ -30,6 +30,16 @@ class EmailVerificationLink extends Notification implements ShouldQueue
 {
     use Queueable;
 
+    /**
+     * Retried like PasswordResetLink: the worker runs --tries=1, and one SES
+     * 451 on 2026-11-16 lost a signup's verification mail. The failed job
+     * drops the dead connection (AppServiceProvider), so the retry is fresh.
+     */
+    public int $tries = 3;
+
+    /** @var list<int> */
+    public array $backoff = [10, 60];
+
     public function __construct(
         // Serialized bare: the queue worker has no tenant, and re-loading a
         // tenant-scoped relation there throws — NotificationNotice lost 7,705

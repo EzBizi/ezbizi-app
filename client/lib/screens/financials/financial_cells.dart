@@ -227,14 +227,16 @@ class CellView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // An unticked box is drawn empty, not left blank (Jose 2026-11-16).
+    if (field['type'] == 'checkbox') {
+      return Icon(
+        value == true ? Icons.check_box : Icons.check_box_outline_blank,
+        size: 18,
+        color: theme.colorScheme.primary,
+      );
+    }
     if (value == null || value == '') return const SizedBox.shrink();
     switch (field['type']) {
-      case 'checkbox':
-        return Icon(
-          value == true ? Icons.check_box : Icons.check_box_outline_blank,
-          size: 18,
-          color: theme.colorScheme.primary,
-        );
       case 'single_select':
         return ChoicePill(field: field, choice: '$value');
       case 'multi_select':

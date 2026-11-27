@@ -52,7 +52,7 @@ const Map<String, Tour> reportsTours = {
     ],
   ),
   'reports/Performance': Tour(
-    version: 2,
+    version: 3,
     steps: [
       TourStep(
         anchor: 'call-report-period',
@@ -69,7 +69,10 @@ const Map<String, Tour> reportsTours = {
       TourStep(
         anchor: 'overview-missed',
         title: 'Missed calls',
-        body: 'Calls nobody answered, split into new and existing customers.',
+        body:
+            'Calls nobody answered while open, split into new and existing '
+            'customers. Calls missed while closed are listed beside it, '
+            'not counted.',
       ),
       TourStep(
         anchor: 'overview-not-booked',
@@ -84,6 +87,31 @@ const Map<String, Tour> reportsTours = {
             'Existing or Both kinds of client.',
       ),
       TourStep(
+        anchor: 'tour-people-groups',
+        title: 'Phone and Sales',
+        body:
+            'Phone: what rang each person, what they answered, what a '
+            'teammate took (Not answered) and what nobody took (Missed). '
+            'Booking rate is what they booked out of the new-client calls '
+            'they answered.',
+      ),
+      TourStep(
+        anchor: 'tour-person-filters',
+        title: "A person's calls",
+        body:
+            'Open a person to see their calls. Answer and Booking narrow them; '
+            'a call a teammate took is never their booking or their score.',
+      ),
+      TourStep(
+        anchor: 'tour-call-corrections',
+        title: 'Correct a call',
+        body:
+            "In a call's details: set its client (New or Existing) or its "
+            'booking (Booked or Not booked) by hand, or mark it Spam or Not a '
+            'customer to leave it out of the booking rate. It shows who set '
+            'it, and Automatic puts it back.',
+      ),
+      TourStep(
         anchor: 'calls-search',
         title: 'Find a call',
         body: 'Narrows the calls as you type.',
@@ -96,7 +124,7 @@ const Map<String, Tour> reportsTours = {
     ],
   ),
   'reports/Workspace': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'workspace-list',
@@ -113,12 +141,14 @@ const Map<String, Tour> reportsTours = {
         title: 'Approve, download or send',
         body:
             'Approve a weekly or monthly report, download it as PDF or Excel, '
-            'or send a daily text to your WhatsApp now.',
+            'or send a daily text to your WhatsApp now. A weekly or monthly '
+            'report opens with its key figures, then why jobs were canceled '
+            'and each technician\'s figures.',
       ),
     ],
   ),
   'reports/Scoring': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-report-dates',
@@ -145,8 +175,18 @@ const Map<String, Tour> reportsTours = {
         title: 'Their calls',
         body:
             "In a person's analysis: their latest three calls and their best "
-            'and worst, each with its score. Search finds any of their calls '
-            'by number or words.',
+            'and worst, each with its score. Open one for what went well, '
+            'what to improve and the words, each speaker in its own colour. '
+            'Search finds any of their calls by number or words.',
+      ),
+      TourStep(
+        anchor: 'tour-call-corrections',
+        title: 'Correct a call',
+        body:
+            "In a call's details: set its client (New or Existing) or its "
+            'booking (Booked or Not booked) by hand, or mark it Spam or Not a '
+            'customer to leave it out of the booking rate. It shows who set '
+            'it, and Automatic puts it back.',
       ),
       TourStep(
         anchor: 'scoring-ranking',
@@ -160,7 +200,7 @@ const Map<String, Tour> reportsTours = {
       ),
     ],
   ),
-  'reports/Marketing': Tour(
+  'reports/Marketing Reports': Tour(
     version: 1,
     steps: [
       TourStep(
@@ -258,6 +298,184 @@ const Map<String, Tour> reportsTours = {
         anchor: 'thumbtack-empty',
         title: 'Nothing yet',
         body: 'No Thumbtack leads in these dates.',
+      ),
+    ],
+  ),
+  'reports/Estimates': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-estimates',
+        title: 'Estimates',
+        body: 'Every estimate made in these dates: open, approved, declined, and the ones we texted that never answered. Click one to open its job.',
+      ),
+    ],
+  ),
+  'reports/Tasks': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-tasks',
+        title: 'Task performance',
+        body: "Each owner's open, done and overdue tasks, and how many days a task takes to finish.",
+      ),
+    ],
+  ),
+  'reports/Complaints': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-complaints',
+        title: 'Complaints on time',
+        body: "How fast each complaint was first contacted and solved, against the business's own targets.",
+      ),
+    ],
+  ),
+  'reports/Dispatch': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-dispatch',
+        title: 'Dispatchers',
+        body: "Each dispatcher's leads, calls and messages, and how fast a person answered. The median is the fair number.",
+      ),
+    ],
+  ),
+  'reports/Accounting weekly': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-accounting',
+        title: 'What needs fixing',
+        body: 'Done jobs still owing or at \$0, invoices unpaid too long, money kept on cancelled jobs, deleted payments. Click one to open the job.',
+      ),
+    ],
+  ),
+  'reports/Recruiting': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-recruiting',
+        title: 'Hiring by position',
+        body: 'Spend, inquiries, response time, interviews and hires for each position, and what each hire cost.',
+      ),
+    ],
+  ),
+  'reports/Tech report': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-techs',
+        title: 'Each technician',
+        body: 'Jobs, revenue, complaints, redos and the AI checks, one row per technician.',
+      ),
+    ],
+  ),
+  'reports/AI checks': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-tech-checks',
+        title: 'What the AI checked',
+        body: 'ETA calls, closing on time, inspection reports and photos. Click a technician to see the jobs behind each count.',
+      ),
+    ],
+  ),
+  'reports/Cancelled': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'cancelled-search',
+        title: 'Find a job',
+        body: 'By client, phone, number, branch, reason or technician.',
+      ),
+      TourStep(
+        anchor: 'cancelled-reason',
+        title: 'Narrow it',
+        body: 'By reason, source and technician.',
+      ),
+      TourStep(
+        anchor: 'cancelled-totals',
+        title: 'Totals',
+        body:
+            'How many jobs created in these dates are cancelled now, and what share of all created that is.',
+      ),
+      TourStep(
+        anchor: 'cancelled-table',
+        title: 'Every job',
+        body: 'Each cancelled job, newest first, with why and who was on it.',
+      ),
+      TourStep(
+        anchor: 'cancelled-empty',
+        title: 'Nothing yet',
+        body: 'No job created in these dates is cancelled.',
+      ),
+    ],
+  ),
+  'reports/Pending': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'pending-search',
+        title: 'Find a job',
+        body: 'By client, phone, number, branch, sub-status or technician.',
+      ),
+      TourStep(
+        anchor: 'pending-reason',
+        title: 'Narrow it',
+        body: 'By sub-status, source and technician.',
+      ),
+      TourStep(
+        anchor: 'pending-totals',
+        title: 'Totals',
+        body: 'How many jobs are pending now, the oldest one, and their value.',
+      ),
+      TourStep(
+        anchor: 'pending-table',
+        title: 'Every job',
+        body:
+            'Each pending job, oldest first, with how many days it has waited.',
+      ),
+      TourStep(
+        anchor: 'pending-empty',
+        title: 'Nothing yet',
+        body: 'No job is pending now.',
+      ),
+    ],
+  ),
+  'reports/Overview': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'jobs-search',
+        title: 'Find a job',
+        body:
+            'Any column: client, phone, either id, branch, area, source, '
+            'line, type, status, amount or date.',
+      ),
+      TourStep(
+        anchor: 'jobs-source',
+        title: 'Narrow it',
+        body:
+            'By source and the number the client dialed, several at once, '
+            'and by area.',
+      ),
+      TourStep(
+        anchor: 'jobs-totals',
+        title: 'Totals',
+        body: 'How many jobs were created, and their total, for all the dates.',
+      ),
+      TourStep(
+        anchor: 'jobs-table',
+        title: 'Every job',
+        body:
+            'Each job created, newest first, with its EzBizi and Workiz ids '
+            'and the line the client called.',
+      ),
+      TourStep(
+        anchor: 'jobs-empty',
+        title: 'Nothing yet',
+        body: 'No jobs were created in these dates.',
       ),
     ],
   ),

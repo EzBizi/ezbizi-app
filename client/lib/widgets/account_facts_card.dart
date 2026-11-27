@@ -59,7 +59,7 @@ class AccountFactsCard extends StatelessWidget {
             if (me.roleName != null)
               _fact(context, 'Role', Text(me.roleName!), null),
             _fact(context, 'Organization', Text(me.organization.name), null),
-            if (me.franchises.isNotEmpty)
+            if (me.switchableFranchises.isNotEmpty)
               _fact(
                 context,
                 'You can act on',
@@ -85,8 +85,10 @@ class AccountFactsCard extends StatelessWidget {
   /// Only the repeats are qualified. Adding the company to every chip would
   /// double the width of a list that is usually unambiguous.
   Widget _places(BuildContext context, Me me) {
+    // Switched-off places are not listed (Jose, 2026-11-10).
+    final places = me.switchableFranchises;
     final count = <String, int>{};
-    for (final f in me.franchises) {
+    for (final f in places) {
       count[f.name] = (count[f.name] ?? 0) + 1;
     }
     final companyName = {for (final c in me.companies) c.id: c.name};
@@ -95,7 +97,7 @@ class AccountFactsCard extends StatelessWidget {
       spacing: 6,
       runSpacing: 6,
       children: [
-        for (final f in me.franchises)
+        for (final f in places)
           Chip(
             label: Text(
               (count[f.name] ?? 0) > 1 && companyName[f.companyId] != null

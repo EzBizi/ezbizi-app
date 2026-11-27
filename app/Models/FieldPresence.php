@@ -20,6 +20,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class FieldPresence extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** Where a technician is (moving, stopped, signal lost) is that person's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['field', User::class, 'user_id'];
+
     use HasUuids;
 
     protected $fillable = [

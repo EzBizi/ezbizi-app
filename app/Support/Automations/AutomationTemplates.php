@@ -398,33 +398,54 @@ final class AutomationTemplates
                         'details' => '{{comment}}'],
                 ],
             ],
+            // Reviews & Complaints (Shoval, 2026-11-20): a client's complaint, or any Priority one, goes to
+            // the complaints lead and the market's GM. No ids in a template: pick them in the builder.
+            [
+                'key' => 'client-complaint-to-gm',
+                'name' => 'Client complaint: tell the complaints lead and the market GM',
+                'description' => 'A complaint from one of your clients, or any Priority one (BBB, Attorney General, '
+                    .'lawsuit), tells the people you pick at once. Pick your Local Manager role (each hears only '
+                    .'about their own market) and the complaints lead before switching it on.',
+                'trigger_key' => 'complaint.opened',
+                'conditions' => ['any' => [
+                    ['field' => 'client_status', 'op' => 'eq', 'value' => 'client'],
+                    ['field' => 'priority', 'op' => 'eq', 'value' => true],
+                ]],
+                'actions' => [
+                    ['type' => 'notify', 'urgent' => true, 'message' => 'Complaint from a client: {{title}}',
+                        'role_ids' => [], 'user_ids' => []],
+                ],
+            ],
+            [
+                'key' => 'priority-complaint-deadline',
+                'name' => 'Priority complaint: deadline alerts',
+                'description' => 'A BBB, Attorney General or lawsuit complaint still open at 12, 24 and 40 hours '
+                    .'(it is due in 24, 48 at most). Pick your Local Manager role and the complaints lead.',
+                'trigger_key' => 'complaint.due_alert',
+                'actions' => [
+                    ['type' => 'notify', 'urgent' => true, 'message' => '{{label}}: {{title}} ({{hours_open}} h open)',
+                        'role_ids' => [], 'user_ids' => []],
+                ],
+            ],
+            // BBB and Attorney General complaints arrive by mail; an active rule on email.received is also
+            // what makes EzBizi watch the inboxes at all (WatchMailboxes).
+            [
+                'key' => 'bbb-ag-mail',
+                'name' => 'BBB or Attorney General email',
+                'description' => 'Mail from the BBB arrives: tell the complaints lead. It also opens a Priority '
+                    .'complaint in Reviews & Complaints. Add the inboxes and the people before switching it on.',
+                'trigger_key' => 'email.received',
+                'conditions' => ['any' => [
+                    ['field' => 'from_domain', 'op' => 'contains', 'value' => 'bbb.org'],
+                ]],
+                'actions' => [
+                    ['type' => 'notify', 'urgent' => true, 'message' => 'BBB / Attorney General email: {{subject}}',
+                        'role_ids' => [], 'user_ids' => []],
+                ],
+            ],
             // Jose, 2026-10-20: "this should all be set on automations so i can
             // decide for myself". Off until he adds the inboxes (address in ...)
             // and senders (from_address / from_domain) and switches it on.
-            // Jose's Project Management rules (2026-10-21), off until he switches them on.
-            [
-                'key' => 'pm-payment-on-done-pending-approval',
-                'name' => 'Payment on Done Pending Approval: Submitted and deposit tags',
-                'description' => 'When a payment lands on a job waiting for approval, moves it to Submitted in Workiz '
-                    .'and sets its tags to Deposit Received and Dont Change Tech (other tags are removed). '
-                    .'Add "fully_paid is true" or "fully_paid is false" to act only on full or partial payments.',
-                'trigger_key' => 'job.payment_received',
-                'conditions' => ['all' => [['field' => 'status', 'op' => 'eq', 'value' => 'done pending approval']]],
-                'actions' => [['type' => 'workiz.job_update', 'status' => 'Submitted', 'tags' => 'Deposit Received, Dont Change Tech']],
-            ],
-            [
-                'key' => 'pm-estimate-declined-after-30-days',
-                'name' => '30 days without payment: Canceled, Estimate Declined',
-                'description' => 'Once a day: a job waiting for approval whose latest estimate is 30 or more days old '
-                    .'and has nothing paid is canceled in Workiz with the sub-status Estimate Declined. Needs '
-                    .'"done pending approval" in Settings, Jobs, statuses that wait on an estimate.',
-                'trigger_key' => 'job.estimate_aging',
-                'conditions' => ['all' => [
-                    ['field' => 'days_since_estimate', 'op' => 'gte', 'value' => '30'],
-                    ['field' => 'paid_total', 'op' => 'eq', 'value' => '0'],
-                ]],
-                'actions' => [['type' => 'workiz.job_update', 'status' => 'Canceled', 'sub_status' => 'Estimate Declined']],
-            ],
             [
                 'key' => 'email-closed-office-reply',
                 'name' => 'Email: reply when the office is closed',

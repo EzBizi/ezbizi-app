@@ -1,0 +1,375 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Leads on a phone</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.win.tall{height:720px}
+.subt{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+.bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.map{position:relative;border-radius:var(--r);overflow:hidden;background:#e9efe9;border:1px solid var(--line);min-height:0}
+.map svg.bg{position:absolute;inset:0;width:100%;height:100%}
+.dot{position:absolute;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transform:translate(-50%,-50%)}
+.dot.j{background:#00708f}.dot.me{background:#9f1d1d;width:18px;height:18px}.dot.web{background:#734600}.dot.hov{width:20px;height:20px;box-shadow:0 0 0 4px rgba(0,112,143,.25),0 1px 3px rgba(0,0,0,.35)}
+.zoom{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.12);overflow:hidden}
+.zoom span{width:32px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:var(--neu);border-top:1px solid var(--line)}
+.zoom span:first-child{border-top:0}
+.tip{position:absolute;background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:0 8px 22px rgba(6,8,8,.18);padding:10px 12px;width:230px;font-size:12px;display:flex;flex-direction:column;gap:3px}
+.tip b{font-size:13px}
+.tip .r{display:flex;gap:6px;align-items:center;color:var(--muted)}
+.tip.small{width:auto;padding:5px 9px;white-space:nowrap}
+.mv{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;align-items:center;min-height:52px;border-top:1px solid var(--line2);font-size:12.5px;padding:4px 10px}
+.mv:first-child{border-top:0}
+.mv.sel{background:var(--pric);border-radius:8px}
+.mv .g b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mv .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arrow{display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap}
+.arrow .from{color:var(--muted);text-decoration:line-through}
+.arrow .to{font-weight:700;color:var(--prid)}
+.save{font-weight:800;color:var(--ok);text-align:right;font-size:12.5px}
+.hdr{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted)}
+.ba{display:grid;grid-template-columns:1fr 26px 1fr;gap:6px;align-items:stretch}
+.day{background:var(--ground);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;font-size:12px}
+.day .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.day.to{background:var(--okc)}
+.day b{font-size:13px}
+.ba .ar{display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted)}
+.slots{display:flex;gap:3px;margin-top:2px}.slots i{flex:1;height:8px;border-radius:3px;background:#dfe6ea;display:block}.slots i.on{background:var(--ok)}.slots i.cur{background:#c08a2b}
+.rc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px}
+.rc.sel{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+.rc .hd{display:flex;align-items:center;gap:8px}
+.rc .hd b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;flex:1;min-height:0}
+.lane{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.lane h4{margin:0;font-size:13px;display:flex;gap:8px;align-items:center}
+.jb{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:11.5px;display:flex;gap:8px;align-items:center;background:#fff}
+.jb.ghost{border-style:dashed;color:var(--muted);background:var(--ground)}
+.jb.new{border-color:var(--ok);background:var(--okc)}
+.jb .t{font-weight:700;width:62px;flex:0 0 auto}
+</style>
+<style>
+/* Dark theme, as the staff use it. Every name, number and message is invented. */
+.lm{--bg:#0d1117;--sf:#161b22;--sf2:#1f2630;--ln:rgba(255,255,255,.10);--tx:#e8edf2;--mu:#8b98a5;--pr:#1aa7e8;--prc:rgba(26,167,232,.16);--okc:rgba(46,160,67,.22);--ok:#6fd38a;--cau:#e3b341;--cauc:rgba(227,179,65,.18);--bad:#f47067}
+.lm .phn{background:var(--bg);border-color:#000;color:var(--tx);width:320px;height:660px}
+.lm .phn .sb{background:var(--sf)}
+.lm-ab{height:50px;flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--sf);border-bottom:1px solid var(--ln);font-size:13px}
+.lm-av{width:30px;height:30px;border-radius:50%;background:#3b2a1a;color:#f0b37e;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.lm-nm{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lm-sub{font-size:10.5px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lm-chip{font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--prc);color:var(--pr);white-space:nowrap;flex:0 0 auto}
+.lm-chip.o{background:transparent;border:1px solid var(--ln);color:var(--tx)}
+.lm-chip.ok{background:var(--okc);color:var(--ok)}
+.lm-chip.cau{background:var(--cauc);color:var(--cau)}
+.lm-book{background:var(--pr);color:#00131f;font-weight:800;font-size:11.5px;padding:5px 10px;border-radius:10px;flex:0 0 auto}
+.lm-ic{color:var(--mu);font-size:16px;flex:0 0 auto}
+.lm-msgs{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;padding:10px}
+.lm-b{max-width:78%;padding:7px 10px;border-radius:14px;font-size:12px;line-height:1.35}
+.lm-b small{display:block;font-size:9.5px;color:var(--mu);margin-top:3px}
+.lm-in{background:var(--sf2);align-self:flex-start;border-bottom-left-radius:4px}
+.lm-out{background:#0b4f72;align-self:flex-end;border-bottom-right-radius:4px}
+.lm-out small{color:#a9cfe3}
+.lm-auto{background:#173a24;align-self:flex-end;border-bottom-right-radius:4px}
+.lm-day{align-self:center;font-size:10px;color:var(--mu);background:var(--sf);padding:2px 8px;border-radius:999px}
+.lm-qr{display:flex;gap:6px;padding:6px 10px 0;overflow:hidden;flex:0 0 auto}
+.lm-qr span{font-size:11px;border:1px solid var(--ln);border-radius:999px;padding:4px 10px;white-space:nowrap;color:var(--tx)}
+.lm-cmp{flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;padding:8px 10px;background:var(--sf);border-top:1px solid var(--ln)}
+.lm-plus{width:34px;height:34px;border-radius:50%;border:1px solid var(--ln);display:inline-flex;align-items:center;justify-content:center;font-size:20px;color:var(--pr);flex:0 0 auto}
+.lm-fld{flex:1;min-height:34px;border-radius:18px;background:var(--sf2);border:1px solid var(--pr);padding:8px 12px;font-size:12.5px;line-height:1.35}
+.lm-fld i{color:var(--mu);font-style:normal}
+.lm-send{width:36px;height:36px;border-radius:50%;background:var(--pr);color:#00131f;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;flex:0 0 auto}
+.lm-kb{height:210px;flex:0 0 auto;background:#2a2d33;display:grid;grid-template-columns:repeat(10,1fr);gap:5px;padding:10px 6px;align-content:start}
+.lm-kb span{height:34px;border-radius:6px;background:#4a4e55}
+.lm-pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.lm-bar{display:flex;gap:8px;padding:10px;align-items:center;flex:0 0 auto}
+.lm-srch{flex:1;height:38px;border:1px solid var(--ln);border-radius:10px;display:flex;align-items:center;padding:0 10px;font-size:12px;color:var(--mu)}
+.lm-flt{height:38px;border:1px solid var(--pr);color:var(--pr);border-radius:10px;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12px;font-weight:700;white-space:nowrap}
+.lm-flt b{background:var(--pr);color:#00131f;border-radius:999px;padding:0 6px;font-size:10px}
+.lm-quick{display:flex;gap:6px;padding:0 10px 8px;overflow:hidden;flex:0 0 auto}
+.lm-quick span{font-size:11px;border:1px solid var(--ln);border-radius:8px;padding:5px 9px;white-space:nowrap}
+.lm-quick span.on{background:var(--prc);color:var(--pr);border-color:var(--pr)}
+.lm-row{display:flex;gap:10px;padding:9px 10px;border-top:1px solid var(--ln);align-items:center}
+.lm-row .lm-av{width:36px;height:36px}
+.lm-rc{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.lm-r1{display:flex;gap:6px;align-items:center}
+.lm-r1 .lm-nm{flex:1;font-size:13px}
+.lm-r1 .t{font-size:10.5px;color:var(--mu);flex:0 0 auto}
+.lm-r2{display:flex;gap:6px;align-items:center;font-size:11.5px;color:var(--mu);overflow:hidden;white-space:nowrap}
+.lm-r2 .last{overflow:hidden;text-overflow:ellipsis}
+.lm-dot{width:7px;height:7px;border-radius:50%;background:var(--pr);flex:0 0 auto}
+.lm-det{flex:0 0 auto;padding:8px 10px;background:var(--sf);border-bottom:1px solid var(--ln);display:flex;flex-direction:column;gap:6px;font-size:11.5px}
+.lm-det .k{color:var(--mu)}
+.lm-seg{display:flex;margin:8px 10px 0;border:1px solid var(--ln);border-radius:10px;overflow:hidden;flex:0 0 auto}
+.lm-seg span{flex:1;text-align:center;padding:6px 0;font-size:12px;font-weight:700;color:var(--mu)}
+.lm-seg .on{background:var(--prc);color:var(--pr)}
+.lm-sheet{position:absolute;left:0;right:0;bottom:0;background:var(--sf);border-top-left-radius:18px;border-top-right-radius:18px;border-top:1px solid var(--ln);padding:8px 12px 14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 -10px 30px rgba(0,0,0,.5)}
+.lm-grab{width:36px;height:4px;border-radius:2px;background:var(--ln);align-self:center}
+.lm-sh{font-size:11px;color:var(--mu);font-weight:700;text-transform:none}
+.lm-wrapc{display:flex;flex-wrap:wrap;gap:6px}
+.lm-wrapc span{font-size:11px;border:1px solid var(--ln);border-radius:8px;padding:5px 9px}
+.lm-wrapc span.on{background:var(--prc);color:var(--pr);border-color:var(--pr)}
+.lm-scrim{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+.lm-menu{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;font-size:10.5px}
+.lm-menu div{display:flex;flex-direction:column;align-items:center;gap:4px}
+.lm-menu i{font-style:normal;width:40px;height:40px;border-radius:12px;background:var(--sf2);display:flex;align-items:center;justify-content:center;font-size:17px}
+.lm-stack{flex:0 0 auto;padding:8px 10px;background:var(--sf);border-top:1px solid var(--ln);display:flex;flex-direction:column;gap:6px}
+.lm-stack .lm-fld{border-radius:12px;min-height:60px}
+.lm-acts{display:flex;gap:6px;align-items:center}
+.lm-acts span{font-size:11px;border:1px solid var(--ln);border-radius:8px;padding:5px 9px}
+</style>
+<div class="wrap lm">
+<h1>Leads on a phone: cleaner and simpler</h1>
+<p class="subt">From a staff message (paraphrased): the reply box is too small, the top should scroll away so the messages show, and replying is hard. Jose: "mobile is a mess, we need something cleaner and simpler". What's wrong today:</p>
+<ul class="subt">
+ <li><b>Thread:</b> the header, Status and Book use about 40% of the screen. Once the keyboard opens, no messages show at all, and the reply box is a 3-line square squeezed beside Suggest, emoji and Send.</li>
+ <li><b>List:</b> filters use half the screen (sources, 4 quick chips, More filters, 3 rows of channels) before the first lead, and each row truncates its pills.</li>
+</ul>
+<p class="subt">Each option is drawn twice: the thread with the keyboard up, then the list. Desktop doesn't change.</p>
+
+<h2><span class="n">1</span> Messenger style: one-line header, full-width composer, one Filters button <span class="rec">RECOMMENDED</span></h2>
+<ul class="cap">
+ <li><b>Header:</b> one app-bar row (back, avatar, name, a status chip that opens the status picker in a sheet, Book, ⋯). Job, phone, notes and More go into ⋯ (a sheet).</li>
+ <li><b>Messages</b> fill everything between the header and the composer, even with the keyboard up.</li>
+ <li><b>Composer:</b> full width, pinned above the keyboard, and grows from 1 to 5 lines as you type. <b>+</b> on the left opens quick replies, Suggest, emoji and Attach; a round Send is on the right. Quick replies show as one chip row only while the box is focused and empty.</li>
+ <li><b>List:</b> search plus one "Filters (3)" button. Sources, channels and the quick chips move into its sheet, and only the quick chips you picked stay on screen as one row. Each row is two lines: name and time; then pills and the last message.</li>
+</ul>
+<div class="phones">
+ <div class="pcol"><span class="pl">Thread, keyboard up</span><div class="phn"><div class="sb"></div>
+  <div class="lm-ab"><span class="lm-ic">←</span><span class="lm-av">DE</span><div style="min-width:0;flex:1"><div class="lm-nm">Dana Ellery</div><div class="lm-sub">Repair garage door · (555) 010-4421</div></div><span class="lm-chip">Lead ▾</span><span class="lm-book">Book</span><span class="lm-ic">⋯</span></div>
+  <div class="lm-msgs">
+   <span class="lm-day">Today</span>
+   <div class="lm-b lm-in">Hi, the spring on my garage door snapped. Can someone come this week?<small>9:14 AM</small></div>
+   <div class="lm-b lm-auto">Thanks for reaching out to Brightside! Could you share the service address?<small>Automation · 9:14 AM</small></div>
+   <div class="lm-b lm-in">14 Alder Lane, Fairview<small>9:20 AM</small></div>
+  </div>
+  <div class="lm-qr"><span>⚡ Booking details</span><span>⚡ Booked</span><span>⚡ We service your…</span></div>
+  <div class="lm-cmp"><span class="lm-plus">+</span><div class="lm-fld">We can be there Thursday between 9 and 11. Does that work?<span style="color:var(--pr)">|</span></div><span class="lm-send">➤</span></div>
+  <div class="lm-kb"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+ </div></div>
+ <div class="pcol"><span class="pl">+ pressed (sheet)</span><div class="phn"><div class="sb"></div>
+  <div class="lm-ab"><span class="lm-ic">←</span><span class="lm-av">DE</span><div style="min-width:0;flex:1"><div class="lm-nm">Dana Ellery</div><div class="lm-sub">Repair garage door</div></div><span class="lm-chip">Lead ▾</span><span class="lm-book">Book</span><span class="lm-ic">⋯</span></div>
+  <div class="lm-msgs">
+   <div class="lm-b lm-in">Hi, the spring on my garage door snapped. Can someone come this week?<small>9:14 AM</small></div>
+   <div class="lm-b lm-out">Sure! What's the address?<small>Sam Rivera · 9:16 AM</small></div>
+  </div>
+  <div class="lm-cmp"><span class="lm-plus">×</span><div class="lm-fld"><i>Message</i></div><span class="lm-send">➤</span></div>
+  <div class="lm-scrim"></div>
+  <div class="lm-sheet"><span class="lm-grab"></span>
+   <div class="lm-menu"><div><i>✨</i>Suggest</div><div><i>⚡</i>Quick replies</div><div><i>☺</i>Emoji</div><div><i>📎</i>Attach</div></div>
+   <span class="lm-sh">Quick replies</span>
+   <div class="lm-wrapc"><span>Booking details</span><span>Booked</span><span>We service your area</span><span>Thank you</span><span>Inspection prices</span><span>Sweep price</span></div>
+   <div class="lm-srch" style="height:34px">🔍 Find a quick reply</div>
+  </div>
+ </div></div>
+ <div class="pcol"><span class="pl">List</span><div class="phn"><div class="sb"></div>
+  <div class="lm-ab"><span class="lm-ic">☰</span><span class="lm-nm" style="flex:1">Leads</span><span class="lm-ic">ⓘ</span><span class="lm-ic">⟳</span></div>
+  <div class="lm-pb">
+   <div class="lm-bar"><div class="lm-srch">🔍 Search leads</div><div class="lm-flt">⚙ Filters <b>3</b></div></div>
+   <div class="lm-quick"><span class="on">↩ Unreplied</span><span>⚠ Overdue</span><span>✦ Follow up</span><span>★ Starred</span></div>
+   <div class="lm-row"><span class="lm-dot"></span><span class="lm-av" style="background:#33361a;color:#d6d27a">#</span><div class="lm-rc"><div class="lm-r1"><span class="lm-nm">(555) 010-4290</span><span class="t">now</span></div><div class="lm-r2"><span class="lm-chip ok">LS Text</span><span class="last">You: Thank you for reaching…</span></div></div></div>
+   <div class="lm-row"><span style="width:7px"></span><span class="lm-av">CT</span><div class="lm-rc"><div class="lm-r1"><span class="lm-nm">Casey Toren</span><span class="t">now</span></div><div class="lm-r2"><span class="lm-chip o">Replied</span><span class="last">Fireplace chimney · Our chimney…</span></div></div></div>
+   <div class="lm-row"><span class="lm-dot"></span><span class="lm-av" style="background:#14304d;color:#8cc4f5">MM</span><div class="lm-rc"><div class="lm-r1"><span class="lm-nm">Morgan Marsh</span><span class="t">1m</span></div><div class="lm-r2"><span class="lm-chip cau">Form</span><span class="last">Chimney inspection</span></div></div></div>
+   <div class="lm-row"><span class="lm-dot"></span><span class="lm-av" style="background:#173a24;color:#6fd38a">#</span><div class="lm-rc"><div class="lm-r1"><span class="lm-nm">(555) 010-7312</span><span class="t">7m</span></div><div class="lm-r2"><span class="lm-chip ok">Completed</span><span class="last">You: The technician is on…</span></div></div></div>
+   <div class="lm-row"><span style="width:7px"></span><span class="lm-av">RO</span><div class="lm-rc"><div class="lm-r1"><span class="lm-nm">Riley Okafor</span><span class="t">20m</span></div><div class="lm-r2"><span class="lm-chip">Facebook</span><span class="last">You: Our sweep is a flat rate…</span></div></div></div>
+   <div class="lm-row"><span style="width:7px"></span><span class="lm-av">AR</span><div class="lm-rc"><div class="lm-r1"><span class="lm-nm">Avery Rhodes</span><span class="t">23m</span></div><div class="lm-r2"><span class="lm-chip">Facebook</span><span class="lm-chip cau">Not a lead</span></div></div></div>
+  </div>
+ </div></div>
+ <div class="pcol"><span class="pl">Filters (sheet)</span><div class="phn"><div class="sb"></div>
+  <div class="lm-ab"><span class="lm-ic">☰</span><span class="lm-nm" style="flex:1">Leads</span></div>
+  <div class="lm-pb"><div class="lm-bar"><div class="lm-srch">🔍 Search leads</div><div class="lm-flt">⚙ Filters <b>3</b></div></div></div>
+  <div class="lm-scrim"></div>
+  <div class="lm-sheet"><span class="lm-grab"></span>
+   <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800"><span>Filters</span><span style="color:var(--pr);font-size:12px">Clear</span></div>
+   <span class="lm-sh">Show only</span>
+   <div class="lm-wrapc"><span class="on">Unreplied</span><span>Overdue</span><span>Follow up</span><span>Starred</span></div>
+   <span class="lm-sh">Sources</span>
+   <div class="lm-wrapc"><span class="on">All sources</span><span>Thumbtack</span><span>Meta</span><span>Workiz</span><span>Online booking</span></div>
+   <span class="lm-sh">Channels</span>
+   <div class="lm-wrapc"><span class="on">Calls</span><span class="on">SMS texts</span><span>LS booking</span><span>Chat</span><span>Forms</span><span>Bad ratings</span></div>
+   <div class="lm-book" style="text-align:center;padding:9px">Show 42 leads</div>
+  </div>
+ </div></div>
+</div>
+
+<h2><span class="n">2</span> Two tabs in the thread: Messages | Details</h2>
+<p class="cap">The header is the same compact row, and a Messages | Details switch sits under it. Details holds the job, phone, notes, status and Book, so the header loses the chip and Book. Composer as in 1, but Suggest stays visible as a button beside +. List: the quick and channel chips share <b>one</b> row that scrolls sideways, with no Filters button. It is one tap shorter for Suggest, but status and Book are one tap further away, and the sideways chip row hides most filters.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">Thread, keyboard up</span><div class="phn"><div class="sb"></div>
+  <div class="lm-ab"><span class="lm-ic">←</span><span class="lm-av">DE</span><div style="min-width:0;flex:1"><div class="lm-nm">Dana Ellery</div><div class="lm-sub">Lead · Repair garage door</div></div><span class="lm-ic">⋯</span></div>
+  <div class="lm-seg"><span class="on">Messages</span><span>Details</span></div>
+  <div class="lm-msgs">
+   <div class="lm-b lm-in">Hi, the spring on my garage door snapped. Can someone come this week?<small>9:14 AM</small></div>
+   <div class="lm-b lm-in">14 Alder Lane, Fairview<small>9:20 AM</small></div>
+  </div>
+  <div class="lm-cmp"><span class="lm-plus">+</span><span class="lm-plus" style="font-size:13px">✨</span><div class="lm-fld">We can be there Thursday<span style="color:var(--pr)">|</span></div><span class="lm-send">➤</span></div>
+  <div class="lm-kb"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+ </div></div>
+ <div class="pcol"><span class="pl">List</span><div class="phn"><div class="sb"></div>
+  <div class="lm-ab"><span class="lm-ic">☰</span><span class="lm-nm" style="flex:1">Leads</span><span class="lm-ic">⟳</span></div>
+  <div class="lm-pb">
+   <div class="lm-bar"><div class="lm-srch">🔍 Search leads</div></div>
+   <div class="lm-quick"><span class="on">Unreplied</span><span>Overdue</span><span>All sources ▾</span><span>Calls</span><span>SMS</span><span>Forms</span></div>
+   <div class="lm-row"><span class="lm-dot"></span><span class="lm-av">CT</span><div class="lm-rc"><div class="lm-r1"><span class="lm-nm">Casey Toren</span><span class="t">now</span></div><div class="lm-r2"><span class="lm-chip o">Replied</span><span class="last">Our chimney…</span></div></div></div>
+   <div class="lm-row"><span class="lm-dot"></span><span class="lm-av" style="background:#14304d;color:#8cc4f5">MM</span><div class="lm-rc"><div class="lm-r1"><span class="lm-nm">Morgan Marsh</span><span class="t">1m</span></div><div class="lm-r2"><span class="lm-chip cau">Form</span><span class="last">Chimney inspection</span></div></div></div>
+   <div class="lm-row"><span style="width:7px"></span><span class="lm-av">RO</span><div class="lm-rc"><div class="lm-r1"><span class="lm-nm">Riley Okafor</span><span class="t">20m</span></div><div class="lm-r2"><span class="lm-chip">Facebook</span><span class="last">You: Our sweep…</span></div></div></div>
+  </div>
+ </div></div>
+</div>
+
+<h2><span class="n">3</span> Keep today's header, but let it scroll away</h2>
+<p class="cap">Closest to today. The header, Status and Book scroll up with the messages and come back when you scroll down; they also fold away when the keyboard opens. The composer is stacked: the text box takes the full width (3 lines), with quick replies, Suggest, emoji and Send in a row under it. List: the channel chips go behind "More filters"; the quick chips stay. The least change, but the composer is taller and the header keeps jumping in and out.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">Thread, keyboard up (header folded)</span><div class="phn"><div class="sb"></div>
+  <div class="lm-ab" style="height:40px"><span class="lm-ic">←</span><span class="lm-nm" style="flex:1">Dana Ellery</span><span class="lm-chip">Lead</span></div>
+  <div class="lm-msgs">
+   <div class="lm-b lm-in">14 Alder Lane, Fairview<small>9:20 AM</small></div>
+  </div>
+  <div class="lm-stack"><div class="lm-fld">We can be there Thursday between 9 and 11. Does that work?<span style="color:var(--pr)">|</span></div>
+   <div class="lm-acts"><span>⚡ Quick</span><span>✨ Suggest</span><span>☺</span><span style="flex:1;border:0"></span><span class="lm-book">➤ Send</span></div></div>
+  <div class="lm-kb"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+ </div></div>
+ <div class="pcol"><span class="pl">List</span><div class="phn"><div class="sb"></div>
+  <div class="lm-ab"><span class="lm-ic">☰</span><span class="lm-nm" style="flex:1">Leads</span><span class="lm-ic">⟳</span></div>
+  <div class="lm-pb">
+   <div class="lm-bar"><div class="lm-srch">🔍 Search leads</div><div class="lm-flt">All sources ▾</div></div>
+   <div class="lm-quick"><span>Unreplied</span><span>Overdue</span><span>Follow up</span><span>Starred</span></div>
+   <div style="padding:0 10px 8px;font-size:12px;color:var(--pr);font-weight:700">☰ More filters (2)</div>
+   <div class="lm-row"><span class="lm-dot"></span><span class="lm-av">CT</span><div class="lm-rc"><div class="lm-r1"><span class="lm-nm">Casey Toren</span><span class="t">now</span></div><div class="lm-r2"><span class="lm-chip o">Replied</span><span class="last">Our chimney…</span></div></div></div>
+   <div class="lm-row"><span class="lm-dot"></span><span class="lm-av" style="background:#14304d;color:#8cc4f5">MM</span><div class="lm-rc"><div class="lm-r1"><span class="lm-nm">Morgan Marsh</span><span class="t">1m</span></div><div class="lm-r2"><span class="lm-chip cau">Form</span><span class="last">Chimney inspection</span></div></div></div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:12px">All three keep: search on the list, sheets (no dialogs), theme colours with no purple, and the desktop layout as it is today.</p>
+</div>

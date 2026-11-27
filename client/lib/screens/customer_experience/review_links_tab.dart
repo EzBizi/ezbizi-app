@@ -4,8 +4,10 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/date_range_picker.dart';
 import '../reports/report_dates.dart';
+import 'ekomi_view.dart';
 import 'review_sources.dart';
 
 /// Review links — what customers did with the link in their review text
@@ -32,6 +34,8 @@ const _labels = {
   'sad': 'Red',
   'google': 'Google',
   'submitted': 'Complaint',
+  'reviewed': 'Reviewed',
+  'qr': 'QR scans',
 };
 
 class _ReviewLinksTabState extends State<ReviewLinksTab> {
@@ -39,9 +43,13 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
   // Opens on today (Jose, 2026-10-20: "review links should default to today").
   late DateSpan _span = DateSpan.single(_today);
   bool _byPerson = false;
+  bool _allRanked = false;
   Map<String, dynamic>? _data;
   String? _error;
   int _request = 0;
+
+  /// The eKomi screen in this tab's place (UI queue 165).
+  bool _ekomi = false;
 
   @override
   void initState() {
@@ -71,6 +79,13 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (_ekomi) {
+      return EkomiView(
+        api: widget.api,
+        session: widget.session,
+        onBack: () => setState(() => _ekomi = false),
+      );
+    }
     final theme = Theme.of(context);
     final narrow = MediaQuery.sizeOf(context).width < 600;
     final data = _data;
@@ -102,7 +117,10 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
       padding: const EdgeInsets.all(16),
       children: [
         // Where reviews were written, above the funnel (design 154 #13).
-        ReviewSources(api: widget.api),
+        ReviewSources(
+          api: widget.api,
+          onEkomi: () => setState(() => _ekomi = true),
+        ),
         const SizedBox(height: 20),
         if (narrow) ...[
           dates,
@@ -124,7 +142,9 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
           const Center(child: CircularProgressIndicator())
         else ...[
           _funnel(context, data['totals'] as Map?, narrow),
+          _reviewedDetail(context, data['reviewed'] as Map?),
           const SizedBox(height: 20),
+          _leaderboard(context, data['by_person'] as List?),
           Align(
             alignment: Alignment.centerLeft,
             child: SegmentedButton<bool>(
@@ -164,6 +184,13 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
       _tile(context, 'sad', _share(sad, opened), 'of opened'),
       _tile(context, 'google', _share(_n(t, 'google'), happy), 'of green'),
       _tile(context, 'submitted', _share(_n(t, 'submitted'), sad), 'of red'),
+      // Jose, 2026-11-09: did they actually leave the review? Inferred by name.
+      _tile(
+        context,
+        'reviewed',
+        _share(_n(t, 'reviewed'), _n(t, 'google')),
+        'of Google',
+      ),
     ];
 
     if (narrow) {
@@ -202,14 +229,20 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
         step([tiles[2], tiles[3]]),
         arrow,
         step([tiles[4], tiles[5]]),
+        arrow,
+        step([tiles[6]]),
       ],
     );
   }
 
   Widget _tile(BuildContext context, String kind, String value, String? of) {
     final theme = Theme.of(context);
+    // A zero is no news either way, so it is neutral, not red or green
+    // (phone audit 2026-11-04).
+    final zero = value == '0' || value.startsWith('0 ');
     final colour = switch (kind) {
-      'happy' || 'google' => ToneColours.of(context, Tone.ok).ink,
+      _ when zero => theme.colorScheme.onSurfaceVariant,
+      'happy' || 'google' || 'reviewed' => ToneColours.of(context, Tone.ok).ink,
       'sad' || 'submitted' => ToneColours.of(context, Tone.bad).ink,
       _ => theme.colorScheme.primary,
     };
@@ -244,6 +277,146 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
     );
   }
 
+  /// " · 4.8 ★", or nothing when no review was matched.
+  String _stars(Object? v) => v is num ? ' · ${v.toStringAsFixed(1)} ★' : '';
+
+  /// How sure each "Reviewed" is, under the funnel (Jose, 2026-11-09).
+  Widget _reviewedDetail(BuildContext context, Map? d) {
+    final by = (d?['by'] as Map?) ?? const {};
+    int n(String k) => (by[k] as num?)?.toInt() ?? 0;
+    final small = Theme.of(context).textTheme.bodySmall;
+    // Only exact and likely count, plus possible ones a person confirmed
+    // (Jose, 2026-11-09); the rest of the possible ones are shown beside.
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Reviewed, matched by name: exact ${n('exact')} · likely ${n('likely')}'
+            '${n('confirmed') > 0 ? ' · confirmed ${n('confirmed')}' : ''}'
+            ' · without a click ${n('without_click')}${_stars(d?['stars'])}.',
+            key: const Key('review-links-reviewed-detail'),
+            style: small,
+          ),
+          if (n('possible') > 0)
+            Text(
+              '+${n('possible')} possible matches, confirm in Reviews',
+              key: const Key('review-links-possible'),
+              style: small?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// "Which technician got the most reviews" (Jose 2026-11-23, design 204):
+  /// people ranked by reviews written, then green faces, then QR scans, over
+  /// this tab's dates. Gold, silver and bronze for the top three.
+  Widget _leaderboard(BuildContext context, List? byPerson) {
+    final theme = Theme.of(context);
+    final ranked =
+        [
+          for (final r in byPerson ?? const [])
+            if (r is Map &&
+                r['name'] != null &&
+                (_n(r, 'reviewed') + _n(r, 'happy') + _n(r, 'qr')) > 0)
+              r,
+        ]..sort((a, b) {
+          for (final k in const ['reviewed', 'happy', 'qr', 'opened']) {
+            final d = _n(b, k) - _n(a, k);
+            if (d != 0) return d;
+          }
+          return '${a['name']}'.compareTo('${b['name']}');
+        });
+    if (ranked.isEmpty) return const SizedBox.shrink();
+    final shown = _allRanked ? ranked : ranked.take(10).toList();
+
+    Widget medal(int i) => Container(
+      width: 26,
+      height: 26,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: i < 3
+            ? EzBiziTheme.medals[i]
+            : theme.colorScheme.surfaceContainerHighest,
+      ),
+      child: Text(
+        '${i + 1}',
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+          color: i < 3 ? EzBiziTheme.paper : theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+
+    return Padding(
+      key: const Key('review-links-leaderboard'),
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Technician leaderboard', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 2),
+          Text(
+            'Ranked by reviews written, then green faces, then QR scans.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ListTable(
+            columns: const [
+              ListColumn('#', flex: 1, namedWhenStacked: false),
+              ListColumn('Technician', flex: 4),
+              ListColumn('Reviewed', end: true),
+              ListColumn('Green', end: true),
+              ListColumn('Red', end: true),
+              ListColumn('QR scans', end: true),
+              ListColumn('Opened', end: true),
+            ],
+            rows: [
+              for (final (i, r) in shown.indexed)
+                [
+                  Align(alignment: Alignment.centerLeft, child: medal(i)),
+                  Text(
+                    '${r['name']}',
+                    key: ValueKey('review-links-rank-$i'),
+                    style: i < 3
+                        ? theme.textTheme.titleSmall
+                        : theme.textTheme.bodyMedium,
+                  ),
+                  for (final k in const [
+                    'reviewed',
+                    'happy',
+                    'sad',
+                    'qr',
+                    'opened',
+                  ])
+                    Text('${_n(r, k)}'),
+                ],
+            ],
+          ),
+          if (ranked.length > 10)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const Key('review-links-leaderboard-all'),
+                onPressed: () => setState(() => _allRanked = !_allRanked),
+                child: Text(
+                  _allRanked ? 'Show the top 10' : 'Show all ${ranked.length}',
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _rows(
     BuildContext context,
     List<Map<String, dynamic>> rows,
@@ -261,61 +434,49 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
       );
     }
 
-    if (narrow) {
-      return Column(
-        children: [
-          for (final r in rows)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(name(r)),
-              subtitle: Text(
-                'Sent ${_n(r, 'sent')} · Opened ${_n(r, 'opened')} · '
-                'Green ${_n(r, 'happy')} · Red ${_n(r, 'sad')} · '
-                'Google ${_n(r, 'google')} · Complaint ${_n(r, 'submitted')}',
-              ),
-            ),
-        ],
-      );
-    }
-
-    DataRow row(Map r, String label, {bool total = false}) => DataRow(
-      cells: [
-        DataCell(
-          Text(
-            label,
-            style: total ? const TextStyle(fontWeight: FontWeight.w800) : null,
-          ),
-        ),
-        DataCell(Text('${_n(r, 'sent')}')),
-        DataCell(Text(_share(_n(r, 'opened'), _n(r, 'sent')))),
-        DataCell(Text('${_n(r, 'happy')}')),
-        DataCell(Text('${_n(r, 'sad')}')),
-        DataCell(Text('${_n(r, 'google')}')),
-        DataCell(Text('${_n(r, 'submitted')}')),
-      ],
-    );
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        key: const Key('review-links-table'),
-        columns: [
-          DataColumn(label: Text(_byPerson ? 'Person' : 'Branch')),
-          for (final k in [
-            'sent',
-            'opened',
-            'happy',
-            'sad',
-            'google',
-            'submitted',
-          ])
-            DataColumn(label: Text(_labels[k]!), numeric: true),
-        ],
-        rows: [
-          for (final r in rows) row(r, name(r)),
-          row(totals ?? const {}, 'Total', total: true),
-        ],
+    // Mobile review 2026-11-13, P1: a ListTable, so a phone gets stacked
+    // cards with every number named, and nothing scrolls sideways.
+    final keys = [
+      'sent',
+      'opened',
+      'happy',
+      'sad',
+      'google',
+      'submitted',
+      'reviewed',
+      'qr',
+    ];
+    List<Widget> cells(Map r, String label, {bool total = false}) => [
+      Text(
+        label,
+        style: total
+            ? const TextStyle(fontWeight: FontWeight.w800)
+            : theme.textTheme.titleSmall,
       ),
+      for (final k in keys)
+        Text(
+          k == 'opened'
+              ? _share(_n(r, 'opened'), _n(r, 'sent'))
+              : '${_n(r, k)}',
+        ),
+      Text(
+        r['reviewed_stars'] is num
+            ? '${(r['reviewed_stars'] as num).toStringAsFixed(1)} ★'
+            : '—',
+      ),
+    ];
+
+    return ListTable(
+      key: const Key('review-links-table'),
+      columns: [
+        ListColumn(_byPerson ? 'Person' : 'Branch', flex: 3),
+        for (final k in keys) ListColumn(_labels[k]!, end: true),
+        const ListColumn('Stars', end: true),
+      ],
+      rows: [
+        for (final r in rows) cells(r, name(r)),
+        cells(totals ?? const {}, 'Total', total: true),
+      ],
     );
   }
 }

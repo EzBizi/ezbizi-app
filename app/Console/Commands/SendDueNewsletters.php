@@ -57,6 +57,46 @@ class SendDueNewsletters extends Command
             }
         }
 
+        $this->failStuckSends($tenant);
+
         return self::SUCCESS;
+    }
+
+    /**
+     * A send whose job started more than 30 minutes ago and never finished
+     * was killed on the way (a deploy, a timeout). It is not retried: Mailchimp
+     * may already have sent it. It is marked failed so a person can check and
+     * decide, instead of staying "Sending" with nothing able to recover it.
+     */
+    private function failStuckSends(TenantContext $tenant): void
+    {
+        $stuck = NewsletterSend::withoutGlobalScopes()
+            ->where('status', NewsletterSend::STATUS_SENDING)
+            ->whereNotNull('started_at')
+            ->where('started_at', '<', now()->subMinutes(30))
+            ->get();
+        foreach ($stuck as $row) {
+            $organization = Organization::withoutGlobalScopes()->find($row->organization_id);
+            if ($organization === null) {
+                continue;
+            }
+            try {
+                $tenant->run($organization, function () use ($row) {
+                    DB::transaction(function () use ($row) {
+                        $newsletter = Newsletter::query()->lockForUpdate()->find($row->newsletter_id);
+                        $send = NewsletterSend::query()->lockForUpdate()->find($row->id);
+                        if ($send === null || $send->status !== NewsletterSend::STATUS_SENDING) {
+                            return;
+                        }
+                        $send->markFailed(SendNewsletter::OUTCOME_UNKNOWN);
+                        if ($newsletter !== null && $newsletter->status === Newsletter::STATUS_SENDING) {
+                            $newsletter->forceFill(['status' => Newsletter::STATUS_FAILED])->save();
+                        }
+                    });
+                });
+            } catch (Throwable $e) {
+                report($e);
+            }
+        }
     }
 }

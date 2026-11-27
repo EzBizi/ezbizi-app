@@ -29,6 +29,7 @@ use App\Support\Assistant\AssistantBrain;
 use App\Support\Assistant\TechAssistant;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * The staff line: a tech texts it, it answers.
@@ -46,7 +47,9 @@ use Illuminate\Support\Collection;
  * `handles()` answers only for `services.meta.whatsapp_bot_number_id`. Without
  * that guard every inbound message on every WhatsApp number would be answered
  * by a robot - including EzBizi's own line, where a person is expected. Unset,
- * it answers for nothing, which is the right way to fail.
+ * it answers for nothing, which is the right way to fail. A number marked
+ * `purpose = support` answers too (Jose, 2026-11-09: Main is for the AI
+ * support questions).
  *
  * ── What it says is the business's, not this file's ──────────────
  *
@@ -59,6 +62,9 @@ use Illuminate\Support\Collection;
  */
 final class WhatsAppStaffBot
 {
+    /** Sent once to each tech with the parts tab, on their first message. */
+    public const PARTS_TIP = "\u{1F527} Tip for your jobs: send this chat a rating-plate photo or the model number and I will find the part.";
+
     /** Menu row ids. Kept short: WhatsApp caps a row id at 200 characters. */
     public const FIND_LOCATION = 'find_location';
 
@@ -73,7 +79,6 @@ final class WhatsAppStaffBot
     private const MENU_WORDS = ['menu', 'hi', 'hello', 'hey', 'hola', 'start', 'help', '?'];
 
     /** More than this and the reply stops being readable on a phone. */
-    private const MAX_LOCATIONS = 5;
 
     /** WhatsApp's cap on rows in one list, across all its sections. */
     private const MAX_ROWS = 10;
@@ -88,7 +93,9 @@ final class WhatsAppStaffBot
     {
         $bot = (string) config('services.meta.whatsapp_bot_number_id');
 
-        return $bot !== '' && hash_equals($bot, $phoneNumberId);
+        return ($bot !== '' && hash_equals($bot, $phoneNumberId))
+            || WhatsAppNumber::query()->withoutGlobalScopes()
+                ->where('phone_number_id', $phoneNumberId)->where('purpose', 'support')->exists();
     }
 
     /**
@@ -159,12 +166,18 @@ final class WhatsAppStaffBot
             return;
         }
 
-        $techMode = $viewer !== null && GrokCli::configured()
+        $techMode = $viewer !== null && GrokCli::configured() && $viewer->hasPermission(StaffAnswer::PARTS)
             && app(TechAssistant::class)->enabled(Organization::findOrFail($number->organization_id));
+
+        // The parts tip, once per tech, on their first message (2026-11-03: Meta
+        // files it as MARKETING and blocks the template; their own message opens the window).
+        if ($techMode && Cache::add('whatsapp.parts_tip.'.$viewer->getKey(), true)) {
+            $this->text($number, $to, self::PARTS_TIP, preview: false);
+        }
 
         // A photo captioned results or ACE: a lead source's results (WhatsAppResults).
         if ($viewer?->hasPermission(WhatsAppResults::PERMISSION) && $inbound->kind === 'image'
-            && $inbound->media_id !== null && GrokCli::configured() && preg_match(WhatsAppResults::CAPTION, $text) === 1) {
+            && $inbound->media_id !== null && GrokCli::configured() && preg_match(WhatsAppResults::caption($number->organization_id), $text) === 1) {
             ReadWhatsAppResults::dispatch($number->id, $to, $viewer->getKey(), (string) $inbound->media_id, $inbound->body);
             $this->text($number, $to, "\u{1F440} Reading the results in that photo\u{2026}", preview: false);
 
@@ -410,7 +423,9 @@ final class WhatsAppStaffBot
             'type' => 'interactive',
             'interactive' => [
                 'type' => 'list',
-                'header' => ['type' => 'text', 'text' => mb_substr($this->brain->name($organization), 0, 60)],
+                // EzBizi's own numbers (no connection of their own) speak as EzBizi,
+                // not as the one tenant's assistant name (Jose, 2026-11-03).
+                'header' => ['type' => 'text', 'text' => mb_substr($number->social_connection_id === null ? 'EzBizi' : $this->brain->name($organization), 0, 60)],
                 'body' => ['text' => $body],
                 'footer' => ['text' => 'Ask a question, or text MENU'],
                 'action' => [
@@ -509,8 +524,8 @@ final class WhatsAppStaffBot
      *     their phone is added - the safe direction.
      *   - A number that is not a real phone is not staff.
      *
-     * Both sides go through the same E.164 normaliser, so "(305) 724-2199" in
-     * a profile matches the "13057242199" WhatsApp sends.
+     * Both sides go through the same E.164 normaliser, so "(305) 555-0107" in
+     * a profile matches the "13055550107" WhatsApp sends.
      */
     private function staffMember(WhatsAppNumber $number, string $sender): ?User
     {
@@ -574,7 +589,7 @@ final class WhatsAppStaffBot
             return;
         }
 
-        // "Send me all the calls with 9524572594" (Jose, 2026-10-13): Grok reads
+        // "Send me all the calls with 9525550100" (Jose, 2026-10-13): Grok reads
         // the number and dates off the webhook; Reports access, as Performance.
         if ($viewer?->hasPermission('reports.view') && GrokCli::configured() && CallRecordingsRequest::looksLikeOne($query)) {
             SendCallRecordings::dispatch($number->id, $to, $query);
@@ -608,9 +623,12 @@ final class WhatsAppStaffBot
             return;
         }
 
-        // A question about the figures goes to AI before the Library's word
-        // match, which answered "how much did we sell" with the CSIA entry.
-        if ($viewer?->hasPermission('reports.view') && GrokCli::configured() && self::asksFigures($query)) {
+        // Staff words go to the AI agent, not the word match (Jose, 2026-11-03:
+        // "it feel like it looks for keywords ... when it should just answer").
+        // StaffAnswer reads the Library first anyway. Three characters or
+        // fewer is a branch code or a state, which only the location search knows.
+        if ($viewer !== null && GrokCli::configured() && mb_strlen($query) > 3) {
+            $this->typing($number, $to);
             AnswerWhatsAppWithAi::dispatch($number->id, $to, $viewer->getKey(), $query);
 
             return;
@@ -638,6 +656,7 @@ final class WhatsAppStaffBot
             // the webhook must answer Meta at once (Jose, 2026-10-12).
             // Staff only: strangers have the intake, and each ask is an xAI call.
             if ($viewer !== null && GrokCli::configured() && mb_strlen($query) > 3) {
+                $this->typing($number, $to);
                 AnswerWhatsAppWithAi::dispatch($number->id, $to, $viewer?->getKey(), $query);
 
                 return;
@@ -648,24 +667,17 @@ final class WhatsAppStaffBot
         }
 
         $name = $this->brain->name($organization);
-        $reply = $matches->take(self::MAX_LOCATIONS)
+        $max = max(1, (int) app(SettingsResolver::class)->get('ai_assistance.max_locations', $organization));
+        $reply = $matches->take($max)
             ->map(fn (array $site) => self::describe($site, $name))
             ->implode("\n\n");
 
-        if ($matches->count() > self::MAX_LOCATIONS) {
-            $reply .= "\n\n\u{2139}\u{FE0F} _Showing ".self::MAX_LOCATIONS.' of '.$matches->count()
+        if ($matches->count() > $max) {
+            $reply .= "\n\n\u{2139}\u{FE0F} _Showing ".$max.' of '.$matches->count()
                 .'. Text a city for fewer._';
         }
 
         $this->text($number, $to, $reply);
-    }
-
-    /**
-     * Sounds like the business's figures. ponytail: a word list; a miss falls back to the Library's AI answer.
-     */
-    public static function asksFigures(string $query): bool
-    {
-        return preg_match('/\b(sales?|sell|sold|revenue|gross|profit|jobs?|leads?|deposits?|cancel\w*|how (much|many)|numbers|report|last (week|month)|this (week|month)|yesterday|today)\b/i', $query) === 1;
     }
 
     /** @param  array<string, string>  $site */
@@ -724,6 +736,10 @@ final class WhatsAppStaffBot
             return;
         }
 
+        // ponytail: shown on dispatch and again here; Meta drops it after 25 s, so a
+        // slow app-data answer goes quiet for its last stretch. A timer if that bites.
+        $this->typing($number, $to);
+
         try {
             // 80 s: inside AnswerWhatsAppWithAi's 85 s and the queue's 90 s retry_after.
             $found = StaffAnswer::answer($viewer, $organization, $query, 'whatsapp', 80);
@@ -733,8 +749,9 @@ final class WhatsAppStaffBot
             return;
         }
 
+        // An agent says it did not find it; the menu read as a keyword bot.
         if ($found === null) {
-            $this->nothingMatched($number, $to, $viewer, $query);
+            $this->text($number, $to, "\u{1F937} I couldn't find that in EzBizi. Try asking another way, or type *MENU*.", preview: false);
 
             return;
         }
@@ -744,6 +761,26 @@ final class WhatsAppStaffBot
             StaffAnswer::APP => $found['reply']."\n\n_From EzBizi, read by AI with your access._",
             default => $found['reply']."\n\n_Answered by AI from the Library._",
         }, preview: false);
+        $this->media($number, $to, $found['media'] ?? []);
+    }
+
+    /**
+     * Photos and clips after the text, one a message, fetched by Meta from the
+     * link (Cloud API: an mp4 up to 16 MB goes as video; a bigger one Meta
+     * refuses on the webhook, and the link is in the text already).
+     *
+     * @param  list<string>  $links
+     */
+    private function media(WhatsAppNumber $number, string $to, array $links): void
+    {
+        foreach ($links as $link) {
+            $type = str_ends_with(strtolower($link), '.mp4') ? 'video' : 'image';
+            try {
+                $this->cloud->replyFreeForm($number, $to, ['type' => $type, $type => ['link' => $link]], $link);
+            } catch (\RuntimeException $e) {
+                report($e);
+            }
+        }
     }
 
     public static function isCommand(string $query): bool
@@ -851,14 +888,18 @@ final class WhatsAppStaffBot
     public function appReply(WhatsAppNumber $number, string $to, User $viewer, string $query): void
     {
         try {
-            $reply = AppAsk::answer($viewer, $query);
+            $app = AppAsk::answerWithMedia($viewer, $query);
         } catch (\RuntimeException) {
-            $reply = null;
+            $app = null;
         }
 
-        $reply === null
-            ? $this->nothingMatched($number, $to, $viewer, $query)
-            : $this->text($number, $to, $reply."\n\n_From EzBizi, read by AI with your access._", preview: false);
+        if ($app === null) {
+            $this->nothingMatched($number, $to, $viewer, $query);
+
+            return;
+        }
+        $this->text($number, $to, $app['reply']."\n\n_From EzBizi, read by AI with your access._", preview: false);
+        $this->media($number, $to, $app['media']);
     }
 
     /** AnswerWhatsAppWithTech's half: the tech assistant's answer, a photo read when one came. */
@@ -914,5 +955,16 @@ final class WhatsAppStaffBot
     private function nothingMatched(WhatsAppNumber $number, string $to, ?User $viewer, string $query): void
     {
         $this->menu($number, $to, $viewer, "\u{1F937} Nothing matched *".mb_substr($query, 0, 40)."*\n\nNo answer and no location for that.");
+    }
+
+    /** "Typing…" on the person's last message while the AI works (Jose, 2026-11-03). */
+    private function typing(WhatsAppNumber $number, string $to): void
+    {
+        $wamid = WhatsAppMessage::query()->withoutGlobalScopes()->where('phone_number_id', $number->phone_number_id)
+            ->where('counterparty', $to)->where('direction', 'in')->latest('created_at')->value('wamid');
+
+        if (filled($wamid)) {
+            $this->cloud->typing((string) $number->phone_number_id, (string) $wamid);
+        }
     }
 }

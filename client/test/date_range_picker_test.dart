@@ -1,5 +1,6 @@
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/timestamps.dart';
+import 'package:ezbizi_client/screens/reports/report_dates.dart';
 import 'package:ezbizi_client/widgets/date_range_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -294,6 +295,133 @@ void main() {
       await tester.tap(find.byKey(const Key('date-range-apply')));
 
       expect(applied.single, preset('today'));
+    });
+  });
+
+  // Jose, 2026-11-16: "the date picker on mobile seems to be broken, like u
+  // click a custom date or the preselected dates and nothing happens like it
+  // stays on the picker menu". Reports on a phone: the app's top bar, the
+  // tab picker, the dates, the report filling the rest, the bottom bar. The
+  // panel opened in that column, 70% of the screen high, and its "Show N
+  // days" landed under the bottom bar.
+  group('on a phone', () {
+    final monday = DateTime(2026, 11, 16);
+
+    Future<List<DateSpan>> reports(WidgetTester tester) async {
+      final changed = <DateSpan>[];
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      var span = DateSpan.single(monday);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            appBar: AppBar(title: const Text('Reports')),
+            bottomNavigationBar: NavigationBar(
+              destinations: const [
+                NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
+                NavigationDestination(icon: Icon(Icons.menu), label: 'More'),
+              ],
+            ),
+            body: StatefulBuilder(
+              builder: (context, setState) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 56, child: Text('Scoring ▾')),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    // Keyed on the span, as Reports keys it.
+                    child: ReportDates(
+                      key: ValueKey(span),
+                      inline: true,
+                      initial: span,
+                      today: monday,
+                      formats: DisplayFormats.fallback,
+                      onChanged: (s) {
+                        changed.add(s);
+                        setState(() => span = s);
+                      },
+                    ),
+                  ),
+                  const Expanded(child: Placeholder()),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('date-range-button')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('date-range-apply')), findsOneWidget);
+      return changed;
+    }
+
+    testWidgets('a quick choice is one tap: the picker closes on its dates', (
+      tester,
+    ) async {
+      final changed = await reports(tester);
+
+      await tester.tap(find.byKey(const ValueKey('date-preset-last_7')));
+      await tester.pumpAndSettle();
+
+      final week = DateSpan(DateTime(2026, 11, 10), monday);
+      expect(changed, [week]);
+      expect(find.byKey(const Key('date-range-apply')), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('date-range-words'))).data,
+        spanWords(week, monday, DisplayFormats.fallback),
+      );
+    });
+
+    testWidgets('Custom: two days on the calendar, then Show reaches it', (
+      tester,
+    ) async {
+      final changed = await reports(tester);
+
+      // Custom brings the calendar up from under the list.
+      await tester.tap(find.byKey(const ValueKey('date-preset-custom')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('date-day-2026-11-03')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('date-day-2026-11-10')));
+      await tester.pump();
+
+      // The button is on the screen, above the bottom bar, and a tap on it
+      // lands on it.
+      final apply = find.byKey(const Key('date-range-apply'));
+      expect(
+        find.descendant(of: apply, matching: find.text('Show 8 days')),
+        findsOneWidget,
+      );
+      final hit = tester.hitTestOnBinding(tester.getCenter(apply));
+      final button = tester.renderObject(apply);
+      expect(hit.path.any((entry) => entry.target == button), isTrue);
+      await tester.tap(apply);
+      await tester.pumpAndSettle();
+
+      expect(changed, [
+        DateSpan(DateTime(2026, 11, 3), DateTime(2026, 11, 10)),
+      ]);
+      expect(apply, findsNothing);
+    });
+
+    testWidgets('Cancel closes it and leaves the dates as they were', (
+      tester,
+    ) async {
+      final changed = await reports(tester);
+
+      await tester.tap(find.byKey(const ValueKey('date-preset-yesterday')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('date-range-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(changed, [DateSpan.single(DateTime(2026, 11, 15))]);
+      expect(find.byKey(const Key('date-range-apply')), findsNothing);
     });
   });
 }

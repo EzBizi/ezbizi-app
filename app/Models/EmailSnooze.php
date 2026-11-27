@@ -12,6 +12,11 @@ use Illuminate\Database\Eloquent\Model;
 class EmailSnooze extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A message snoozed (or woken) is its mailbox's change on the live feed. */
+    protected static array $changeParent = ['mailboxes', Mailbox::class, 'mailbox_id'];
+
     use HasUuids;
 
     protected $fillable = [

@@ -1,0 +1,50 @@
+# The queue worker (plan §5.5).
+#
+# Automation actions run here, never inline — a slow external webhook must not
+# delay a user's save. Nothing else on the box processes queued work, so without
+# this every dispatched job sits in queue_jobs forever.
+#
+# ── The two settings that matter ─────────────────────────────────
+#
+# --max-time=3600 recycles the process hourly. A long-lived PHP worker
+# accumulates state, and this codebase has two pieces of it that would be
+# actively dangerous to leak between jobs: TenantContext and SettingsResolver are
+# both singletons. AutomationEngine sets the tenant explicitly per event and
+# restores it in a finally block, so a leak should be impossible — recycling is
+# the belt to that braces, because a cross-tenant write is the one bug the plan
+# says ends the business.
+#
+# --tries=1 because retry policy belongs to the job, not the worker.
+# DeliverAutomationEvent declares its own tries and widening backoff; a
+# worker-level retry count would silently override it.
+#
+# Install:
+#   sudo cp deploy/ezbizi-worker-monday.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ezbizi-worker-monday
+
+[Unit]
+Description=EzBizi queue worker (monday queue)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/ezbizi-current
+ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan queue:work --queue=monday --sleep=1 --tries=1 --max-time=3600 --max-jobs=500
+
+Restart=always
+RestartSec=5
+
+# Give a running job a chance to finish rather than killing it mid-webhook.
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

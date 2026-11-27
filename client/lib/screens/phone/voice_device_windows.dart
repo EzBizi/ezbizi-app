@@ -32,7 +32,7 @@ import 'voice_device.dart';
 /// asked and `getUserMedia` fails. [platformView] exists for that: the Dial tab
 /// mounts it at zero size. It is not a display surface and nothing is drawn in
 /// it — it is there so the permission has somewhere to arrive.
-class WindowsVoiceDevice implements VoiceDevice {
+class WindowsVoiceDevice implements VoiceDevice, SendsDigits {
   /// A browser in a desktop window — same open socket, same no push.
   @override
   String? get pushPlatform => null;
@@ -47,6 +47,9 @@ class WindowsVoiceDevice implements VoiceDevice {
   bool _preparing = false;
   bool _registered = false;
   bool _starting = false;
+
+  @visibleForTesting
+  bool get starting => _starting;
 
   final _ready = Completer<void>();
 
@@ -163,6 +166,15 @@ class WindowsVoiceDevice implements VoiceDevice {
     _starting = true;
 
     try {
+      // A renewal (audit 11-27): the page and device are up, so hand over
+      // the new token only. Reloading would drop a call in progress.
+      final live = _controller;
+      if (live != null && _ready.isCompleted && _settled != null) {
+        _post({'type': 'token', 'token': token});
+
+        return;
+      }
+
       // Idempotent, and the fallback for any caller that skips phase one.
       await prepare();
       final controller = _controller;
@@ -194,6 +206,10 @@ class WindowsVoiceDevice implements VoiceDevice {
       // A WebView2 runtime that is missing or refused to start. The desk has
       // a state for a phone that cannot take a call, and this is it.
       _registered = false;
+    } finally {
+      // Never reset before (audit 11-27): every renewal returned early and
+      // the desk stopped ringing about an hour after launch.
+      _starting = false;
     }
   }
 
@@ -275,6 +291,9 @@ class WindowsVoiceDevice implements VoiceDevice {
 
   @override
   void hangUp() => _post({'type': 'hangup'});
+
+  @override
+  void sendDigits(String digits) => _post({'type': 'digits', 'digits': digits});
 
   @override
   void acceptIncoming() => _post({'type': 'accept'});

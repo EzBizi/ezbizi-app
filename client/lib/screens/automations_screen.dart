@@ -1,5 +1,8 @@
+import '../widgets/module_page_header.dart';
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/automation_catalogue.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
@@ -30,6 +33,11 @@ import 'automation_builder.dart';
 /// Panels stay for the things that genuinely sit BESIDE a row — its run
 /// history, a rehearsal, confirming a delete — which is what a side panel is
 /// for (see side_panel.dart).
+/// On means running: an auto-disabled rule keeps is_active but has stopped,
+/// so its switch reads off and switching it on re-enables it.
+bool _runs(Map<String, dynamic> a) =>
+    a['is_active'] == true && a['disabled_at'] == null;
+
 class AutomationsScreen extends StatefulWidget {
   const AutomationsScreen({
     super.key,
@@ -56,6 +64,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
   /// reading "Off" for a module that was on, until somebody navigated away.
   int _request = 0;
   String? _error;
+  String? _catalogueError;
   List<Map<String, dynamic>> _automations = [];
   AutomationCatalogue? _catalogue;
 
@@ -101,10 +110,18 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     super.initState();
     DeepLinks.pending.addListener(_openLinked);
     _load();
+    // A rule switched, edited or run elsewhere: the list (last run,
+    // counts) re-reads quietly; the rule open in the builder is its own.
+    _live = LiveChanges.of(widget.api).subscribe({'automations'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_openLinked);
     super.dispose();
   }
@@ -120,30 +137,34 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     if (rule != null) _open(rule);
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
-    setState(() {
-      // A spinner only when there is nothing to keep — see AsyncBody. An
-      // organization with no rules yet is the normal starting state, so an
-      // empty list does not mean "not loaded"; the catalogue does, because it
-      // is the same for everyone and arrives with the first answer. Flipping a
-      // automation's switch, or deleting one, leaves the rest of the list up.
-      _loading = _automations.isEmpty && _catalogue == null;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        // A spinner only when there is nothing to keep — see AsyncBody. An
+        // organization with no rules yet is the normal starting state, so an
+        // empty list does not mean "not loaded"; the catalogue does, because it
+        // is the same for everyone and arrives with the first answer. Flipping a
+        // automation's switch, or deleting one, leaves the rest of the list up.
+        _loading = _automations.isEmpty && _catalogue == null;
+        _error = null;
+      });
+    }
 
     final automations = await widget.api.get('/automations');
     // NOT ASKED FOR WHEN THE BUILDER IS NOT THIS PERSON'S. The catalogue is the
     // build tab's own endpoint and now answers 403 without that grant, so
     // requesting it anyway would put "Could not load what this system can
     // automate" across the top of a list that loaded perfectly.
-    final catalogue = _mayOpen('build')
+    final catalogue = _mayOpen('build') && !quiet
         ? await widget.api.get('/automations/catalogue')
         : null;
 
     // Superseded by a newer load — applying this would undo it.
     if (!mounted || request != _request) return;
+    if (quiet && !automations.ok) return;
 
     setState(() {
       _loading = false;
@@ -163,11 +184,13 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
         // Nothing to say: a person without the build tab is not missing
         // anything they can see.
       } else if (catalogue.ok) {
+        _catalogueError = null;
         _catalogue = AutomationCatalogue.fromJson(
           catalogue.data as Map<String, dynamic>,
         );
       } else {
-        _error =
+        // Its own banner: the list stays usable, so a rule can still be switched off (audit 2026-11-27).
+        _catalogueError =
             'Could not load what this system can automate: ${catalogue.message}';
       }
     });
@@ -206,21 +229,23 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
               ? 'Rules that do the next step for you when something happens.'
               : '${_automations.length} '
                     '${_automations.length == 1 ? 'rule' : 'rules'} · '
-                    '${_automations.where((a) => a['is_active'] == true).length} on',
+                    '${_automations.where(_runs).length} on',
           action: _tab != 'rules'
               ? null
-              : Refused(
-                  // Visible and refused, never hidden: somebody looking for
-                  // "New automation" and not finding it concludes the app is
-                  // broken, and never that their role is missing one grant.
-                  reason: noCreate,
-                  child: FilledButton.icon(
-                    key: const ValueKey('tour-automations-new'),
-                    onPressed: (noCreate != null || _catalogue == null)
-                        ? null
-                        : _new,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('New automation'),
+              : ModuleAction(
+                  child: Refused(
+                    // Visible and refused, never hidden: somebody looking for
+                    // "New automation" and not finding it concludes the app is
+                    // broken, and never that their role is missing one grant.
+                    reason: noCreate,
+                    child: FilledButton.icon(
+                      key: const ValueKey('tour-automations-new'),
+                      onPressed: (noCreate != null || _catalogue == null)
+                          ? null
+                          : _new,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('New automation'),
+                    ),
                   ),
                 ),
         ),
@@ -263,6 +288,21 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
   // ── the list ─────────────────────────────────────────────────────
 
   Widget _listTab(BuildContext context) {
+    final catalogueError = _catalogueError;
+    if (catalogueError != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ErrorNote(catalogueError),
+          Expanded(child: _listBody(context)),
+        ],
+      );
+    }
+
+    return _listBody(context);
+  }
+
+  Widget _listBody(BuildContext context) {
     return AsyncBody(
       loading: _loading,
       error: _error,
@@ -307,6 +347,22 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       _catalogue?.triggerIsRaised(automation['trigger_key'] as String?) ==
           false;
 
+  /// A Task Board rule (Jose 11-25): its tag and board names, from the server.
+  static Map<String, dynamic>? _taskBoard(Map<String, dynamic> a) =>
+      a['task_board'] is Map
+      ? Map<String, dynamic>.from(a['task_board'] as Map)
+      : null;
+
+  /// "the Leads board", "the A and B boards", "every Task Board".
+  static String _boardsSaid(Map<String, dynamic> board) {
+    final names = [
+      for (final n in (board['boards'] as List? ?? const [])) '$n',
+    ];
+    if (board['every'] == true || names.isEmpty) return 'every Task Board';
+    if (names.length == 1) return 'the ${names.first} board';
+    return 'the ${names.sublist(0, names.length - 1).join(', ')} and ${names.last} boards';
+  }
+
   /// The module a rule's event belongs to: "Jobs" from "Jobs › Created".
   String _moduleOf(Map<String, dynamic> automation) {
     final trigger = automation['trigger_key'] as String? ?? '';
@@ -340,7 +396,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     final theme = Theme.of(context);
     final words = _query.trim().toLowerCase();
     bool shown(Map<String, dynamic> a) {
-      final on = a['is_active'] == true;
+      final on = _runs(a);
       final keep = switch (_show) {
         'on' => on,
         'off' => !on,
@@ -351,7 +407,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       if (words.isEmpty) return true;
       final said = [
         a['name'],
-        a['description'],
+        a['description_shown'] ?? a['description'],
         _catalogue?.describeTrigger('${a['trigger_key']}'),
         _does(a),
       ].whereType<String>().join(' ').toLowerCase();
@@ -436,21 +492,14 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  SizedBox(
-                    width: 260,
-                    child: TextField(
-                      key: const Key('automations-search'),
-                      onChanged: (text) => setState(() => _query = text),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        prefixIcon: Icon(Icons.search),
-                        hintText: 'Find a rule',
-                      ),
-                    ),
+                  ListSearch(
+                    key: const Key('automations-search'),
+                    hint: 'Find a rule',
+                    onChanged: (text) => setState(() => _query = text),
                   ),
                   chip('all', 'All', _automations.length),
-                  chip('on', 'On', count((a) => a['is_active'] == true)),
-                  chip('off', 'Off', count((a) => a['is_active'] != true)),
+                  chip('on', 'On', count(_runs)),
+                  chip('off', 'Off', count((a) => !_runs(a))),
                   chip('attention', 'Needs attention', count(_needsAttention)),
                 ],
               ),
@@ -483,7 +532,24 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     );
   }
 
+  /// On the Task Board tint the muted grey is 4.15:1 in light (Mobile UI-UX
+  /// 11-25), so a Task Board card's small text takes the full ink.
   Widget _row(BuildContext context, Map<String, dynamic> automation) {
+    if (_taskBoard(automation) == null) return _rowBody(context, automation);
+    final theme = Theme.of(context);
+    final ink = theme.colorScheme.onSurface;
+    return Theme(
+      data: theme.copyWith(
+        colorScheme: theme.colorScheme.copyWith(onSurfaceVariant: ink),
+        textTheme: theme.textTheme.copyWith(
+          bodySmall: theme.textTheme.bodySmall?.copyWith(color: ink),
+        ),
+      ),
+      child: Builder(builder: (context) => _rowBody(context, automation)),
+    );
+  }
+
+  Widget _rowBody(BuildContext context, Map<String, dynamic> automation) {
     final noEdit = _noEdit;
     final noDelete = _noDelete;
     final noCreate = _noCreate;
@@ -491,15 +557,20 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     final coreReason = automation['core_reason'] as String?;
     final runs = automation['runs_count'] as int? ?? 0;
     final trigger = automation['trigger_key'] as String? ?? '';
-    final description = automation['description'] as String?;
+    final description =
+        (automation['description_shown'] ?? automation['description'])
+            as String?;
     final scope = (automation['scope'] as Map?)?['label'] as String?;
 
     final theme = Theme.of(context);
+    final board = _taskBoard(automation);
 
     return Card(
       // The whole card opens the rule (UI queue 73); it used to do nothing,
       // so everything hid in the ⋮ menu.
       clipBehavior: Clip.antiAlias,
+      // A Task Board rule wears its own colour (Jose 11-25).
+      color: board == null ? null : theme.colorScheme.secondaryContainer,
       // A rule a tab depends on wears its own border (Jose, 2026-10-28).
       shape: coreReason == null
           ? null
@@ -545,6 +616,14 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                         if (disabledReason != null)
                           const Tag('Auto-disabled', warn: true),
                         if (coreReason != null) const Tag('Core'),
+                        if (board != null)
+                          Tag(
+                            '${board['label']}',
+                            key: ValueKey(
+                              'automation-board-${automation['id']}',
+                            ),
+                            colour: theme.colorScheme.secondary,
+                          ),
                       ],
                     ),
                   ),
@@ -557,7 +636,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                       label: 'Live — ${automation['name']}',
                       child: Switch(
                         key: const ValueKey('tour-automations-live'),
-                        value: automation['is_active'] as bool? ?? false,
+                        value: _runs(automation),
                         onChanged: noEdit != null
                             ? null
                             : (on) => _setActive(automation, on),
@@ -589,13 +668,15 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                         value: 'runs',
                         child: Text('Run history'),
                       ),
-                      const PopupMenuItem(
+                      // Distinct from "Test against a real event", which
+                      // rehearses and performs nothing. This one really sends,
+                      // so the wording has to say so before it is pressed.
+                      // Needs `update`, like the server (audit 2026-11-27).
+                      refusedMenuItem(
+                        context,
                         value: 'run_now',
-                        // Distinct from "Test against a real event", which
-                        // rehearses and performs nothing. This one really sends,
-                        // so the wording has to say so before it is pressed
-                        // rather than after.
-                        child: Text('Run it now for real'),
+                        label: 'Run it now for real',
+                        reason: noEdit,
                       ),
                       // A rehearsal is authorized as `update`, not `view` —
                       // AutomationsController::test — because rehearsing is part
@@ -630,7 +711,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                   null => '',
                 }}',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.primary,
+                  // Primary on the Task Board tint is 3.69:1 in dark (UI/UX 11-25).
+                  color: board == null
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -796,6 +880,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
             Refused(
               reason: noDelete,
               child: TextButton(
+                // Red: it destroys the rule (phone audit 2026-11-04).
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                ),
                 onPressed: noDelete != null ? null : () => then('delete'),
                 child: const Text('Delete'),
               ),
@@ -827,6 +915,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_taskBoard(automation) case final board?) ...[
+                Tag('${board['label']}', colour: theme.colorScheme.secondary),
+                const SizedBox(height: 8),
+              ],
               Text(
                 'When ${_catalogue?.describeTrigger(trigger) ?? trigger}'
                 '${switch (_does(automation)) {
@@ -837,9 +929,13 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                   color: theme.colorScheme.primary,
                 ),
               ),
-              if ('${automation['description'] ?? ''}'.trim().isNotEmpty) ...[
+              if ('${automation['description_shown'] ?? automation['description'] ?? ''}'
+                  .trim()
+                  .isNotEmpty) ...[
                 const SizedBox(height: 6),
-                Text('${automation['description']}'),
+                Text(
+                  '${automation['description_shown'] ?? automation['description']}',
+                ),
               ],
               const SizedBox(height: 6),
               _lastRun(
@@ -870,7 +966,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
               // pressed: this one really sends.
               TextButton.icon(
                 key: const Key('automation-open-run-now'),
-                onPressed: () => then('run_now'),
+                onPressed: _noEdit == null ? () => then('run_now') : null,
                 icon: const Icon(Icons.play_arrow),
                 label: const Text('Run it now for real'),
               ),
@@ -980,10 +1076,14 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
 
   // ── row actions ──────────────────────────────────────────────────
 
-  Future<void> _setActive(Map<String, dynamic> automation, bool on) async {
+  Future<void> _setActive(
+    Map<String, dynamic> automation,
+    bool on, {
+    bool undoing = false,
+  }) async {
     // Switching off a rule a tab depends on says what stops, first.
     final core = automation['core_reason'] as String?;
-    if (!on && core != null) {
+    if (!on && core != null && !undoing) {
       final go = await showSidePanel<bool>(
         context,
         builder: (context) => SidePanel(
@@ -1007,6 +1107,41 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       );
       if (go != true || !mounted) return;
     }
+    // A Task Board rule says which board changes, on or off (Jose 11-25).
+    final board = _taskBoard(automation);
+    if (board != null && !undoing) {
+      final trigger = automation['trigger_key'] as String? ?? '';
+      final what =
+          'When ${_catalogue?.describeTrigger(trigger) ?? trigger}'
+          '${switch (_does(automation)) {
+            final does? => ' → $does',
+            null => '',
+          }}';
+      final go = await showSidePanel<bool>(
+        context,
+        builder: (context) => SidePanel(
+          title: on
+              ? 'Turn on a Task Board rule?'
+              : 'Turn off a Task Board rule?',
+          width: 480,
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('automation-board-confirm'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(on ? 'Turn it on' : 'Turn it off'),
+            ),
+          ],
+          child: Text(
+            'Turning this ${on ? 'on' : 'off'} changes how ${_boardsSaid(board)} works: $what.',
+          ),
+        ),
+      );
+      if (go != true || !mounted) return;
+    }
     final response = await widget.api.patch(
       '/automations/${automation['id']}',
       {'is_active': on},
@@ -1019,6 +1154,25 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text(response.message)));
       return;
+    }
+
+    // One stray click flipped a live rule with no way back (deep dive
+    // 2026-11-02 #10), so every switch offers Undo.
+    if (!undoing) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            key: const ValueKey('automation-live-undo'),
+            content: Text('${automation['name']} is ${on ? 'on' : 'off'}.'),
+            // An action makes a SnackBar persist by default (Flutter 3.35+); ours time out.
+            persist: false,
+            action: SnackBarAction(
+              label: 'Undo',
+              onPressed: () => _setActive(automation, !on, undoing: true),
+            ),
+          ),
+        );
     }
 
     _load();
@@ -1086,6 +1240,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Delete'),
           ),

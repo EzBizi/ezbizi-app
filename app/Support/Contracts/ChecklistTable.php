@@ -19,7 +19,7 @@ final class ChecklistTable
         $byItem = self::rows($json);
 
         $html = '<table class="checklist"><thead><tr>'
-            .'<th>'.self::e($field->label).'</th>'
+            .'<th>'.e($field->label).'</th>'
             .'<th>Quantity</th>'
             .'<th>Received</th>'
             .'</tr></thead><tbody>';
@@ -27,9 +27,9 @@ final class ChecklistTable
         $added = array_diff(array_keys($byItem), $field->options);
         foreach ([...$field->options, ...$added] as $item) {
             $row = $byItem[$item] ?? ['quantity' => '', 'received' => ''];
-            $html .= '<tr><td>'.self::e((string) $item).'</td>'
-                .'<td>'.self::e($row['quantity']).'</td>'
-                .'<td>'.self::e($row['received']).'</td></tr>';
+            $html .= '<tr><td>'.e((string) $item).'</td>'
+                .'<td>'.e($row['quantity']).'</td>'
+                .'<td>'.e($row['received']).'</td></tr>';
         }
 
         return $html.'</tbody></table>';
@@ -91,10 +91,5 @@ final class ChecklistTable
     public static function encode(array $rows): string
     {
         return json_encode(array_values($rows), JSON_UNESCAPED_UNICODE) ?: '[]';
-    }
-
-    private static function e(string $value): string
-    {
-        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 }

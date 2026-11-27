@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * A named region a franchise works in — "Dallas", "Houston"
  * (docs/superpowers/specs/2026-08-31-scheduling-availability-design.md §2).
  */
-#[Fillable(['organization_id', 'franchise_id', 'name', 'available_from', 'shares_with_id', 'covers_all_zips', 'color', 'center_zip', 'radius_miles', 'states'])]
+#[Fillable(['organization_id', 'franchise_id', 'name', 'available_from', 'shares_with_id', 'covers_all_zips', 'color', 'center_zip', 'radius_miles', 'states', 'latest_windows'])]
 class ServiceArea extends Model implements StatesRetention
 {
     public static function retention(): RetentionPolicy
@@ -72,7 +72,7 @@ class ServiceArea extends Model implements StatesRetention
     protected function casts(): array
     {
         return [
-            'states' => 'array', 'covers_all_zips' => 'boolean', 'available_from' => 'date:Y-m-d', 'capacity_set_at' => 'datetime'];
+            'states' => 'array', 'latest_windows' => 'array', 'covers_all_zips' => 'boolean', 'available_from' => 'date:Y-m-d', 'capacity_set_at' => 'datetime'];
     }
 
     public function slots(): HasMany

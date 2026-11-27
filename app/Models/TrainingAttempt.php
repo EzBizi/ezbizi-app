@@ -20,6 +20,11 @@ class TrainingAttempt extends Model implements CarriesAutomationScope, HoldsPers
 {
     use HasUuids;
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A test taken is its test's change on the live feed (the Dashboard counts move). */
+    protected static array $changeParent = ['training', TrainingTest::class, 'test_id'];
+
 
     // ── §9 data inventory ────────────────────────────────────────
 

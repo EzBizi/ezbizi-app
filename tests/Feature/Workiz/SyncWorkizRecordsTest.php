@@ -97,10 +97,53 @@ class SyncWorkizRecordsTest extends TestCase
         return $this->inTenant($tenant['org'], fn () => WorkizRecord::query()->where('type', $type)->first());
     }
 
+    /** 11-03: the account lists are read in the first ten minutes of the hour only, to stay under Workiz's rate limit. */
+    public function test_the_account_lists_are_read_once_an_hour(): void
+    {
+        $this->branch();
+        $this->fake();
+        $lists = fn () => Http::recorded(fn ($r) => preg_match('#/(jobTypes|adgroups|adGroups|tags|jobSubStatus|customfields|customFields)#', $r->url()))->count();
+
+        $this->travelTo(now()->setTime(9, 25));
+        $this->artisan('ezbizi:sync-workiz-records')->assertSuccessful();
+        $this->assertSame(0, $lists(), 'not at :25');
+
+        $this->travelTo(now()->setTime(10, 5));
+        $this->artisan('ezbizi:sync-workiz-records')->assertSuccessful();
+        $this->assertGreaterThan(0, $lists(), 'at :05');
+    }
+
+    /** Jose 11-04: where a full read starts is the branch's setting, not a date in code. */
+    public function test_a_full_read_starts_at_the_branchs_import_date(): void
+    {
+        [$tenant] = $this->branch();
+        $this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('workiz.import_since', $tenant['org'], '2025-03-01'));
+
+        $this->assertSame('2025-03-01', $this->inTenant($tenant['org'], fn () => \App\Support\Workiz\WorkizRecords::cursor(null, $tenant['franchise'])));
+        $this->assertSame('2023-01-01', \App\Support\Workiz\WorkizRecords::cursor(null), 'no branch: the default');
+    }
+
+    /** Jose 11-10: a tag Workiz renames reaches every mirrored job, though Workiz leaves the jobs' modified time alone. */
+    public function test_a_renamed_tag_is_renamed_on_every_mirrored_job(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $this->fake();
+        $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['tag']])->assertSuccessful();
+        $job = $this->inTenant($tenant['org'], fn () => \App\Models\WorkizJob::query()->create(['franchise_id' => $tenant['franchise']->id,
+            'connection_id' => $connection->id, 'remote_id' => 'J1', 'status' => 'Done', 'payload' => ['Tags' => ['DEPOSIT RECIEVED', 'VIP']], 'synced_at' => now()]));
+
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        $this->fake(['tags' => [['id' => 'TG-1', 'name' => 'DEPOSIT RECEIVED', 'color' => '#00aa00', 'type' => 'job']]]);
+        $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['tag']])->assertSuccessful();
+
+        $this->assertSame(['DEPOSIT RECEIVED', 'VIP'], $this->inTenant($tenant['org'], fn () => $job->fresh()->payload['Tags']));
+    }
+
     public function test_each_type_lands_with_the_columns_readers_filter_on_and_without_the_free_text(): void
     {
         [$tenant] = $this->branch();
         $this->fake();
+        $this->travelTo(now()->setTime(9, 5));
 
         $this->artisan('ezbizi:sync-workiz-records')->assertSuccessful();
 
@@ -272,5 +315,26 @@ class SyncWorkizRecordsTest extends TestCase
         $this->artisan('ezbizi:sync-workiz-records')->assertSuccessful();
 
         Http::assertNothingSent();
+    }
+
+    /** Audit 11-11: a payment Workiz edits or deletes after the 2-day overlap is caught by the nightly whole re-read of the window. */
+    public function test_the_window_re_read_updates_edited_payments_and_marks_deleted_ones(): void
+    {
+        [$tenant] = $this->branch();
+        $at = fn (int $days) => now()->subDays($days)->format('Y-m-d H:i:s');
+        $kept = array_replace(self::RECORDS['payments'], ['id' => 'PAY-KEPT', 'amount' => 100, 'date' => $at(10)]);
+        $gone = array_replace(self::RECORDS['payments'], ['id' => 'PAY-GONE', 'amount' => 50, 'date' => $at(10)]);
+        $old = array_replace(self::RECORDS['payments'], ['id' => 'PAY-OLD', 'amount' => 25, 'date' => $at(60)]);
+        $this->fake(['payments' => [$kept, $gone, $old]]);
+        $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['payment'], '--full' => true])->assertSuccessful();
+
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        $this->fake(['payments' => [array_replace($kept, ['amount' => 120])]]);
+        $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['payment'], '--days' => 35])->assertSuccessful();
+
+        $rows = $this->inTenant($tenant['org'], fn () => WorkizRecord::query()->where('type', 'payment')->get()->keyBy('remote_id'));
+        $this->assertSame(['120.00', 'succeeded'], [(string) $rows['PAY-KEPT']->amount, $rows['PAY-KEPT']->status]);
+        $this->assertSame('deleted', $rows['PAY-GONE']->status);
+        $this->assertNotSame('deleted', $rows['PAY-OLD']->status, 'outside the window: not judged');
     }
 }

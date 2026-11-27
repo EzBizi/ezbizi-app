@@ -115,13 +115,22 @@ final class NewsletterSenders
      * whole point of an unsubscribe is that it takes effect on the next send —
      * a list assembled yesterday must not carry somebody who left this morning.
      *
+     * An opt-out at the organization, or at the company above this scope,
+     * covers this scope too: somebody who left A-1 Chimney has also left its
+     * franchises.
+     *
      * @return array<int, string> lowercased
      */
     public static function unsubscribedIn(Newsletter $newsletter): array
     {
+        $scopes = NewsletterIdentity::coveringScopes($newsletter);
+
         return NewsletterUnsubscribe::query()
-            ->where('scope_type', $newsletter->scope_type)
-            ->where('scope_id', $newsletter->scope_id)
+            ->where(function ($q) use ($scopes) {
+                foreach ($scopes as [$type, $id]) {
+                    $q->orWhere(fn ($w) => $w->where('scope_type', $type)->where('scope_id', $id));
+                }
+            })
             ->pluck('email')
             ->map(fn (string $e) => mb_strtolower($e))
             ->all();

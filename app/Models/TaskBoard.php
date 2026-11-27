@@ -38,7 +38,7 @@ class TaskBoard extends Model implements StatesRetention
 
     public const PRIVATE = 'private';
 
-    protected $fillable = ['organization_id', 'kind', 'company_id', 'franchise_id', 'owner_user_id', 'created_by_user_id', 'name', 'visibility', 'auto_key', 'builtin_columns'];
+    protected $fillable = ['organization_id', 'kind', 'company_id', 'franchise_id', 'owner_user_id', 'created_by_user_id', 'name', 'visibility', 'auto_key', 'builtin_columns', 'edit_mode', 'archived_at', 'folder_id', 'colour', 'position'];
 
     /**
      * The built-in columns a board can relabel or hide (Jose, 2026-10-20):
@@ -60,7 +60,7 @@ class TaskBoard extends Model implements StatesRetention
 
     protected function casts(): array
     {
-        return ['builtin_columns' => 'array'];
+        return ['builtin_columns' => 'array', 'archived_at' => 'datetime', 'position' => 'integer'];
     }
 
     /**
@@ -92,7 +92,8 @@ class TaskBoard extends Model implements StatesRetention
 
     public function groups(): HasMany
     {
-        return $this->hasMany(TaskGroup::class, 'board_id')->orderBy('position');
+        // An archived group (row 69) is off the board until restored.
+        return $this->hasMany(TaskGroup::class, 'board_id')->whereNull('archived_at')->orderBy('position');
     }
 
     public function statuses(): HasMany

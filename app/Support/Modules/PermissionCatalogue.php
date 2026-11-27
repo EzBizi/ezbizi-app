@@ -74,6 +74,15 @@ class PermissionCatalogue
      * @param  string[]  $keys
      * @return string[] sorted, unique
      */
+    /** Whether [key] is done to its holder rather than by them (ModuleDefinition::$passiveActions). */
+    public function isPassive(string $key): bool
+    {
+        $module = $this->registry->get($this->moduleOf($key));
+
+        return $module !== null
+            && in_array(substr($key, strlen($module->key) + 1), $module->passiveActions, true);
+    }
+
     public function withImpliedView(array $keys): array
     {
         $declared = $this->keys();
@@ -85,6 +94,12 @@ class PermissionCatalogue
             }
 
             $result[] = $key;
+
+            // A passive grant (done TO the holder) opens nothing.
+            if ($this->isPassive($key)) {
+                continue;
+            }
+
             // Guaranteed to exist: ModuleDefinition refuses a module without one.
             $result[] = $this->moduleOf($key).'.view';
         }
@@ -151,10 +166,17 @@ class PermissionCatalogue
          * looking for a tab with another name on it is a failure with no error
          * attached to it.
          */
-        foreach ($module?->tabs ?? [] as $tab) {
-            if ($tab->action() === $action) {
-                return $tab->label;
-            }
+        // Several tabs on one action (Project Management's seven) name every
+        // one of them, not the first (roles audit 2026-11-09).
+        $labels = array_values(array_map(
+            fn (TabDefinition $tab) => $tab->label,
+            array_filter($module?->tabs ?? [], fn (TabDefinition $tab) => $tab->action() === $action),
+        ));
+
+        if ($labels !== []) {
+            $last = array_pop($labels);
+
+            return $labels === [] ? $last : implode(', ', $labels).' and '.$last;
         }
 
         return $module?->actionLabels[$action] ?? ucfirst(str_replace('_', ' ', $action));
@@ -186,12 +208,23 @@ class PermissionCatalogue
 
         $keys = $user->isAdministrator()
             ? $this->keys()
-            : array_values(array_intersect($this->keys(), $user->role?->permissionKeys() ?? []));
+            : array_values(array_intersect($this->keys(), array_unique([
+                ...($user->role?->permissionKeys() ?? []),
+                // An inbox given to them by name opens Email for them (User::personalGrantKeys).
+                ...$user->personalGrantKeys(),
+            ])));
 
-        return array_values(array_filter(
+        $keys = array_values(array_filter(
             $keys,
             fn (string $key) => $this->availability->isPermissionAvailable($key, $user->organization),
         ));
+
+        // View as (2026-11-23): never more than the developer holds themselves.
+        if ($user instanceof \App\Support\ViewAs\ViewAsUser) {
+            $keys = array_values(array_intersect($keys, $this->heldBy($user->viewAsActor)));
+        }
+
+        return $keys;
     }
 
     /**
@@ -225,7 +258,13 @@ class PermissionCatalogue
                 // dropped unavailable modules, so this cannot be true while
                 // `available` is false — but it is written as a conjunction
                 // anyway, because a reader should not have to know that.
-                'reachable' => $available && in_array("{$module->key}.view", $held, true),
+                //
+                // Or any of its tabs: Monitoring's Activity and API activity do
+                // not imply monitoring.view (passive, 2026-11-25), yet the screen
+                // must draw for them. Every other tab action implies the view,
+                // so this changes nothing elsewhere.
+                'reachable' => $available && (in_array("{$module->key}.view", $held, true)
+                    || array_intersect(array_map(fn ($t) => "{$module->key}.{$t->action()}", $module->tabs), $held) !== []),
             ];
         }, $this->registry->all()));
     }
@@ -295,6 +334,11 @@ class PermissionCatalogue
                     // quietly adding the missing key.
                     'requires'  => array_values($module->actionRequires[$action] ?? []),
                     'description' => $module->actionDescriptions[$action] ?? null,
+                    // The tab this one sits inside, by its label, so the
+                    // editor nests it the way the app draws it.
+                    'within'    => $this->withinLabel($module, $action),
+                    // Done TO the holder: ticking it must not tick the module.
+                    'passive'   => in_array($action, $module->passiveActions, true),
                 ], $module->actions),
             ];
         }
@@ -318,6 +362,23 @@ class PermissionCatalogue
         });
 
         return array_values($modules);
+    }
+
+    private function withinLabel(ModuleDefinition $module, string $action): ?string
+    {
+        foreach ($module->tabs as $tab) {
+            if ($tab->action() === $action && $tab->within !== null) {
+                foreach ($module->tabs as $parent) {
+                    if ($parent->key === $tab->within) {
+                        return $parent->label;
+                    }
+                }
+
+                return $tab->within;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -423,16 +484,27 @@ class PermissionCatalogue
      * documents at length: validating the list somebody SENT while storing a
      * different, larger one is how the last hole in this file happened.
      *
+     * [$stored] is what the role held before this save. A key it already held
+     * is not refused over a requirement it did not meet then (roles audit,
+     * 2026-11-24): a requirement declared later must not lock a role out of
+     * every edit. It blocks only a newly added tick, the same tolerance the
+     * controller gives a stored key it no longer knows.
+     *
      * @param  string[]  $keys
+     * @param  string[]  $stored
      *
      * @throws ValidationException
      */
-    public function assertRequirementsMet(array $keys): void
+    public function assertRequirementsMet(array $keys, array $stored = []): void
     {
         $granted = $this->withImpliedView($keys);
         $missing = [];
 
         foreach ($granted as $key) {
+            if (in_array($key, $stored, true)) {
+                continue;
+            }
+
             $module = $this->registry->get($this->moduleOf($key));
 
             if ($module === null) {

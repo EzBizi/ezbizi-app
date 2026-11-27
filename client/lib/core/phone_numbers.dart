@@ -66,7 +66,7 @@ String formatPhoneNumber(String? raw) {
 /// The counterpart to [formatPhoneNumber]: that one is for eyes, this one is
 /// for the wire. A field using [PhoneNumberInputFormatter] holds the pretty
 /// form, and every save path must run it back through here — the API, the
-/// database and Twilio all key on E.164, and posting `+1 (305) 724-2199` would
+/// database and Twilio all key on E.164, and posting `+1 (305) 555-0107` would
 /// be stored as a different number from the same digits typed anywhere else.
 ///
 /// Ten digits become `+1XXXXXXXXXX`. Eleven starting with 1 are the same number
@@ -94,7 +94,7 @@ String? toE164(String? typed) {
 
 /// Formats a North American number while it is being typed.
 ///
-/// `3057242199` becomes `+1 (305) 724-2199` as the tenth digit lands. Anything
+/// `3055550107` becomes `+1 (305) 555-0107` as the tenth digit lands. Anything
 /// that cannot be a NANP number — more than eleven digits, a leading 0 or 1 in
 /// the area code, an international `+` — is left exactly as typed, because a
 /// field that rewrites what somebody deliberately entered is worse than one

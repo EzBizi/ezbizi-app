@@ -44,7 +44,7 @@ class MetaAdsReportTest extends TestCase
                 ['2', '', 50.00, 0],
             ] as [$campaign, $region, $spend, $leads]) {
                 MetaAdInsight::query()->create(['connection_id' => $c->id, 'date' => '2026-10-05', 'campaign_id' => $campaign,
-                    'adset_id' => 'as'.$campaign, 'region' => $region, 'spend' => $spend, 'leads' => $leads, 'clicks' => 10, 'impressions' => 100]);
+                    'adset_id' => 'as'.$campaign, 'region' => $region, 'spend' => $spend, 'leads' => 999, 'forms' => $leads, 'clicks' => 10, 'impressions' => 100]);
             }
 
             return [$nj];

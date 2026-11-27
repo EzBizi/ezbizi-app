@@ -4,10 +4,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
+import '../widgets/mention_field.dart';
+import '../widgets/formatted_notes.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/ai_mark.dart';
 import '../widgets/lead_source_details.dart';
@@ -73,6 +77,9 @@ class LeadsScreen extends StatefulWidget {
 }
 
 class _LeadsScreenState extends State<LeadsScreen> {
+  /// Who the open lead's note box @mentioned (monday port, 2026-11-09).
+  final _noteMentions = MentionController();
+
   final _search = TextEditingController();
 
   /// Search runs as you type, a third of a second after the last keystroke.
@@ -80,6 +87,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Timer? _searchDebounce;
 
   bool _loading = true;
+
+  /// A reload with leads already up (the source or a filter changed).
+  bool _refreshing = false;
   bool _syncing = false;
   String? _error;
   String? _notice;
@@ -142,15 +152,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// Empty draws no counts rather than zeros.
   Map<String, int> _unreadBySource = const {};
 
+  /// Named promotions (`promotion_tabs`), newest first: each a tab after
+  /// Promotions holding the answers to it, keyed `promo:<name>` (Shoval,
+  /// 2026-11-06: "Create under leads new tab 'Returning Client Promo'").
+  List<String> _promotionTabs = const [];
+
   /// A phone's sources page is open in place of the list (design 30, 5).
   bool _choosingSource = false;
 
   /// Manage: the Connections page in place of the leads, with its own back
   /// arrow (UI queue 34, Jose's 1 + 4 of 2026-09-30).
   bool _managing = false;
-
-  /// A phone's search box, opened from its icon.
-  bool _searching = false;
 
   /// The lead a phone has open in place of the list, with its own back
   /// arrow: containment, never a page pushed over the app.
@@ -164,12 +176,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// LS Booking too (Jose, 2026-10-01): Google took the booking itself, so
   /// there is nothing to answer.
   // Nothing to reply to (Jose, 2026-10-15: "like ls calls and LS booking").
-  final Set<String> _allLeftOut = {
-    'ls_call',
-    'ls_booking',
-    'ringcentral',
-    'ez_calls',
-  };
+  // Calls holds LS, RC and EZ calls, all three of which were out (2026-11-02).
+  final Set<String> _allLeftOut = {'calls', 'ls_booking'};
 
   /// What All asks for: every source this person sees, less those left out.
   /// Null when nothing is left out, so the request stays unnarrowed.
@@ -178,11 +186,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // Job applicants are never in All (the server leaves them out), so they
     // are not one of All's toggles either.
     final sources = _visibleSources.where((s) => s.$1 != 'job_applicant');
+    final every = [for (final s in sources) ..._allKeysOf(s.$1)];
     final shown = [
       for (final s in sources)
-        if (!_allLeftOut.contains(s.$1)) s.$1,
+        if (!_allLeftOut.contains(s.$1)) ..._allKeysOf(s.$1),
     ];
-    if (shown.length == sources.length) return null;
+    if (shown.length == every.length) return null;
     return shown.isEmpty ? '-' : shown.join(',');
   }
 
@@ -195,30 +204,70 @@ class _LeadsScreenState extends State<LeadsScreen> {
   };
 
   static const _sourceChips = <(String, String)>[
-    // Google, split the way A1 Leads splits it (Jose, 2026-09-28). The API
-    // takes these as a source and narrows Local Services by lead type.
-    ('ls_call', 'LS Call'),
-    ('ls_text', 'LS Text'),
+    // LS, RC and EZ calls in one tab, and LS and EZ texts in another, each
+    // lead keeping its own tag (Jose, 2026-11-02). Picked inside by _groups.
+    ('calls', 'Calls'),
+    ('sms', 'SMS Texts'),
     ('ls_booking', 'LS Booking'),
-    // Calls straight to our own lines, not through Google (Jose, 2026-10-15).
-    ('ringcentral', 'RC Calls'),
-    // EzBizi's own lines (Jose, 2026-10-16): calls owe no reply, texts do.
-    ('ez_calls', 'EZ Calls'),
-    ('ez_texts', 'EZ Texts'),
     ('thumbtack', 'Thumbtack'),
     ('website_chat', 'Chat'),
-    ('website_form', 'Forms'),
+    // Forms and Job applicants, the same way (Jose, 2026-11-02).
+    ('forms', 'Forms'),
     // The review link's sad faces, out of Forms (Jose, 2026-10-19).
     ('bad_rating', 'Bad Ratings'),
     ('website_booking', 'Online Booking'),
-    ('facebook', 'Facebook'),
-    ('instagram', 'Instagram'),
+    // Facebook, Instagram and WhatsApp in one tab, each lead keeping its own
+    // tag (Jose, 2026-11-02; design 166). Picked inside it by _metaSources.
+    ('meta', 'Meta'),
     ('workiz', 'Workiz'),
-    ('whatsapp', 'WhatsApp'),
-    // Not a source: people asking for a job, by Grok or by hand (Jose,
-    // 2026-10-09). Their own tab, out of All.
-    ('job_applicant', 'Job applicants'),
+    // Answers to Memberships › Promotions texts (Jose, 2026-11-06).
+    ('promotions', 'Promotions'),
+    // Every lead a Recovery text went to, whatever its source, so replies are
+    // answered (Jose, 2026-11-16). Not a source: never one of All's keys.
+    ('recovery', 'Recovery'),
   ];
+
+  /// The rail tabs that hold several sources, each its own permission tick
+  /// and its own chip inside the tab (design 166; Jose, 2026-11-02).
+  static const _groups = <String, List<(String, String)>>{
+    // Google, split the way A1 Leads splits it (Jose, 2026-09-28): the API
+    // narrows Local Services by lead type. RC Calls are calls straight to our
+    // own lines (2026-10-15); EZ are EzBizi's own lines (2026-10-16).
+    'calls': [
+      ('ls_call', 'LS Call'),
+      ('ringcentral', 'RC Calls'),
+      ('ez_calls', 'EZ Calls'),
+    ],
+    'sms': [('ls_text', 'LS Text'), ('ez_texts', 'EZ Texts')],
+    // Job applicants are not a source: people asking for a job, by Grok or by
+    // hand (2026-10-09). Never in All.
+    'forms': [('website_form', 'Forms'), ('job_applicant', 'Job applicants')],
+    'meta': [
+      ('facebook', 'Facebook'),
+      ('instagram', 'Instagram'),
+      ('whatsapp', 'WhatsApp'),
+    ],
+  };
+
+  /// The one source picked inside a group's tab; null is all of them.
+  String? _pick;
+
+  List<(String, String)> _visibleIn(String group) => [
+    for (final m in _groups[group] ?? const <(String, String)>[])
+      if (_maySee(m.$1)) m,
+  ];
+
+  /// What a source asks the server for: a group is its sources.
+  Iterable<String> _keysOf(String source) => _groups.containsKey(source)
+      ? _visibleIn(source).map((m) => m.$1)
+      : [source];
+
+  /// The same, for All, which never holds job applicants.
+  Iterable<String> _allKeysOf(String source) =>
+      _keysOf(source).where(
+        (k) =>
+            k != 'job_applicant' && k != 'recovery' && !k.startsWith('promo:'),
+      );
 
   /// The strip, in `_sourceChips` order with All in front. Icons only exist
   /// here: nothing else in the app draws a per-source mark, so these are the
@@ -226,12 +275,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// added -- the strip is built from `_sourceChips`, so a source added there
   /// and not here would land with the wrong icon rather than none.
   static const _sourceIcons = <IconData>[
-    Icons.call_outlined, // Google Local Services calls
-    Icons.sms_outlined, // Google Local Services texts
+    Icons.call_outlined, // Calls: LS, RC and EZ
+    Icons.sms_outlined, // SMS Texts: LS and EZ
     Icons.event_available_outlined, // booked through Google directly
-    Icons.phone_callback_outlined, // RingCentral: a call to our own line
-    Icons.phone_in_talk_outlined, // EZ Calls: a call to an EzBizi line
-    Icons.textsms_outlined, // EZ Texts: a text to an EzBizi line
     Icons.push_pin, // Thumbtack, which is what a thumbtack is
     Icons.chat_bubble_outline,
     Icons.description,
@@ -240,15 +286,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // Messenger and Instagram have no Material glyph of their own, and a
     // wrong-brand icon reads worse than a generic one. These say "a message"
     // and "a photo account" rather than pretending to be the logos.
-    Icons.forum_outlined,
-    Icons.camera_alt_outlined,
+    Icons.forum_outlined, // Meta: Messenger, Instagram and WhatsApp
     // Workiz is a book of records rather than a channel somebody wrote in,
     // which is the difference this whole source turns on - no thread, no
     // reply, and absent from the Unreplied filter. A ledger, not a message.
     Icons.assignment_outlined,
-    // WhatsApp: no Material logo either; a chat bubble, like Messenger's.
-    Icons.chat_outlined,
-    Icons.badge_outlined, // job applicants
+    Icons.campaign_outlined, // Promotions: answers to a promotion text
+    Icons.replay_outlined, // Recovery: leads a win-back text went to
   ];
 
   /// The sources this person was granted, with their icons - Jose,
@@ -268,12 +312,25 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// one endpoint cannot be gated by hiding a chip.
   List<(String, String, IconData)> get _visibleSources => [
     for (var i = 0; i < _sourceChips.length; i++)
-      if (_maySee(_sourceChips[i].$1))
-        (_sourceChips[i].$1, _sourceChips[i].$2, _sourceIcons[i]),
+      if (_maySee(_sourceChips[i].$1)) ...[
+        (_sourceChips[i].$1, _labelOf(_sourceChips[i]), _sourceIcons[i]),
+        if (_sourceChips[i].$1 == 'promotions')
+          for (final name in _promotionTabs)
+            ('promo:$name', name, Icons.campaign_outlined),
+      ],
   ];
+
+  /// A role without Forms sees "Job applicants", not a Forms tab holding
+  /// only applicants (applicants are visible to everybody).
+  String _labelOf((String, String) chip) {
+    final inside = _visibleIn(chip.$1);
+    return chip.$1 == 'forms' && inside.length == 1 ? inside.single.$2 : chip.$2;
+  }
 
   bool _maySee(String source) =>
       source == 'job_applicant' ||
+      (source.startsWith('promo:') && _maySee('promotions')) ||
+      (_groups[source]?.any((m) => _maySee(m.$1)) ?? false) ||
       (widget.session.me?.can(
             'leads.${source.startsWith('ls_') ? 'local_services' : source}.view',
           ) ??
@@ -281,7 +338,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   void _setSource(String? source) {
     if (source == _source) return;
-    setState(() => _source = source);
+    setState(() {
+      _source = source;
+      _pick = null;
+    });
     _load();
   }
 
@@ -365,30 +425,60 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
     if (wanted != null && _visibleSources.any((c) => c.$1 == wanted)) {
       _source = wanted;
+    } else if (wanted != null) {
+      // A source inside a group opens the group with it picked.
+      for (final group in _groups.keys) {
+        if (_visibleIn(group).any((m) => m.$1 == wanted)) {
+          _source = group;
+          _pick = wanted;
+        }
+      }
     }
 
-    _selectedId = widget.initialLeadId;
-    _toOpen = widget.initialLeadId;
+    // A notification's lead opens once. The shell hands it to every remount,
+    // and a company switch remounts, so without this every switch picked by
+    // hand snapped back to it. Switching company unselects (Jose, 2026-11-05);
+    // only the remount the open itself caused ([_movedFor]) opens it again.
+    final lead = widget.initialLeadId;
+    if (lead == null || lead != _opened || lead == _movedFor) {
+      _selectedId = lead;
+      _toOpen = lead;
+    }
+    _opened = lead;
+    _movedFor = null;
 
     _load();
-    _poll = Timer.periodic(_pollEvery, (_) => _load());
+    // The slow poll still carries counts no record write moves (who read
+    // what); the change feed brings a synced or webhooked lead within ~10 s.
+    _poll = Timer.periodic(_pollEvery, (_) => _load(quiet: true));
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'leads'},
+      (_) => _load(quiet: true),
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _poll?.cancel();
     _searchDebounce?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a background re-read. No dimming (it rebuilds the list and
+  /// loses its scroll) and a failure keeps the rows.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
     setState(() {
       // "Nothing on screen yet", not "a request is in flight" — a refresh after
       // a status change keeps the list rendered rather than tearing it down.
       _loading = _leads.isEmpty;
+      _refreshing = !quiet && _leads.isNotEmpty;
       _error = null;
     });
 
@@ -401,9 +491,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
     setState(() {
       _loading = false;
+      _refreshing = false;
 
       if (!response.ok) {
-        _error = response.message;
+        if (!quiet || _leads.isEmpty) _error = response.message;
         return;
       }
 
@@ -430,6 +521,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
       _dispatchers = [
         for (final d in meta['dispatchers'] as List? ?? const []) '$d',
       ];
+      _promotionTabs = [
+        for (final n in meta['promotion_tabs'] as List? ?? const []) '$n',
+      ];
     });
 
     if (response.ok && _toOpen != null) await _openWanted(_toOpen!);
@@ -443,8 +537,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
     if (_overdue) 'overdue': '1',
     if (_followUp) 'follow_up': '1',
     if (_starred) 'starred': '1',
-    'source': ?_source,
-    'sources': ?_allSources,
+    'source': ?(_groups.containsKey(_source) ? null : _source),
+    'sources': ?(_groups.containsKey(_source)
+        ? (_pick ?? _keysOf(_source!).join(','))
+        : _allSources),
     if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
     'charge': ?_charge,
     'ivr': ?_ivr,
@@ -456,8 +552,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Map<String, String> get _dateRange {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    String day(DateTime d) =>
-        '${d.year}-${'${d.month}'.padLeft(2, '0')}-${'${d.day}'.padLeft(2, '0')}';
     final monday = today.subtract(Duration(days: today.weekday - 1));
     final (DateTime, DateTime)? range = switch (_dates) {
       'today' => (today, today),
@@ -475,7 +569,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       '30' => (today.subtract(const Duration(days: 29)), today),
       _ => null,
     };
-    return range == null ? const {} : {'from': day(range.$1), 'to': day(range.$2)};
+    return range == null ? const {} : {'from': formatCalendarDay(range.$1), 'to': formatCalendarDay(range.$2)};
   }
 
   /// Charge, IVR source, dispatcher and dates, under the three filters.
@@ -586,12 +680,56 @@ class _LeadsScreenState extends State<LeadsScreen> {
       setState(() => _leads = [lead!, ..._leads]);
     }
 
+    // Opened from a notification while the view is on another company: move
+    // the view to the lead's place first, or every reply is refused as out
+    // of view (Jose, 2026-11-05). The switch remounts this screen with the
+    // same lead, which then opens here.
+    if (await _viewLeadsPlace(lead) || !mounted) return;
+
     setState(() => _selectedId = id);
 
-    if (mounted && MediaQuery.sizeOf(context).width < 900) {
+    if (mounted && MediaQuery.sizeOf(context).width < 600) {
       _openThread(lead);
     }
   }
+
+  /// Switches the view to [lead]'s franchise, or its company, when the view
+  /// does not cover it and this person can go there. True when it switched.
+  Future<bool> _viewLeadsPlace(Map<String, dynamic> lead) async {
+    final me = widget.session.me;
+    if (me == null || me.scope.type == 'organization') return false;
+    final franchise = (lead['franchise'] as Map?)?['id'] as String?;
+    final company = (lead['company'] as Map?)?['id'] as String?;
+
+    if (franchise != null &&
+        me.franchisesInView.any((f) => f.id == franchise)) {
+      return false;
+    }
+    // A company view covers its franchises, listed or not.
+    if (company != null && me.companiesInView.any((c) => c.id == company)) {
+      return false;
+    }
+    final String target;
+    if (franchise != null &&
+        me.switchableFranchises.any((f) => f.id == franchise)) {
+      target = 'franchise:$franchise';
+    } else if (company != null &&
+        me.switchableCompanies.any((c) => c.id == company)) {
+      target = 'company:$company';
+    } else {
+      return false;
+    }
+
+    _movedFor = lead['id'] as String?;
+    await widget.session.setScope(target);
+    return true;
+  }
+
+  /// The notification's lead already opened, and the one whose open switched
+  /// the view (its remount opens it once more). Static because a switch
+  /// remounts this screen. ponytail: one id each, all one shell hands over.
+  static String? _opened;
+  static String? _movedFor;
 
   Future<void> _sync() async {
     setState(() {
@@ -725,27 +863,39 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // says which source is showing and opens a page of them.
     final body = LayoutBuilder(
       builder: (context, constraints) {
-        final desk = constraints.maxWidth >= 900;
-        return desk ? _desk(theme) : _phone(theme);
+        if (constraints.maxWidth >= 900) return _desk(theme);
+        // The open iPhone Duo, an iPad mini, a foldable (design 206): the
+        // phone's header over the list, the conversation beside it.
+        if (constraints.maxWidth >= 600) return _fold(theme);
+        return _phone(theme);
       },
     );
     // (?) runs the open source's own walkthrough, by the server's name for
     // its tab (Jose, 2026-10-14: walkthroughs for "all the sub tabs"). The
-    // three Local Services chips are one tab, the module's own tour.
+    // group tabs (Calls, SMS Texts, Meta, Forms) have their own, and a chip
+    // picked inside one runs that source's. LS Booking is the module's own.
     final tab = const {
+      'calls': 'Calls',
+      'ls_call': 'Calls',
+      'sms': 'SMS Texts',
+      'ls_text': 'SMS Texts',
+      'facebook': 'Messenger',
+      'instagram': 'Instagram',
+      'job_applicant': 'Forms',
       'thumbtack': 'Thumbtack',
       'website_chat': 'Chat',
       'website_form': 'Forms',
       'website_booking': 'Online Booking',
-      'facebook': 'Messenger',
-      'instagram': 'Instagram',
+      'meta': 'Meta',
+      'forms': 'Forms',
       'workiz': 'Workiz',
       'whatsapp': 'WhatsApp',
       'ringcentral': 'RC Calls',
       'ez_calls': 'EZ Calls',
       'ez_texts': 'EZ Texts',
+      'promotions': 'Promotions',
       'bad_rating': 'Bad Ratings',
-    }[_source];
+    }[_pick ?? _source];
     return tab == null ? body : OpenTabMark(tab, child: body);
   }
 
@@ -769,8 +919,20 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ],
   );
 
+  Widget _fold(ThemeData theme) {
+    if (_choosingSource) return _sourcesPage(theme);
+    if (_moreFilters) return _phoneFilters(theme);
+    return _twoPane(
+      theme,
+      header: _phoneHeader(theme),
+      minList: 300,
+      minThread: 340,
+    );
+  }
+
   Widget _phone(ThemeData theme) {
     if (_choosingSource) return _sourcesPage(theme);
+    if (_moreFilters) return _phoneFilters(theme);
 
     final id = _phoneLeadId;
     if (id != null) {
@@ -793,6 +955,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     required void Function(Map<String, dynamic> lead) onTap,
   }) => AsyncBody(
     loading: _loading,
+    refreshing: _refreshing,
     error: _error,
     onRetry: _load,
     child: _leads.isEmpty
@@ -850,14 +1013,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   /// Unread leads behind a source; for All, behind every source it holds.
   int _unreadIn(String? key) => key != null
-      ? _unreadBySource[key] ?? 0
+      ? _keysOf(key).fold(0, (sum, k) => sum + (_unreadBySource[k] ?? 0))
       : _visibleSources
-            .where((s) => s.$1 != 'job_applicant' && !_allLeftOut.contains(s.$1))
-            .fold(0, (sum, s) => sum + (_unreadBySource[s.$1] ?? 0));
+            .where((s) => !_allLeftOut.contains(s.$1))
+            .expand((s) => _allKeysOf(s.$1))
+            .fold(0, (sum, k) => sum + (_unreadBySource[k] ?? 0));
 
   /// A source whose accounts are not delivering: Google refusing on quota,
   /// or a connection broken or revoked.
   bool _failing(String key) {
+    if (_groups.containsKey(key)) return _keysOf(key).any(_failing);
     final provider = switch (key) {
       'ls_call' || 'ls_text' => 'google_ads',
       'thumbtack' => 'thumbtack',
@@ -966,6 +1131,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   // ── the list's own controls ──────────────────────────────────────
 
+  /// Search, status and Filters share one height (Jose, 2026-11-02: "these 3
+  /// fields have different sizes"): the theme's 16 px padding, less 4.
+  static const _barPadding = EdgeInsets.symmetric(horizontal: 12, vertical: 12);
+  static const _barHeight = EzBiziTheme.controlHeight;
+
   Widget _searchField() => TextField(
     key: const ValueKey('tour-leads-search'),
     controller: _search,
@@ -979,11 +1149,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
     },
     decoration: InputDecoration(
       isDense: true,
+      // Its 24-high hint line: 10 + 24 + 10 fills the 44 slot exactly.
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       prefixIcon: const Icon(Icons.search, size: 20),
+      // Material's 48 floor on an icon outgrew the 44 slot (search_picker).
+      prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 24),
+      suffixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 24),
       // Both, because somebody has one or the other in front of them and
       // should not have to know which the box wants.
       hintText: 'Search name, phone or message',
-      border: const OutlineInputBorder(),
       suffixIcon: _search.text.isEmpty
           ? null
           : IconButton(
@@ -1002,6 +1176,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     key: const ValueKey('tour-leads-status'),
     value: _status,
     isDense: true,
+    contentPadding: _barPadding,
     options: [
       for (final entry in _statuses.entries)
         SearchOption(value: entry.key, label: entry.value),
@@ -1018,22 +1193,37 @@ class _LeadsScreenState extends State<LeadsScreen> {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      if (_groups.containsKey(_source)) _inGroup(theme),
       // Design 162 (option 1 + phone 4): over the list, never the title row.
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-        child: LayoutBuilder(
+        // Standard density: the desktop's compact one drew the field and the
+        // picker 36 high in their 44 slots, beside a 44 Filters button.
+        child: Theme(
+          data: theme.copyWith(visualDensity: VisualDensity.standard),
+          child: LayoutBuilder(
           builder: (context, box) => Row(
             children: [
-              Expanded(child: _searchField()),
+              Expanded(
+                child: SizedBox(height: _barHeight, child: _searchField()),
+              ),
               const SizedBox(width: 8),
-              SizedBox(width: 140, child: _statusPicker()),
+              SizedBox(
+                width: 140,
+                height: _barHeight,
+                child: _statusPicker(),
+              ),
               const SizedBox(width: 8),
               // Charge, IVR, dispatcher, dates and the sources in All, behind
               // one button with a count (UI queue 108, design 1); the icon
               // alone in a narrow list.
-              _filtersButton(compact: box.maxWidth < 420),
+              SizedBox(
+                height: _barHeight,
+                child: _filtersButton(compact: box.maxWidth < 420),
+              ),
             ],
           ),
+        ),
         ),
       ),
       _filterRow(theme, withStatus: false),
@@ -1098,16 +1288,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
   }
 
   List<Widget> _quickFilters(ThemeData theme, {required bool withStatus}) => [
-        FilterChip(
-          key: const ValueKey('filter-unread'),
-          label: const Text('Unread'),
-          selected: _unread,
-          visualDensity: VisualDensity.compact,
-          onSelected: (on) => _setFilters(unread: on),
-        ),
+        // No Unread chip (Jose, 2026-11-02: "remove the unread filter").
         FilterChip(
           key: const ValueKey('filter-unreplied'),
+          avatar: Icon(
+            Icons.reply,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
           label: const Text('Unreplied'),
+          showCheckmark: false,
           selected: _unreplied,
           visualDensity: VisualDensity.compact,
           onSelected: (on) => _setFilters(unreplied: on),
@@ -1144,7 +1334,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ),
         FilterChip(
           key: const ValueKey('filter-starred'),
+          avatar: Icon(
+            Icons.star,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
           label: const Text('Starred'),
+          showCheckmark: false,
           selected: _starred,
           visualDensity: VisualDensity.compact,
           onSelected: (on) => _setFilters(starred: on),
@@ -1157,6 +1353,46 @@ class _LeadsScreenState extends State<LeadsScreen> {
           icon: const Icon(Icons.done_all, size: 20),
         ),
   ];
+
+  /// Inside a group (Meta, Calls, SMS Texts, Forms): all, or one, each with
+  /// its unread count (design 166, worked like the In All row).
+  Widget _inGroup(ThemeData theme) {
+    final group = _source!;
+    final label = _labelOf(_sourceChips.firstWhere((c) => c.$1 == group));
+
+    // One literal key for every group's chips: the walkthroughs anchor on it.
+    return KeyedSubtree(
+      key: const ValueKey('group-sources'),
+      child: Padding(
+        key: ValueKey('$group-sources'),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: [
+            for (final m in <(String?, String)>[
+              (null, 'All $label'),
+              ..._visibleIn(group),
+            ])
+              ChoiceChip(
+                key: ValueKey('$group-source-${m.$1 ?? 'all'}'),
+                showCheckmark: false,
+                visualDensity: VisualDensity.compact,
+                label: Text(
+                  '${m.$2} ${_unreadIn(m.$1 ?? group)}',
+                  style: theme.textTheme.labelSmall,
+                ),
+                selected: _pick == m.$1,
+                onSelected: (_) {
+                  setState(() => _pick = m.$1);
+                  _load();
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   /// Under All: which sources it holds, one toggle each, by the same icons
   /// the sources wear (Jose, 2026-09-29: "on ALL we should have filters for
@@ -1178,7 +1414,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
             ),
           ),
         ),
-        for (final s in _visibleSources.where((s) => s.$1 != 'job_applicant'))
+        for (final s in _visibleSources.where(
+          (s) => s.$1 != 'job_applicant' && !s.$1.startsWith('promo:'),
+        ))
           FilterChip(
             key: ValueKey('all-source-${s.$1}'),
             tooltip: _allLeftOut.contains(s.$1)
@@ -1242,70 +1480,175 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   // ── the phone (mobile 5) ─────────────────────────────────────────
 
-  Widget _phoneHeader(ThemeData theme) => Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 4, 6),
-        child: Row(
-          children: [
-            Expanded(child: _sourceButton(theme)),
-            IconButton(
-              key: const ValueKey('search-open'),
-              tooltip: _searching ? 'Close search' : 'Search',
-              icon: Icon(_searching ? Icons.search_off : Icons.search),
-              onPressed: () {
-                if (_searching && _search.text.isNotEmpty) {
-                  _search.clear();
-                  _load();
-                }
-                setState(() => _searching = !_searching);
-              },
-            ),
-            IconButton(
-              key: const ValueKey('leads-fetch'),
-              tooltip: 'Fetch new leads now',
-              onPressed: _syncing ? null : _sync,
-              icon: _syncing
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.sync),
-            ),
-          ],
+  /// What the phone's one Filters button counts: everything its page sets.
+  int get _phoneFiltersSet =>
+      [
+        _source != null,
+        _unreplied,
+        _overdue,
+        _followUp,
+        _starred,
+        _status.isNotEmpty,
+        _allLeftOut.isNotEmpty,
+      ].where((on) => on).length +
+      _foldedSet;
+
+  /// Design 171 (option 1): search, one Filters button and Fetch, then only
+  /// the quick chips that are on. The sources, the chips, status, the
+  /// takeover filters and In All live on the Filters page: as rows they took
+  /// half the screen before the first lead (Jose, 2026-11-03: "mobile is a
+  /// mess").
+  Widget _phoneHeader(ThemeData theme) {
+    final current = _visibleSources.where((s) => s.$1 == _source).firstOrNull;
+    final on = [
+      if (current != null)
+        ActionChip(
+          key: const ValueKey('leads-source-chip'),
+          avatar: Icon(current.$3, size: 16),
+          label: Text(current.$2),
+          visualDensity: VisualDensity.compact,
+          onPressed: () => setState(() => _moreFilters = true),
         ),
-      ),
-      if (_searching || _search.text.isNotEmpty)
+      for (final c in _quickFilters(theme, withStatus: false))
+        if (c is FilterChip && c.selected) c,
+    ];
+    final n = _phoneFiltersSet;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-          child: _searchField(),
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: SizedBox(height: _barHeight, child: _searchField()),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: _barHeight,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('leads-more-filters'),
+                  onPressed: () => setState(() => _moreFilters = true),
+                  icon: const Icon(Icons.tune, size: 18),
+                  label: Text(n > 0 ? 'Filters ($n)' : 'Filters'),
+                ),
+              ),
+              IconButton(
+                key: const ValueKey('leads-fetch'),
+                tooltip: 'Fetch new leads now',
+                onPressed: _syncing ? null : _sync,
+                icon: _syncing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync),
+              ),
+            ],
+          ),
         ),
-      _filterRow(theme, withStatus: true),
-      // Phone (UI queue 103, 4): the four takeover filters behind one button.
-      Align(
-        alignment: AlignmentDirectional.centerStart,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 6),
-          child: TextButton.icon(
-            key: const ValueKey('leads-more-filters'),
-            onPressed: () => setState(() => _moreFilters = !_moreFilters),
-            icon: Icon(_moreFilters ? Icons.expand_less : Icons.tune, size: 18),
-            label: Text(
-              [_charge, _ivr, _dispatcher, _dates].any((v) => v != null)
-                  ? 'More filters (${[_charge, _ivr, _dispatcher, _dates].where((v) => v != null).length})'
-                  : 'More filters',
+        if (_groups.containsKey(_source)) _inGroup(theme),
+        if (on.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: SingleChildScrollView(
+              key: const ValueKey('tour-leads-filters'),
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  for (final (i, c) in on.indexed) ...[
+                    if (i > 0) const SizedBox(width: 6),
+                    c,
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ..._alerts(theme),
+      ],
+    );
+  }
+
+  /// The phone's Filters page, in place of the list like the sources page.
+  Widget _phoneFilters(ThemeData theme) {
+    void close() => setState(() => _moreFilters = false);
+    final label = theme.textTheme.labelMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w700,
+    );
+    Widget heading(String text) => Padding(
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 6),
+      child: Text(text, style: label),
+    );
+
+    return Column(
+      key: const ValueKey('leads-filters-page'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+          child: Row(
+            children: [
+              IconButton(
+                key: const ValueKey('filters-back'),
+                tooltip: 'Back to the leads',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: close,
+              ),
+              Expanded(
+                child: Text('Filters', style: theme.textTheme.titleMedium),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: 12),
+            children: [
+              heading('Source'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: SizedBox(
+                  height: _barHeight,
+                  child: _sourceButton(theme),
+                ),
+              ),
+              if (_groups.containsKey(_source)) _inGroup(theme),
+              heading('Show only'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: _quickFilters(theme, withStatus: true),
+                ),
+              ),
+              heading('More'),
+              _takeoverFilters(),
+              if (_source == null && _visibleSources.length > 1) _inAll(theme),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: FilledButton(
+              key: const ValueKey('filters-done'),
+              onPressed: close,
+              child: const Text('Show leads'),
             ),
           ),
         ),
-      ),
-      if (_moreFilters) _takeoverFilters(),
-      if (_source == null && _visibleSources.length > 1) _inAll(theme),
-      ..._alerts(theme),
-    ],
-  );
+      ],
+    );
+  }
 
   /// Which source is showing and how many are unread; it opens the sources.
   Widget _sourceButton(ThemeData theme) {
@@ -1358,6 +1701,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// What stands behind a source, said under its name on the phone's page.
   String? _sourceState(String? key) {
     if (key == null) return 'Every source below';
+    // Calls and SMS Texts say what their Google half stands on.
+    if (key == 'calls' || key == 'sms') {
+      return _sourceState(key == 'calls' ? 'ls_call' : 'ls_text');
+    }
     if (key == 'ls_call' || key == 'ls_text') {
       if (_delayedSince != null) return 'Delayed: Google is refusing requests';
       if (_failing(key)) return 'Not delivering: an account needs reconnecting';
@@ -1373,9 +1720,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ? 'No Thumbtack account connected'
           : '$n Thumbtack ${n == 1 ? 'business' : 'businesses'}';
     }
-    if (key == 'website_chat' || key == 'website_form' || key == 'website_booking') {
+    if (key == 'website_chat' || key == 'website_form' || key == 'website_booking' || key == 'forms') {
       return 'From your websites';
     }
+
     return null;
   }
 
@@ -1462,26 +1810,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget _phoneThread(ThemeData theme, Map<String, dynamic> lead) {
     void close() => setState(() => _phoneLeadId = null);
 
+    // Design 171: the way back is the start of the thread's own bar.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-          child: Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton.icon(
-              key: const ValueKey('thread-back'),
-              onPressed: close,
-              icon: const Icon(Icons.arrow_back),
-              label: const Text('All leads'),
-            ),
-          ),
-        ),
         Expanded(
           child: LeadThread(
             key: ValueKey('thread-${lead['id']}'),
             api: widget.api,
             lead: lead,
+            onBack: close,
             // Deciding what a lead is ends the visit: back to the list, which
             // reloads with the new status, rather than a stale control on a
             // screen holding the row as it was.
@@ -1493,6 +1831,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
             onReplied: _load,
             onStar: (on) => _mark(lead, starred: on),
             onNote: (text) => _mark(lead, note: text, clearNote: text == null),
+            noteMentions: _noteMentions,
             session: widget.session,
             onBooked: _booked,
             onHidden: () async {
@@ -1561,10 +1900,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
     String? note,
     bool clearNote = false,
   }) async {
+    final mentions = note == null ? const <String>[] : _noteMentions.ids(NotesMarkup.plain(note));
     final response = await widget.api.patch('/leads/${lead['id']}', {
       'starred': ?starred,
       if (note != null || clearNote) 'note': note,
+      if (mentions.isNotEmpty) 'mentions': mentions,
     });
+    _noteMentions.clear();
     if (!mounted) return null;
     if (!response.ok) {
       setState(() => _notice = response.message);
@@ -1607,14 +1949,19 @@ class _LeadsScreenState extends State<LeadsScreen> {
     });
   }
 
-  Widget _twoPane(ThemeData theme) {
+  Widget _twoPane(
+    ThemeData theme, {
+    Widget? header,
+    double minList = _minListPx,
+    double minThread = _minThreadPx,
+  }) {
     final selected = _selected;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final maxList = (width - _minThreadPx).clamp(_minListPx, width);
-        final listWidth = (width * _listShare).clamp(_minListPx, maxList);
+        final maxList = (width - minThread).clamp(minList, width);
+        final listWidth = (width * _listShare).clamp(minList, maxList);
 
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1624,14 +1971,18 @@ class _LeadsScreenState extends State<LeadsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _listHeader(theme),
+                  header ?? _listHeader(theme),
                   const Divider(height: 1),
                   Expanded(
                     child: _listBody(
                       theme,
                       selectedId: selected?['id'] as String?,
-                      onTap: (lead) =>
-                          setState(() => _selectedId = lead['id'] as String?),
+                      // Both, so folding the Duo keeps this lead open.
+                      onTap: (lead) => setState(() {
+                        _selectedId = lead['id'] as String?;
+                        _phoneLeadId = _selectedId;
+                        _phoneLeadAsOpened = lead;
+                      }),
                     ),
                   ),
                 ],
@@ -1646,8 +1997,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                 behavior: HitTestBehavior.opaque,
                 onHorizontalDragUpdate: (d) => setState(() {
                   _listShare =
-                      (listWidth + d.delta.dx).clamp(_minListPx, maxList) /
-                      width;
+                      (listWidth + d.delta.dx).clamp(minList, maxList) / width;
                 }),
                 onHorizontalDragEnd: (_) => widget.session.setPreference(
                   'leads.list_percent',
@@ -1674,6 +2024,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       onStar: (on) => _mark(selected, starred: on),
                       onNote: (text) =>
                           _mark(selected, note: text, clearNote: text == null),
+                      noteMentions: _noteMentions,
                       session: widget.session,
                       onBooked: _booked,
                       onHidden: _load,
@@ -1689,6 +2040,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// arrow: never a page pushed over the app (the containment rule).
   void _openThread(Map<String, dynamic> lead) => setState(() {
     _phoneLeadId = lead['id'] as String?;
+    // And for the two panes, so unfolding the Duo shows this one.
+    _selectedId = _phoneLeadId;
     _phoneLeadAsOpened = lead;
   });
 
@@ -1723,7 +2076,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ? const <String>[]
         : [
             for (final s in _visibleSources)
-              if (_allLeftOut.contains(s.$1) && (_unreadBySource[s.$1] ?? 0) > 0)
+              if (_allLeftOut.contains(s.$1) && _unreadIn(s.$1) > 0)
                 s.$2,
           ];
     return [
@@ -1739,10 +2092,21 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget _empty(ThemeData theme) {
     final connected = _anyGoogleAds;
     final canConnect = _canConnect;
+    // UI pass 11-16: with Unreplied on, eight leads read "No enquiries yet".
+    final filtered =
+        _search.text.trim().isNotEmpty ||
+        _unreplied ||
+        _overdue ||
+        _followUp ||
+        _starred ||
+        _status.isNotEmpty ||
+        _foldedSet > 0;
 
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
+      child: Container(
+        // The text ran to the screen's edges on a phone.
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        constraints: const BoxConstraints(maxWidth: 420 + 48),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1754,7 +2118,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
             const SizedBox(height: 12),
             Text(
               connected
-                  ? (_sourceLabel == null
+                  ? (filtered
+                        ? 'No leads match these filters'
+                        : _sourceLabel == null
                         ? 'No enquiries yet'
                         : 'No $_sourceLabel enquiries yet')
                   : 'No advertising account connected',
@@ -1893,6 +2259,148 @@ class _LeadsScreenState extends State<LeadsScreen> {
      */
     final unread = lead['is_unread'] == true;
     final starred = lead['starred'] == true;
+    // Marks about the row (somebody viewing, a note, an overdue reply) stay
+    // beside the name; every tag is on line 3 (Jose, 2026-11-10).
+    final nameMarks = <Widget>[
+      // Somebody else has it open right now.
+      if ((lead['viewers'] as List?)?.isNotEmpty ?? false)
+        Tooltip(
+          message: '${(lead['viewers'] as List).join(', ')} '
+              'viewing this lead',
+          child: Row(
+            key: ValueKey('viewers-$id'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.visibility_outlined,
+                size: 15,
+                color: ToneColours.of(context, Tone.caution).ink,
+              ),
+              const SizedBox(width: 3),
+              // Flexible, so a long name ellipsizes in a
+              // narrow list rather than running past it.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 90),
+                child: Text(
+                  '${(lead['viewers'] as List).first}'
+                  '${(lead['viewers'] as List).length > 1 ? ' +${(lead['viewers'] as List).length - 1}' : ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: ToneColours.of(context, Tone.caution).ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      // A dispatcher left a note: seen from the list, read on
+      // hover (Jose, 2026-10-13: "u can't tell a note is
+      // there unless u enter the lead").
+      if ((lead['note'] as String?)?.trim().isNotEmpty ?? false)
+        Tooltip(
+          message: [
+            if ((lead['note_by'] as Map?)?['name'] != null)
+              'Note · ${(lead['note_by'] as Map)['name']}',
+            NotesMarkup.plain(lead['note'] as String),
+          ].join('\n'),
+          child: unreadNotesBadge(
+            Icon(
+              Icons.sticky_note_2,
+              key: ValueKey('note-mark-$id'),
+              size: 17,
+              color: ToneColours.of(context, Tone.caution).ink,
+            ),
+            lead['unread_notes'],
+            key: ValueKey('note-unread-$id'),
+          ),
+        ),
+      // Waited too long: the customer spoke last over ten
+      // minutes ago and the lead is still New (Jose,
+      // 2026-09-28). The server decides; the row only shows it.
+      if (lead['reply_overdue'] == true) ...[
+        Tooltip(
+          message: 'Waiting more than 10 minutes for a reply',
+          child: Icon(
+            Icons.warning_rounded,
+            key: ValueKey('overdue-$id'),
+            size: 18,
+            color: theme.colorScheme.error,
+          ),
+        ),
+      ],
+    ];
+    // Line 3, most telling first: the status, Customer, then the source and
+    // channel (Jose, 2026-11-10).
+    final tags = <Widget>[
+      // A specimen, not a customer. First because it changes how
+      // everything after it should be read.
+      if (lead['is_test'] == true)
+        _Badge('Test', key: ValueKey('test-badge-$id')),
+      // Only when it is not New: 43,184 of 43,190 are, and a pill on
+      // every row would say nothing.
+      if ((lead['status'] ?? 'new') != 'new')
+        leadStatusPill(
+          lead['status'],
+          key: ValueKey('status-pill-$id'),
+          dense: true,
+        ),
+      // Replied or not, and ONLY where a reply is possible.
+      //
+      // `can_reply` is the channel's own answer, not a guess
+      // from lead_type here: a call cannot be replied to, a
+      // Thumbtack specimen cannot, and a lead whose account was
+      // disconnected cannot. On all of those the badge is
+      // absent entirely rather than reading "Replied", because
+      // "no reply is owed" and "a reply was sent" are different
+      // things and one must not be dressed as the other.
+      // Not on a Completed lead: nobody owes them an
+      // answer, whoever spoke last (Jose, 2026-10-01).
+      // A form has no reply box, but its overdue
+      // mark means a call back is owed (Jose, 2026-10-14).
+      // Not a lead and Lost owe nothing either; the
+      // server says which (Jose, 2026-11-02).
+      if ((lead['can_reply'] == true ||
+              lead['reply_overdue'] == true) &&
+          lead['reply_owed'] != false &&
+          lead['status'] != 'completed')
+        _Badge(
+          mine ? 'Replied' : 'Awaiting reply',
+          key: ValueKey('reply-badge-$id'),
+          alert: !mine,
+        ),
+      // This number is already a customer.
+      if (lead['customer'] is Map)
+        _Badge('Customer', key: ValueKey('customer-badge-$id')),
+      // An unanswered RC call: Possible spam, Missed call or Voicemail
+      // (Jose, 2026-10-16).
+      if ((lead['source'] == 'ringcentral' ||
+              lead['source'] == 'ez_calls') &&
+          lead['source_status'] is String)
+        _Badge(
+          rcCallTag(lead['source_status'] as String),
+          key: ValueKey('rc-tag-$id'),
+        ),
+      // AI thinks Google should refund it, not yet asked.
+      if (lead['credit'] is Map &&
+          (lead['credit'] as Map)['requested_at'] == null)
+        _Badge('Credit?', key: ValueKey('credit-badge-$id')),
+      // The source, in its own colour (design 159).
+      if (src.sourceKey != null)
+        LeadSourceChip(src.sourceKey, key: ValueKey('source-badge-$id'))
+      else
+        _SourceBadge(leadSourceWord(lead), key: ValueKey('source-badge-$id')),
+        if (lead['recovery_at'] != null)
+          _SourceBadge('Recovery', key: ValueKey('recovery-badge-$id')),
+      // The channel badge is drawn only when it says something the source
+      // badge does not. "Call · Google" is two facts; a chat row read "Chat ·
+      // Chat", one fact twice (UI/UX, 2026-09-08). The rule needs no list of
+      // sources: a fifth source with one channel gets the right answer free.
+      if (channel != null &&
+          !leadSourceWord(lead).endsWith(channelWord(channel)))
+        _Badge(channelWord(channel), call: channel == 'PHONE_CALL'),
+    ];
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: unread
           ? theme.colorScheme.onSurface
@@ -1945,7 +2453,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  LayoutBuilder(
+                    builder: (context, line) => Row(
                     children: [
                       Expanded(
                         child: LayoutBuilder(
@@ -1961,177 +2470,73 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            if (leadNameIsAi(lead)) ...[
+                            if (leadNameIsAi(lead) || nameMarks.isNotEmpty) ...[
                               const SizedBox(width: 4),
-                              AiMark(
-                                key: ValueKey('lead-ai-name-${lead['id']}'),
-                                tooltip: aiNameTooltip,
+                              // Capped and clipped: in a phone-landscape list
+                              // the AI and "viewing" marks took the whole line
+                              // and the name got 0 px (mobile review 11-24).
+                              ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: box.maxWidth * 0.4,
+                                ),
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  physics:
+                                      const NeverScrollableScrollPhysics(),
+                                  child: _spaced([
+                                    if (leadNameIsAi(lead))
+                                      AiMark(
+                                        key: ValueKey(
+                                          'lead-ai-name-${lead['id']}',
+                                        ),
+                                        tooltip: aiNameTooltip,
+                                      ),
+                                    ...nameMarks,
+                                  ]),
+                                ),
                               ),
                             ],
-                            // The badges wrap under each other rather than push the
-                            // row past its edge: at half a desktop screen the list
-                            // pane is ~300px and a Customer + Text + Awaiting reply +
-                            // warning + Google row overflowed by 118px (Jose,
-                            // 2026-09-28).
-                            const SizedBox(width: 8),
-                            // Design 161: one line. The chips never wrap;
-                            // past the edge they are clipped and the name
-                            // ellipsizes first.
-                            // The chips take the room they need (up to 70%
-                            // of the row) and the name gets the rest: a
-                            // fixed 3:2 split clipped chips beside short
-                            // names (Jose, 2026-10-30).
-                            ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxWidth: box.maxWidth * 0.7,
-                              ),
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                physics: const NeverScrollableScrollPhysics(),
-                                child: _spaced([
-                                // Beside the name, in its own colour (design 159).
-                                if (src.sourceKey != null)
-                                  LeadSourceChip(
-                                    src.sourceKey,
-                                    key: ValueKey('source-badge-$id'),
-                                  ),
-                                // A specimen, not a customer. First on the row because
-                                // it changes how everything after it should be read.
-                                if (lead['is_test'] == true) ...[
-                                  _Badge('Test', key: ValueKey('test-badge-$id')),
-                                ],
-                                // AI thinks Google should refund it, not yet asked.
-                                if (lead['credit'] is Map &&
-                                    (lead['credit'] as Map)['requested_at'] == null)
-                                  _Badge('Credit?', key: ValueKey('credit-badge-$id')),
-                                // An unanswered RC call: Possible spam, Missed
-                                // call or Voicemail (Jose, 2026-10-16).
-                                if ((lead['source'] == 'ringcentral' ||
-                                        lead['source'] == 'ez_calls') &&
-                                    lead['source_status'] is String)
-                                  _Badge(
-                                    rcCallTag(lead['source_status'] as String),
-                                    key: ValueKey('rc-tag-$id'),
-                                  ),
-                                // Only when it is not New: 43,184 of 43,190 are,
-                                // and a pill on every row would say nothing.
-                                if ((lead['status'] ?? 'new') != 'new')
-                                  leadStatusPill(
-                                    lead['status'],
-                                    key: ValueKey('status-pill-$id'),
-                                  ),
-                                // Somebody else has it open right now.
-                                if ((lead['viewers'] as List?)?.isNotEmpty ?? false)
-                                  Tooltip(
-                                    message: '${(lead['viewers'] as List).join(', ')} '
-                                        'viewing this lead',
-                                    child: Row(
-                                      key: ValueKey('viewers-$id'),
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.visibility_outlined,
-                                          size: 15,
-                                          color: ToneColours.of(context, Tone.caution).ink,
-                                        ),
-                                        const SizedBox(width: 3),
-                                        // Flexible, so a long name ellipsizes in a
-                                        // narrow list rather than running past it.
-                                        ConstrainedBox(
-                                          constraints: const BoxConstraints(maxWidth: 90),
-                                          child: Text(
-                                            '${(lead['viewers'] as List).first}'
-                                            '${(lead['viewers'] as List).length > 1 ? ' +${(lead['viewers'] as List).length - 1}' : ''}',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: theme.textTheme.labelSmall?.copyWith(
-                                              fontWeight: FontWeight.w700,
-                                              color: ToneColours.of(context, Tone.caution).ink,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                // This number is already a customer.
-                                if (lead['customer'] is Map) ...[
-                                  _Badge(
-                                    'Customer',
-                                    key: ValueKey('customer-badge-$id'),
-                                  ),
-                                ],
-                                // A dispatcher left a note: seen from the list, read on
-                                // hover (Jose, 2026-10-13: "u can't tell a note is
-                                // there unless u enter the lead").
-                                if ((lead['note'] as String?)?.trim().isNotEmpty ?? false)
-                                  Tooltip(
-                                    message: [
-                                      if ((lead['note_by'] as Map?)?['name'] != null)
-                                        'Note · ${(lead['note_by'] as Map)['name']}',
-                                      '${lead['note']}',
-                                    ].join('\n'),
-                                    child: Icon(
-                                      Icons.sticky_note_2,
-                                      key: ValueKey('note-mark-$id'),
-                                      size: 17,
-                                      color: ToneColours.of(context, Tone.caution).ink,
-                                    ),
-                                  ),
-                                // Replied or not, and ONLY where a reply is possible.
-                                //
-                                // `can_reply` is the channel's own answer, not a guess
-                                // from lead_type here: a call cannot be replied to, a
-                                // Thumbtack specimen cannot, and a lead whose account was
-                                // disconnected cannot. On all of those the badge is
-                                // absent entirely rather than reading "Replied", because
-                                // "no reply is owed" and "a reply was sent" are different
-                                // things and one must not be dressed as the other.
-                                // Not on a Completed lead: nobody owes them an
-                                // answer, whoever spoke last (Jose, 2026-10-01).
-                                // A form has no reply box, but its overdue
-                                // mark means a call back is owed (Jose, 2026-10-14).
-                                if ((lead['can_reply'] == true ||
-                                        lead['reply_overdue'] == true) &&
-                                    lead['status'] != 'completed') ...[
-                                  _Badge(
-                                    mine ? 'Replied' : 'Awaiting reply',
-                                    key: ValueKey('reply-badge-$id'),
-                                    alert: !mine,
-                                  ),
-                                ],
-                                // Waited too long: the customer spoke last over ten
-                                // minutes ago and the lead is still New (Jose,
-                                // 2026-09-28). The server decides; the row only shows it.
-                                if (lead['reply_overdue'] == true) ...[
-                                  Tooltip(
-                                    message: 'Waiting more than 10 minutes for a reply',
-                                    child: Icon(
-                                      Icons.warning_rounded,
-                                      key: ValueKey('overdue-$id'),
-                                      size: 18,
-                                      color: theme.colorScheme.error,
-                                    ),
-                                  ),
-                                ],
-                                ]),
-                              ),
-                            ),
                           ],
                         ),
                         ),
                       ),
                       const SizedBox(width: 6),
-                      Text(
-                        leadWhen(
-                          (lead['last_contact_at'] ?? lead['received_at'])
-                              as String?,
-                        ),
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                      SizedBox(
+                        width: 62,
+                        child: Text(
+                          leadWhen(
+                            (lead['last_contact_at'] ?? lead['received_at'])
+                                as String?,
+                          ),
+                          textAlign: TextAlign.end,
+                          maxLines: 1,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      // Hollow until set, after the time (Jose, 2026-11-10).
+                      // A phone keeps 40 of target.
+                      IconButton(
+                        key: ValueKey('star-$id'),
+                        tooltip: starred ? 'Unstar' : 'Star',
+                        iconSize: 16,
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints.tight(
+                          Size.square(
+                            MediaQuery.sizeOf(context).width < 600 ? 40 : 30,
+                          ),
+                        ),
+                        onPressed: () => _mark(lead, starred: !starred),
+                        icon: Icon(
+                          starred ? Icons.star : Icons.star_border,
+                          color: starred
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.outline,
+                        ),
+                      ),
                     ],
+                  ),
                   ),
                   const SizedBox(height: 1),
                   LayoutBuilder(
@@ -2160,29 +2565,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       // No company tag here: it is on the lead's own header,
                       // and Jose wants it in one place only (2026-09-30, "not
                       // on both").
-                      // The source first on the line, in its own colour.
-                      if (src.sourceKey == null)
-                        _SourceBadge(
-                          leadSourceWord(lead),
-                          key: ValueKey('source-badge-$id'),
-                        ),
-                      // The channel badge is drawn only when it says
-                      // something the source badge does not. "Call · Google"
-                      // is two facts; a chat row read "Chat · Chat", one fact
-                      // twice (UI/UX, 2026-09-08). The rule needs no list of
-                      // sources: a fifth source with one channel gets the
-                      // right answer for free.
-                      if (channel != null &&
-                          !leadSourceWord(lead).endsWith(
-                            channelWord(channel),
-                          )) ...[
-                        const SizedBox(width: 4),
-                        _Badge(
-                          channelWord(channel),
-                          call: channel == 'PHONE_CALL',
-                        ),
-                      ],
-                      const SizedBox(width: 6),
                       Expanded(
                         child: preview != null && preview.isNotEmpty
                             ? Text.rich(
@@ -2227,30 +2609,48 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                       ),
-                      // Hollow until set, at the end of the line it marks
-                      // (design 30): stacked under the time it made every row
-                      // as tall as a 44px target. A phone keeps 40 of target.
-                      IconButton(
-                        key: ValueKey('star-$id'),
-                        tooltip: starred ? 'Unstar' : 'Star',
-                        iconSize: 16,
-                        padding: EdgeInsets.zero,
-                        constraints: BoxConstraints.tight(
-                          Size.square(
-                            MediaQuery.sizeOf(context).width < 600 ? 40 : 30,
+                      // The reply window, under the time (UI-UX, 2026-11-09):
+                      // "3h left", amber under 2h, "Window closed" after.
+                      if (replyWindowNote(lead['reply_window_ends_at'] as String?)
+                          case (final note, final tone)) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          note,
+                          key: ValueKey('lead-window-$id'),
+                          maxLines: 1,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: tone == Tone.caution
+                                ? ToneColours.of(context, Tone.caution).ink
+                                : theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
-                        onPressed: () => _mark(lead, starred: !starred),
-                        icon: Icon(
-                          starred ? Icons.star : Icons.star_border,
-                          color: starred
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.outline,
-                        ),
-                      ),
+                      ],
                     ],
                   ),
                   ),
+                  // Line 3: every tag, smaller, under the name (Jose,
+                  // 2026-11-10: "move all the tags to the third line
+                  // instead, maybe make them a bit smaller too").
+                  if (tags.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Theme(
+                        data: theme.copyWith(
+                          textTheme: theme.textTheme.copyWith(
+                            labelSmall: theme.textTheme.labelSmall?.copyWith(
+                              fontSize: 10,
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                        child: Wrap(
+                          key: ValueKey('lead-tags-$id'),
+                          spacing: 4,
+                          runSpacing: 2,
+                          children: tags,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -2260,6 +2660,22 @@ class _LeadsScreenState extends State<LeadsScreen> {
       ),
     );
   }
+}
+
+/// The reply window's note and its tone: "45m left" or "3h left" in the
+/// thread's format, [Tone.caution] under two hours, "Window closed" once past
+/// (muted, never red). Null when the source has no window.
+(String, Tone?)? replyWindowNote(String? endsAt, [DateTime? now]) {
+  final ends = endsAt == null ? null : DateTime.tryParse(endsAt);
+  if (ends == null) return null;
+  final left = ends.difference(now ?? DateTime.now());
+  if (left <= Duration.zero) return ('Window closed', null);
+  final text = left.inMinutes < 60
+      ? '${left.inMinutes < 1 ? 1 : left.inMinutes}m left'
+      : left.inHours < 24
+      ? '${left.inHours}h left'
+      : '${left.inDays}d left';
+  return (text, left < const Duration(hours: 2) ? Tone.caution : null);
 }
 
 /// A row of chips, 6 apart (design 161: one line, never wrapped).
@@ -2292,6 +2708,7 @@ String sourceBadgeWord(String? source) => switch (source) {
   'ringcentral' => 'RC Call',
   'ez_calls' => 'EZ Call',
   'ez_texts' => 'EZ Text',
+  'promotions' => 'Promotion',
   _ => 'Google',
 };
 

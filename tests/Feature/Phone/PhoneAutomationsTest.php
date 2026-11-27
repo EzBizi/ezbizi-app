@@ -204,7 +204,7 @@ class PhoneAutomationsTest extends TestCase
 
             return app(ActionRunner::class)->run(
                 ['type' => 'sms.send', 'number_id' => $number->id,
-                    'to' => '+13057242199', 'body' => 'The van is here.'],
+                    'to' => '+13055550107', 'body' => 'The van is here.'],
                 $event,
                 null,
             );
@@ -247,7 +247,7 @@ class PhoneAutomationsTest extends TestCase
 
             $result = app(ActionRunner::class)->run(
                 ['type' => 'sms.send', 'number_id' => $number->id,
-                    'to' => '+13057242199', 'body' => 'A new email arrived.'],
+                    'to' => '+13055550107', 'body' => 'A new email arrived.'],
                 $event,
                 null,
             );
@@ -259,8 +259,9 @@ class PhoneAutomationsTest extends TestCase
 
         $this->assertNotNull($sent, 'the text was sent but never recorded');
         $this->assertSame('+12035553110', $sent->from_e164);
-        $this->assertSame('+13057242199', $sent->to_e164);
-        $this->assertSame('A new email arrived.', $sent->body);
+        $this->assertSame('+13055550107', $sent->to_e164);
+        // The first text to a number carries the opt-out line (SmsConsent).
+        $this->assertSame("A new email arrived.\n\n".\App\Support\Phone\SmsConsent::FOOTER, $sent->body);
     }
 
     public function test_phone_actions_are_marked_implemented_in_the_catalogue(): void

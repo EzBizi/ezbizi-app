@@ -7,18 +7,29 @@ use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\NoteRead;
 use App\Models\Task;
+use App\Models\TaskActivity;
+use App\Models\TaskAssignee;
 use App\Models\TaskBoard;
+use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Support\Ai\GrokCli;
 use App\Support\Files\AttachmentUploader;
 use App\Support\Files\UploadLimits;
+use App\Support\Notes\NoteActivity;
+use App\Support\Scoping\ViewScope;
+use App\Support\Tasks\ColumnConverter;
+use App\Support\Tasks\Monday\MondayOutbox;
+use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskLinks;
 use App\Support\Tasks\TaskWriter;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,16 +55,61 @@ class TasksController extends Controller
         private readonly TaskWriter $writer,
         private readonly AttachmentUploader $uploader,
         private readonly UploadLimits $limits,
+        private readonly SensitiveTasks $sensitive,
     ) {}
 
-    public function show(Task $task): JsonResponse
+    /** A sensitive task comes back locked (no values, no updates) unless this session has unlocked it. */
+    public function show(Request $request, Task $task): JsonResponse
     {
         $this->authorize('view', $task);
+
+        $reveal = $this->sensitive->reveal($request, $task, 'task');
+
+        return response()->json(['data' => $this->detail($task, $reveal)
+            + ($task->sensitive && $reveal ? ['unlocked_until' => $this->sensitive->until($request)] : [])]);
+    }
+
+    /**
+     * POST tasks/{task}/unlock {code}: a current authenticator code opens
+     * sensitive tasks on this session for 5 minutes; answers this one, open.
+     */
+    public function unlock(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('view', $task);
+        $until = $this->sensitive->unlock($request);
+
+        return response()->json(['data' => $this->detail($task, $this->sensitive->reveal($request, $task, 'unlock'))
+            + ['unlocked_until' => $until]]);
+    }
+
+    /** DELETE tasks/unlock: lock again now, on the server too. */
+    public function lock(Request $request): Response
+    {
+        $this->sensitive->lock($request);
+
+        return response()->noContent();
+    }
+
+    private function detail(Task $task, bool $reveal): array
+    {
         $task->load(['assignee:id,name', 'owners.user:id,name', 'creator:id,name', 'updates.user:id,name', 'updates.attachments', 'statusRow', 'values.column'])->loadCount(['updates', 'subtasks']);
 
-        return response()->json(['data' => self::present($task) + [
-            'updates' => $task->updates->map(fn (TaskUpdate $u) => self::presentUpdate($u))->all(),
-        ]]);
+        // Monday's seen count: who has read the task since each update was written.
+        $reads = NoteRead::query()->where('subject_type', 'task')->where('subject_id', $task->id)->pluck('last_read_at', 'user_id');
+        $seen = [];
+        foreach ($task->updates as $u) {
+            $seen[(string) $u->id] = $reads->filter(fn ($at, $who) => (string) $who !== (string) $u->user_id && $u->created_at !== null && $at >= $u->created_at)->keys()->all();
+        }
+
+        // Chaim 11-24: the Files tab lists the file columns' files too.
+        $fileIds = $task->values->filter(fn ($v) => $v->column?->type === 'files')
+            ->flatMap(fn ($v) => (array) (json_decode((string) $v->value_text, true) ?: []))->filter()->unique()->values();
+        $columnFiles = $fileIds->isEmpty() ? collect() : Attachment::query()->whereKey($fileIds)->get();
+
+        return self::present($task, $reveal) + [
+            'updates' => $reveal ? $task->updates->map(fn (TaskUpdate $u) => self::presentUpdate($u, $seen))->all() : [],
+            'column_files' => $reveal ? $columnFiles->map(fn (Attachment $a) => self::presentAttachment($a))->values()->all() : [],
+        ];
     }
 
     /**
@@ -61,26 +117,47 @@ class TasksController extends Controller
      * (GET attachments/{id}, same bearer token, board `view` decides);
      * `?inline=1` opens an image or a PDF in place.
      */
-    public static function presentUpdate(TaskUpdate $u): array
+    /**
+     * @param  array<string, list<string>>  $seen  update id => who (besides its author) has read the task since it was written
+     */
+    public static function presentUpdate(TaskUpdate $u, array $seen = []): array
     {
+        $likes = array_values((array) ($u->likes ?? []));
+
         return [
             'id' => $u->id,
-            'body' => $u->body,
-            'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->user->name] : null,
+            // Chaim 11-24 (Monday's panel): a reply hangs under its update.
+            'parent_id' => $u->parent_update_id,
+            'likes' => count($likes),
+            'liked' => ($me = request()->user()) !== null && in_array((string) $me->id, $likes, true),
+            'seen' => count($seen[(string) $u->id] ?? []),
+            'following' => $me !== null && in_array((string) $me->id, array_values((array) ($u->followers ?? [])), true),
+            'bookmarked' => $me !== null && in_array((string) $me->id, array_values((array) ($u->bookmarks ?? [])), true),
+            'scheduled_for' => $u->scheduled_for?->toIso8601String(),
+            // A reply threaded under its update needs no "↳ " mark of its own.
+            'body' => $u->parent_update_id !== null ? (string) preg_replace('/^↳ /u', '', (string) SensitiveTasks::open($u->body)) : (string) SensitiveTasks::open($u->body),
+            'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->sender_label ?? $u->user->name] : null,
             'created_at' => $u->created_at?->toIso8601String(),
-            'attachments' => $u->attachments->sortBy('created_at')->values()->map(function (Attachment $a) {
-                $url = url("/api/v1/attachments/{$a->id}");
+            'edited_at' => $u->edited_at?->toIso8601String(),
+            // Row 43: its author edits; its author or an Administrator deletes.
+            'can_edit' => $me !== null && $u->user_id === $me->id,
+            'can_delete' => $me !== null && ($u->user_id === $me->id || $me->isAdministrator()),
+            'attachments' => $u->attachments->sortBy('created_at')->values()->map(fn (Attachment $a) => self::presentAttachment($a))->all(),
+        ];
+    }
 
-                return [
-                    'id' => $a->id,
-                    'name' => $a->original_name,
-                    'mime' => $a->mime,
-                    'size' => (int) $a->size_bytes,
-                    'url' => $url,
-                    'inline_url' => in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
-                    'thumbnail_url' => str_starts_with((string) $a->mime, 'image/') && in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
-                ];
-            })->all(),
+    public static function presentAttachment(Attachment $a): array
+    {
+        $url = url("/api/v1/attachments/{$a->id}");
+
+        return [
+            'id' => $a->id,
+            'name' => $a->realName(),
+            'mime' => $a->mime,
+            'size' => (int) $a->size_bytes,
+            'url' => $url,
+            'inline_url' => in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
+            'thumbnail_url' => str_starts_with((string) $a->mime, 'image/') && in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
         ];
     }
 
@@ -101,7 +178,8 @@ class TasksController extends Controller
 
         $task = $this->writer->create($board, $this->toColumns($input), $request->user());
 
-        return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()))], 201);
+        return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()),
+            $this->sensitive->reveal($request, $task, 'create'))], 201);
     }
 
     public function update(Request $request, Task $task): JsonResponse
@@ -113,9 +191,24 @@ class TasksController extends Controller
             $this->checkOnBoard($task->board, $input);
         }
 
+        // Anyone who can edit it marks it; unmarking opens everything, so it
+        // takes a fresh authenticator code like a reveal does.
+        if (array_key_exists('sensitive', $input)) {
+            $want = (bool) $input['sensitive'];
+            unset($input['sensitive']);
+            if ($want !== (bool) $task->sensitive) {
+                if (! $want && ! $this->sensitive->unlocked($request)) {
+                    throw SensitiveTasks::lockedResponse();
+                }
+                $this->sensitive->mark($task, $want, $request->user());
+                $task->refresh();
+            }
+        }
+
         $task = $this->writer->update($task, $this->toColumns($input), $request->user());
 
-        return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()))]);
+        return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()),
+            $this->sensitive->reveal($request, $task, 'edit'))]);
     }
 
     public function destroy(Request $request, Task $task): Response
@@ -148,6 +241,43 @@ class TasksController extends Controller
         return response()->json(['data' => self::present($copy->fresh(self::WITH)->loadCount(self::counts()))], 201);
     }
 
+    /**
+     * POST tasks/{task}/suggest-label {column_id?}: the AI picks the label that
+     * fits the task's name and latest updates (Monday's "Auto-assign labels").
+     * Without column_id it picks a board status. Answers {id: null} when the AI
+     * is off, the task is sensitive, or nothing fits; it never writes.
+     */
+    public function suggestLabel(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('update', $task);
+        $input = $request->validate(['column_id' => ['sometimes', 'nullable', 'uuid']]);
+        $board = $task->board;
+        if (($input['column_id'] ?? null) !== null) {
+            $column = $board->columns()->whereKey($input['column_id'])->whereIn('type', ['status', 'dropdown'])->firstOrFail();
+            $labels = collect($column->settings['options'] ?? [])
+                ->reject(fn ($o) => ($o['retired'] ?? false) === true)
+                ->mapWithKeys(fn ($o) => [(string) $o['id'] => (string) ($o['label'] ?? '')]);
+        } else {
+            $labels = $board->statuses()->get()->mapWithKeys(fn ($s) => [(string) $s->id => (string) $s->name]);
+        }
+        if ($task->sensitive || $labels->isEmpty() || ! GrokCli::configured()) {
+            return response()->json(['data' => ['id' => null]]);
+        }
+
+        $updates = $task->updates()->limit(5)->pluck('body')->map(fn ($b) => '- '.mb_substr(strip_tags((string) $b), 0, 400))->implode("\n");
+        $prompt = "Pick the one label that best fits this task, or null if none clearly fits.\n"
+            ."Labels (id: name):\n".$labels->map(fn ($n, $id) => "$id: $n")->implode("\n")
+            ."\n\nTask: ".$task->title."\nLatest updates:\n".($updates !== '' ? $updates : '(none)');
+        try {
+            $answer = GrokCli::ask($prompt, ['type' => 'object', 'properties' => ['id' => ['type' => ['string', 'null']]], 'required' => ['id']], 60);
+        } catch (\RuntimeException) {
+            return response()->json(['data' => ['id' => null]]);
+        }
+        $id = isset($answer['id']) && $labels->has((string) $answer['id']) ? (string) $answer['id'] : null;
+
+        return response()->json(['data' => ['id' => $id]]);
+    }
+
     /** POST tasks/{id}/restore: undo a delete. */
     public function restore(Request $request, string $id): JsonResponse
     {
@@ -156,6 +286,25 @@ class TasksController extends Controller
         $this->writer->restore($task, $request->user());
 
         return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()))]);
+    }
+
+    /** POST tasks/{task}/archive: Monday's Archive item. */
+    public function archive(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('delete', $task);
+        $this->writer->archive($task, $request->user());
+
+        return response()->json(['data' => ['archived' => true]]);
+    }
+
+    /** GET task-boards/{board}/archived: the board's Archive, newest first, each restorable. */
+    public function archived(Request $request, \App\Models\TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorize('view', $taskBoard);
+
+        return response()->json(['data' => Task::onlyTrashed()->where('board_id', $taskBoard->id)->whereNotNull('archived_at')->whereNull('parent_task_id')
+            ->orderByDesc('archived_at')->limit(500)->get(['id', 'title', 'archived_at', 'group_id'])
+            ->map(fn (Task $t) => ['id' => $t->id, 'title' => $t->title, 'archived_at' => $t->archived_at?->toIso8601String(), 'group_id' => $t->group_id])->all()]);
     }
 
     /**
@@ -167,9 +316,15 @@ class TasksController extends Controller
         $input = $request->validate([
             'ids' => ['required', 'array', 'min:1', 'max:200'],
             'ids.*' => ['uuid'],
-            'op' => ['required', Rule::in(['move', 'copy', 'delete', 'status', 'assign'])],
+            'op' => ['required', Rule::in(['move', 'copy', 'delete', 'status', 'assign', 'archive', 'values'])],
+            // Row 69: Monday's bulk "Set column value": {column id: value}.
+            'values' => [Rule::requiredIf($request->input('op') === 'values'), 'array'],
             'group_id' => [Rule::requiredIf(in_array($request->input('op'), ['move', 'copy'], true)), 'nullable', 'uuid'],
-            'status' => [Rule::requiredIf($request->input('op') === 'status'), 'nullable', 'string', 'max:64'],
+            // A board's own statuses go by id, as one task's PATCH does; a
+            // status key still works (bulk Status sent the id as a key and every
+            // task came back refused, hands-on QA 11-16).
+            'status' => [Rule::requiredIf($request->input('op') === 'status' && ! $request->filled('status_id')), 'nullable', 'string', 'max:64'],
+            'status_id' => ['sometimes', 'nullable', 'uuid'],
             'assignee_user_id' => ['sometimes', 'nullable', 'uuid'],
         ]);
         $user = $request->user();
@@ -179,7 +334,7 @@ class TasksController extends Controller
 
         foreach (array_values(array_unique($input['ids'])) as $id) {
             $task = Task::query()->find($id);
-            $ability = $input['op'] === 'copy' ? 'view' : ($input['op'] === 'delete' ? 'delete' : 'update');
+            $ability = $input['op'] === 'copy' ? 'view' : (in_array($input['op'], ['delete', 'archive'], true) ? 'delete' : 'update');
             if ($task === null || ! $user->can($ability, $task)) {
                 $refused[] = ['id' => $id, 'reason' => 'You cannot change that task.'];
 
@@ -190,7 +345,10 @@ class TasksController extends Controller
                     'move' => $this->writer->move($task, $group, null, $user),
                     'copy' => $this->writer->copy($task, $group, $user),
                     'delete' => $this->writer->delete($task, $user),
-                    'status' => $this->writer->update($task, ['status' => $input['status']], $user),
+                    'archive' => $this->writer->archive($task, $user),
+                    'values' => $this->writer->update($task->load('board'), ['values' => $input['values']], $user),
+                    'status' => $this->writer->update($task, isset($input['status_id'])
+                        ? ['status_id' => $input['status_id']] : ['status' => $input['status']], $user),
                     'assign' => $this->writer->update($task, ['assignee_user_id' => $input['assignee_user_id'] ?? null], $user),
                 };
                 $done[] = $id;
@@ -225,6 +383,82 @@ class TasksController extends Controller
             ->map(fn (Task $t) => self::presentLink($t))->values()->all()]);
     }
 
+    /**
+     * GET tasks/{task}/same-caller: another open task in this task's group,
+     * made in the last 3 days, for the phone number this one carries (its
+     * last 10 digits, in the title or any column). A dispatcher adding a
+     * complaint the AI already filed is told so (desk for Jose, 11-17).
+     */
+    public function sameCaller(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('view', $task);
+        $text = $task->title.' '.$task->values()->whereNotNull('value_text')->pluck('value_text')->implode(' ');
+        preg_match_all('/\+?[\d\s().-]{10,}/', $task->sensitive ? '' : $text, $runs);
+        $ten = collect($runs[0])->map(fn ($r) => preg_replace('/\D/', '', $r))->first(fn ($d) => strlen($d) >= 10);
+        if ($ten === null) {
+            return response()->json(['data' => null]);
+        }
+        $ten = substr($ten, -10);
+        $digits = fn (string $col) => "REGEXP_REPLACE(COALESCE({$col}, ''), '[^0-9]', '') LIKE ?";
+        $other = Task::query()->where('board_id', $task->board_id)->where('group_id', $task->group_id)
+            ->whereKeyNot($task->id)->whereNull('completed_at')->whereNull('parent_task_id')->where('sensitive', false)
+            ->where('created_at', '>=', now()->subDays(3))
+            ->where(fn ($q) => $q->whereRaw($digits('title'), ['%'.$ten.'%'])
+                ->orWhereHas('values', fn ($v) => $v->whereRaw($digits('value_text'), ['%'.$ten.'%'])))
+            ->with('board:id,name')->latest()->first();
+
+        return response()->json(['data' => $other === null ? null : self::presentLink($other)]);
+    }
+
+    /**
+     * GET task-search?q=: tasks on every board this person can see, by
+     * title, for the one-box Link picker (Jose 11-17). `records` lists the
+     * leads, customers and jobs it finds by name, phone or number, each as
+     * {type, id, label, detail}: what a task can be about, one click away.
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']])['q']);
+        $user = $request->user();
+        $like = '%'.addcslashes($q, '%_\\').'%';
+        $digits = preg_replace('/\D/', '', $q);
+        $boards = app(TaskBoards::class)->visibleTo($user)->pluck('id');
+
+        $records = [];
+        $view = ViewScope::forUser($user);
+        $byPhone = fn ($w, string $column) => strlen($digits) >= 4 ? $w->orWhere($column, 'like', '%'.$digits.'%') : $w;
+        if ($user->hasPermission('leads.view')) {
+            $view->constrainPlaces(Lead::query())
+                ->where(fn ($w) => $byPhone($w->where('contact_name', 'like', $like), 'phone_digits'))
+                ->latest()->limit(8)->get(['id', 'contact_name', 'phone'])
+                ->each(function (Lead $l) use (&$records) {
+                    $records[] = ['type' => 'lead', 'id' => $l->id, 'label' => $l->contact_name ?: 'A lead', 'detail' => $l->phone];
+                });
+        }
+        if ($user->hasPermission('customers.view')) {
+            // As the Customers search: organization-wide.
+            Customer::query()->where(fn ($w) => $byPhone($w->where('name', 'like', $like), 'phone'))
+                ->limit(8)->get(['id', 'name', 'phone'])
+                ->each(function (Customer $c) use (&$records) {
+                    $records[] = ['type' => 'customer', 'id' => $c->id, 'label' => $c->name ?: 'A customer', 'detail' => $c->phone];
+                });
+        }
+        if ($user->hasPermission('jobs.view')) {
+            Job::query()->whereIn('franchise_id', $view->franchiseIds())
+                ->where(fn ($w) => $w->where('number', 'like', $like)->orWhere('title', 'like', $like))
+                ->latest()->limit(8)->get(['id', 'number', 'title'])
+                ->each(function (Job $j) use (&$records) {
+                    $records[] = ['type' => 'job', 'id' => $j->id, 'label' => 'Job #'.$j->number, 'detail' => $j->title];
+                });
+        }
+
+        return response()->json(['data' => Task::query()->whereIn('board_id', $boards)
+            ->whereNull('parent_task_id')->where('sensitive', false)
+            ->where('title', 'like', $like)
+            ->with('board:id,name')->latest('updated_at')->limit(20)->get()
+            ->map(fn (Task $t) => self::presentLink($t))->all(), 'records' => $records]);
+    }
+
     /** POST tasks/{task}/links {linked_task_id}: both must be visible to the person. */
     public function storeLink(Request $request, Task $task): JsonResponse
     {
@@ -254,7 +488,92 @@ class TasksController extends Controller
 
     private static function presentLink(Task $t): array
     {
-        return ['id' => $t->id, 'title' => $t->title, 'status' => $t->status, 'board_id' => $t->board_id, 'board_name' => $t->board?->name];
+        return ['id' => $t->id, 'title' => $t->title, 'sensitive' => (bool) $t->sensitive, 'status' => $t->status, 'board_id' => $t->board_id, 'board_name' => $t->board?->name];
+    }
+
+    /** PATCH tasks/{task}/updates/{update}: its author corrects it, as on Monday (row 43, Sheryl). */
+    public function editUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        abort_unless($update->user_id === $request->user()->id, 403, 'Only the person who wrote an update can edit it.');
+        $body = trim((string) $request->validate(['body' => ['required', 'string', 'max:5000']])['body']);
+        $this->writer->editComment($update, $body, $request->user());
+
+        return response()->json(['data' => self::presentUpdate($update->fresh()->load(['user:id,name', 'attachments']))]);
+    }
+
+    /** DELETE tasks/{task}/updates/{update}: its author, or an Administrator. */
+    public function destroyUpdate(Request $request, Task $task, TaskUpdate $update): Response
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        abort_unless($update->user_id === $request->user()->id || $request->user()->isAdministrator(), 403, 'Only the person who wrote an update, or an Administrator, can delete it.');
+        $this->writer->deleteComment($update, $request->user());
+
+        return response()->noContent();
+    }
+
+    /** POST tasks/{task}/updates/{update}/bookmark: save it to find again, or unsave (Monday's Bookmarked). */
+    public function bookmarkUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        $me = (string) $request->user()->id;
+        $who = array_values((array) ($update->bookmarks ?? []));
+        $who = in_array($me, $who, true) ? array_values(array_diff($who, [$me])) : [...$who, $me];
+        $update->forceFill(['bookmarks' => $who ?: null])->saveQuietly();
+
+        return response()->json(['data' => ['bookmarked' => in_array($me, $who, true)]]);
+    }
+
+    /** POST tasks/{task}/updates/{update}/follow: be told of its replies, or stop (Monday's bell). */
+    public function followUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        $me = (string) $request->user()->id;
+        $who = array_values((array) ($update->followers ?? []));
+        $who = in_array($me, $who, true) ? array_values(array_diff($who, [$me])) : [...$who, $me];
+        $update->forceFill(['followers' => $who ?: null])->saveQuietly();
+
+        return response()->json(['data' => ['following' => in_array($me, $who, true)]]);
+    }
+
+    /**
+     * POST tasks/{task}/updates/{update}/check {line}: tick or untick the
+     * checklist item on that line of the update (Monday's update checklist:
+     * lines starting with a box). Anyone who may work the task may tick.
+     */
+    public function checkUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('update', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        $line = (int) $request->validate(['line' => ['required', 'integer', 'min:0', 'max:500']])['line'];
+        $lines = explode("\n", (string) SensitiveTasks::open($update->body));
+        abort_unless(isset($lines[$line]) && preg_match('/^(☐|☑) /u', $lines[$line]), 422, 'That line is not a checklist item.');
+        $lines[$line] = (str_starts_with($lines[$line], '☐') ? '☑' : '☐').mb_substr($lines[$line], 1);
+        $body = implode("\n", $lines);
+        $update->forceFill(['body' => $task->sensitive ? SensitiveTasks::seal($body) : $body])->saveQuietly();
+        app(MondayOutbox::class)->record($task, ['update_edit'], $update);
+
+        return response()->json(['data' => self::presentUpdate($update->fresh()->load(['user:id,name', 'attachments']))]);
+    }
+
+    /** POST tasks/{task}/updates/{update}/like: like it, or take the like back (Monday's thumbs up). */
+    public function likeUpdate(Request $request, Task $task, TaskUpdate $update): JsonResponse
+    {
+        $this->authorize('view', $task);
+        abort_unless($update->task_id === $task->id, 404);
+        $me = (string) $request->user()->id;
+        $likes = array_values((array) ($update->likes ?? []));
+        $likes = in_array($me, $likes, true) ? array_values(array_diff($likes, [$me])) : [...$likes, $me];
+        $update->forceFill(['likes' => $likes ?: null])->saveQuietly();
+        if (in_array($me, $likes, true)) {
+            \App\Support\Tasks\TaskWriter::tellReaction($update, $request->user());
+        }
+
+        return response()->json(['data' => ['likes' => count($likes), 'liked' => in_array($me, $likes, true)]]);
     }
 
     public function storeUpdate(Request $request, Task $task): JsonResponse
@@ -275,6 +594,11 @@ class TasksController extends Controller
             'body' => ['nullable', 'string', 'max:5000', 'required_without:files'],
             'files' => ['sometimes', 'array', 'max:'.self::UPDATE_MAX_FILES],
             'files.*' => ['file', 'mimes:'.implode(',', $extensions), 'max:'.self::UPDATE_MAX_KB],
+            'mentions' => ['sometimes', 'array', 'max:50'],
+            'mentions.*' => ['uuid'],
+            'parent_id' => ['sometimes', 'nullable', 'uuid'],
+            // Monday's scheduled update: posted at this time, not before.
+            'post_at' => ['sometimes', 'nullable', 'date', 'after:now'],
         ], [
             'body.required_without' => 'Write something or attach a file.',
             'files.max' => 'An update takes at most '.self::UPDATE_MAX_FILES.' files.',
@@ -287,8 +611,17 @@ class TasksController extends Controller
             throw ValidationException::withMessages(['body' => 'Write something or attach a file.']);
         }
 
-        $update = DB::transaction(function () use ($task, $request, $body, $files) {
-            $update = $this->writer->comment($task, $request->user(), $body);
+        $update = DB::transaction(function () use ($task, $request, $body, $files, $input) {
+            // A mention on a sensitive task says only that there is something to read.
+            app(TaskBoards::class)->addMentioned($task->board, $input['mentions'] ?? []);
+            // A scheduled update names its people now and tells them when it posts.
+            $mentions = ! empty($input['post_at']) ? array_values($input['mentions'] ?? [])
+                : app(NoteActivity::class)->mention($task, $input['mentions'] ?? [],
+                    $request->user(), $task->sensitive ? SensitiveTasks::NOTICE : $body);
+            // A reply hangs under a top update of this same task.
+            $parent = empty($input['parent_id']) ? null : TaskUpdate::query()->where('task_id', $task->id)->whereNull('parent_update_id')->findOrFail($input['parent_id']);
+            $update = $this->writer->comment($task, $request->user(), $body, $mentions, $parent,
+                empty($input['post_at']) ? null : CarbonImmutable::parse($input['post_at']));
             foreach ($files as $file) {
                 $this->uploader->upload($request->user(), $update, $file, 'task_updates');
             }
@@ -299,9 +632,14 @@ class TasksController extends Controller
         return response()->json(['data' => self::presentUpdate($update->load(['user:id,name', 'attachments']))], 201);
     }
 
-    public static function present(Task $task): array
+    /**
+     * A task as the board reads it. A sensitive one is `locked` (no values)
+     * unless the caller passed SensitiveTasks::reveal for it; lists never do.
+     */
+    public static function present(Task $task, bool $reveal = false): array
     {
         $about = $task->aboutRecord();
+        $locked = $task->sensitive && ! $reveal;
 
         return [
             'id' => $task->id,
@@ -309,9 +647,14 @@ class TasksController extends Controller
             'parent_task_id' => $task->parent_task_id,
             'group_id' => $task->group_id,
             'title' => $task->title,
+            'sensitive' => (bool) $task->sensitive,
+            'locked' => $locked,
             'status' => $task->status,
             'status_id' => $task->status_id,
-            'values' => (object) $task->values->mapWithKeys(fn (TaskColumnValue $v) => [$v->column_id => self::valueOf($v)])->all(),
+            // A roll-up shows a branch's task on its company board, whose statuses differ: matched by name.
+            'status_name' => $task->statusRow?->name,
+            'values' => $locked ? (object) [] : (object) ($task->values->mapWithKeys(fn (TaskColumnValue $v) => [$v->column_id => self::valueOf($v)])->all()
+                + self::mirrored($task)),
             'subtasks_count' => (int) ($task->subtasks_count ?? 0),
             'subtasks_done' => (int) ($task->subtasks_done ?? 0),
             'owner' => $task->assignee ? ['id' => $task->assignee->id, 'name' => $task->assignee->name] : null,
@@ -319,30 +662,215 @@ class TasksController extends Controller
             'owners' => $task->owners->filter(fn ($o) => $o->user !== null)
                 ->map(fn ($o) => ['id' => $o->user->id, 'name' => $o->user->name])->values()->all(),
             'created_at' => $task->created_at?->toIso8601String(),
+            // Monday's Last updated column reads it.
+            'updated_at' => $task->updated_at?->toIso8601String(),
             'due_on' => $task->due_on?->toDateString(),
             'completed_at' => $task->completed_at?->toIso8601String(),
             'about' => $about ? ['type' => $task->about_type, 'id' => $task->about_id, 'label' => self::aboutLabel($about)] : null,
             'updates_count' => (int) ($task->updates_count ?? 0),
+            // The Linked cell (Jose 11-17). ponytail: a query per task; batch per board if it shows.
+            'links' => TaskLinks::of($task)->filter(fn (Task $t) => request()->user()?->can('view', $t))
+                ->map(fn (Task $t) => self::presentLink($t))->values()->all(),
             'created_by' => match (true) {
                 $task->created_by_automation_id !== null => [
                     'type' => 'automation',
                     'label' => Automation::query()->find($task->created_by_automation_id)?->name ?? 'An automation',
                 ],
                 $task->creator !== null => ['type' => 'user', 'id' => $task->creator->id, 'label' => $task->creator->name],
+                $task->created_by_system !== null => ['type' => 'automation', 'label' => 'EzBizi'],
                 default => null,
             },
         ];
     }
 
+    /** GET tasks/{task}/activity: its Activity log, newest first (Jose, 2026-11-09). */
+    public function activity(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('view', $task);
+        // A sensitive task's diffs are its values: locked rows say who, what and when only.
+        $locked = ! $this->sensitive->reveal($request, $task, 'activity');
+        $hide = fn ($a) => $locked && $a->field !== 'sensitive';
+
+        return response()->json(['data' => TaskActivity::query()->where('task_id', $task->id)
+            ->with('user:id,name')->latest('created_at')->limit(200)->get()
+            ->map(fn ($a) => ['id' => $a->id, 'at' => $a->created_at?->toIso8601String(), 'who' => $a->sender_label ?? $a->user?->name,
+                'field' => $a->field, 'label' => $a->label, 'locked' => $hide($a),
+                'from' => $hide($a) ? null : SensitiveTasks::open($a->from),
+                'to' => $hide($a) ? null : SensitiveTasks::open($a->to)])->values()]);
+    }
+
+    /**
+     * GET task-updates (Monday's update feed, gap review P1): the updates on
+     * every board this person sees, newest first, 50 a page (before=). filter
+     * mentions: only those naming them; unread: only those after their read
+     * mark; board_id narrows to one board. meta.boards counts per board.
+     */
+    public function feed(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'filter' => ['sometimes', 'in:all,mentions,bookmarked,scheduled'],
+            'unread' => ['sometimes', 'boolean'],
+            'board_id' => ['sometimes', 'nullable', 'uuid'],
+            'before' => ['sometimes', 'nullable', 'date'],
+        ]);
+        $me = $request->user();
+        $boards = app(TaskBoards::class)->visibleTo($me)->pluck('name', 'id');
+        $base = TaskUpdate::query()
+            ->join('tasks', 'tasks.id', '=', 'task_updates.task_id')
+            ->whereIn('tasks.board_id', $boards->keys())
+            ->whereNull('tasks.deleted_at')
+            ->when(SensitiveTasks::machineReader($me), fn ($q) => $q->where('tasks.sensitive', false))
+            ->when(($input['filter'] ?? 'all') === 'mentions', fn ($q) => $q->whereJsonContains('task_updates.mentions', (string) $me->id))
+            ->when(($input['filter'] ?? 'all') === 'bookmarked', fn ($q) => $q->whereJsonContains('task_updates.bookmarks', (string) $me->id))
+            // Scheduled: my own, not posted yet; every other tab: only what is posted.
+            ->when(($input['filter'] ?? 'all') === 'scheduled',
+                fn ($q) => $q->where('task_updates.user_id', $me->id)->where('task_updates.scheduled_for', '>', now()),
+                fn ($q) => $q->where('task_updates.created_at', '<=', now()))
+            ->when($request->boolean('unread'), fn ($q) => $q->where('task_updates.user_id', '!=', $me->id)
+                ->whereRaw('task_updates.created_at > COALESCE((SELECT r.last_read_at FROM note_reads r WHERE r.subject_type = ? AND r.subject_id = task_updates.task_id AND r.user_id = ?), ?)', ['task', $me->id, '1970-01-01']));
+        $counts = (clone $base)->selectRaw('tasks.board_id as b, COUNT(*) as c')->groupBy('tasks.board_id')->pluck('c', 'b');
+        $rows = (clone $base)
+            ->when($input['board_id'] ?? null, fn ($q, $b) => $q->where('tasks.board_id', $b))
+            ->when($input['before'] ?? null, fn ($q, $b) => $q->where('task_updates.created_at', '<', $b))
+            ->select('task_updates.*', 'tasks.title as task_title', 'tasks.board_id as task_board_id', 'tasks.sensitive as task_sensitive')
+            ->with(['user:id,name', 'attachments'])
+            ->latest('task_updates.created_at')->limit(50)->get();
+
+        return response()->json([
+            'data' => $rows->map(fn (TaskUpdate $u) => self::presentUpdate($u) + [
+                'task_id' => $u->task_id, 'task' => (string) $u->getAttribute('task_title'),
+                'board_id' => $u->getAttribute('task_board_id'), 'board' => (string) ($boards[$u->getAttribute('task_board_id')] ?? ''),
+            ] + ($u->getAttribute('task_sensitive') ? ['body' => SensitiveTasks::NOTICE] : []))->values(),
+            'meta' => ['boards' => $counts->map(fn ($c, $b) => ['id' => $b, 'name' => (string) ($boards[$b] ?? ''), 'count' => (int) $c])->values()],
+        ]);
+    }
+
+    /**
+     * GET my-work (Monday's My Work, gap review P1): the open tasks this
+     * person owns on every board they see, with each task's board, for the
+     * client to bucket by due day. done=1 adds the last 30 days' done ones.
+     */
+    public function myWork(Request $request): JsonResponse
+    {
+        $me = $request->user();
+        $boards = app(TaskBoards::class)->visibleTo($me)->get(['id', 'name', 'kind'])->keyBy('id');
+        $tasks = Task::query()->with(self::WITH)->withCount(self::counts())
+            ->whereIn('board_id', $boards->keys())
+            ->where(fn ($q) => $q->where('assignee_user_id', $me->id)
+                ->orWhereIn('id', TaskAssignee::query()->select('task_id')->where('user_id', $me->id)))
+            ->when(! $request->boolean('done'), fn ($q) => $q->whereNull('completed_at'),
+                fn ($q) => $q->where(fn ($w) => $w->whereNull('completed_at')->orWhere('completed_at', '>=', now()->subDays(30))))
+            ->orderByRaw('due_on IS NULL')->orderBy('due_on')->limit(1000)->get();
+
+        return response()->json(['data' => $tasks->map(fn (Task $t) => self::present($t) + [
+            'board_name' => $boards[$t->board_id]?->kind === 'user' ? 'My board' : (string) $boards[$t->board_id]?->name,
+        ])->values()]);
+    }
+
+    /** POST task-updates/read-all: every task this person sees, read now (the feed's Mark all as read). */
+    public function feedReadAll(Request $request): JsonResponse
+    {
+        $me = $request->user();
+        $ids = Task::query()->whereIn('board_id', app(TaskBoards::class)->visibleTo($me)->select('id'))
+            ->whereIn('id', TaskUpdate::query()->select('task_id')->where('created_at', '>=', now()->subDays(90)))->pluck('id');
+        foreach ($ids as $id) {
+            NoteRead::query()->updateOrCreate(
+                ['user_id' => $me->id, 'subject_type' => 'task', 'subject_id' => $id],
+                ['last_read_at' => now(), 'organization_id' => $me->organization_id],
+            );
+        }
+
+        return response()->json(['data' => ['read' => $ids->count()]]);
+    }
+
+    /**
+     * GET task-boards/{board}/activity (Monday's board Activity Log, gap review P1):
+     * every change on the board's tasks, newest first, 100 a page, filtered by
+     * days back, group, column (by its label) and person. A sensitive task's row
+     * says who, what and when only.
+     */
+    public function boardActivity(Request $request, TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorize('view', $taskBoard);
+        $input = $request->validate([
+            'days' => ['sometimes', 'integer', 'min:1', 'max:3650'],
+            'group_id' => ['sometimes', 'nullable', 'uuid'],
+            'label' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'user_id' => ['sometimes', 'nullable', 'uuid'],
+            'before' => ['sometimes', 'nullable', 'date'],
+        ]);
+        $hidden = SensitiveTasks::machineReader($request->user());
+        $rows = TaskActivity::query()
+            ->join('tasks', 'tasks.id', '=', 'task_activities.task_id')
+            ->where('tasks.board_id', $taskBoard->id)
+            ->when($hidden, fn ($q) => $q->where('tasks.sensitive', false))
+            ->when($input['days'] ?? null, fn ($q, $d) => $q->where('task_activities.created_at', '>=', now()->subDays((int) $d)))
+            ->when($input['group_id'] ?? null, fn ($q, $g) => $q->where('tasks.group_id', $g))
+            ->when($input['label'] ?? null, fn ($q, $l) => $q->where('task_activities.label', $l))
+            ->when($input['user_id'] ?? null, fn ($q, $u) => $q->where('task_activities.user_id', $u))
+            ->when($input['before'] ?? null, fn ($q, $b) => $q->where('task_activities.created_at', '<', $b))
+            ->with('user:id,name')
+            ->select('task_activities.*', 'tasks.title as task_title', 'tasks.sensitive as task_sensitive', 'tasks.group_id as task_group_id')
+            ->latest('task_activities.created_at')->limit(100)->get();
+
+        return response()->json(['data' => $rows->map(fn ($a) => [
+            'id' => $a->id, 'at' => $a->created_at?->toIso8601String(), 'who' => $a->user?->name, 'user_id' => $a->user_id,
+            'task_id' => $a->task_id, 'task' => (string) $a->task_title, 'group_id' => $a->task_group_id,
+            'field' => $a->field, 'label' => $a->label,
+            'from' => $a->task_sensitive ? null : SensitiveTasks::open($a->from),
+            'to' => $a->task_sensitive ? null : SensitiveTasks::open($a->to),
+        ])->values()]);
+    }
+
+    /**
+     * Mirror columns (Monday's): the values of [column_id] on the tasks this task's
+     * [connect_column_id] names, as a list. ponytail: a query per mirror column per
+     * task; batch per board if boards with mirrors grow large.
+     *
+     * @return array<string, list<mixed>>
+     */
+    private static function mirrored(Task $task): array
+    {
+        // Looked up once per board per request: a board's list presents every task.
+        $memo = request()->attributes;
+        $key = 'task-mirrors:'.$task->board_id;
+        if (! $memo->has($key)) {
+            $memo->set($key, TaskColumn::query()->where('board_id', $task->board_id)->where('type', 'mirror')->get());
+        }
+        $columns = $memo->get($key);
+        $out = [];
+        foreach ($columns as $c) {
+            $through = $c->settings['connect_column_id'] ?? null;
+            $target = $c->settings['column_id'] ?? null;
+            $link = $through ? $task->values->firstWhere('column_id', $through) : null;
+            $ids = $link ? (json_decode((string) SensitiveTasks::open($link->value_text), true) ?: []) : [];
+            $out[$c->id] = ! $target || $ids === [] ? [] : TaskColumnValue::query()->with('column')
+                ->whereIn('task_id', $ids)->where('column_id', $target)
+                ->whereHas('task', fn ($q) => $q->where('sensitive', false))->get()
+                ->map(fn ($v) => ColumnConverter::words($v->column, $v))->filter()->values()->all();
+        }
+
+        return $out;
+    }
+
     /** A stored value as the client reads it, by its column's type. */
     public static function valueOf(TaskColumnValue $v): mixed
     {
+        // Opened here; whether a sensitive task's values go out at all is present()'s call.
+        $text = SensitiveTasks::open($v->value_text);
+
         return match ($v->column?->type) {
-            'number' => $v->value_number,
+            'number', 'currency' => $v->value_number,
+            'rating' => $v->value_number === null ? null : (int) $v->value_number,
+            'tags', 'people', 'files', 'connect', 'dependency' => json_decode((string) $text, true) ?: [],
+            'location' => json_decode((string) $text, true) ?: null,
+            'link' => TaskWriter::linkOf($text),
             'date' => $v->value_date?->toDateString(),
+            // Stored as its start (value_date) and end (value_text).
+            'timeline' => $v->value_date ? ['from' => $v->value_date->toDateString(), 'to' => $text] : null,
             'person' => $v->value_user_id,
             'checkbox' => (bool) $v->value_number,
-            default => $v->value_text,
+            default => $text,
         };
     }
 
@@ -380,6 +908,7 @@ class TasksController extends Controller
             'about.id' => ['required_with:about', 'uuid'],
             'priority' => ['sometimes', 'nullable', 'string', 'max:16'],
             'estimate_minutes' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100000'],
+            'sensitive' => ['sometimes', 'boolean'],
         ];
     }
 

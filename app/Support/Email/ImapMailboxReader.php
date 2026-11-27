@@ -201,7 +201,7 @@ final class ImapMailboxReader implements MailboxReader
 
             $box = $imap->examine($folder);
 
-            $term = '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], trim($query)).'"';
+            $term = self::searchTerm($query);
 
             try {
                 // CHARSET UTF-8 so that a search for a word with an accent in it
@@ -587,6 +587,35 @@ final class ImapMailboxReader implements MailboxReader
      * threading headers, and there is nothing here to fetch. So this is the
      * SMTP half on its own — guard, then compose, then send.
      */
+    /**
+     * Whether this mailbox could send, without sending: the sending server's
+     * greeting, encryption and sign-in, then QUIT. Null when it can.
+     */
+    public function sendProblem(Mailbox $mailbox): ?string
+    {
+        $smtp = $mailbox->smtpHost();
+
+        if ($smtp === null || ! $mailbox->hasCredential()) {
+            return 'No sending server is set for this inbox.';
+        }
+
+        try {
+            $approved = $this->guard->approve($smtp['host'], $smtp['port'], RemoteHostGuard::SMTP_PORTS);
+            $settings = $this->settings($mailbox);
+
+            $this->translate($mailbox, fn () => $this->sender->handshake(
+                approved: $approved,
+                encryption: $smtp['encryption'],
+                username: $settings['smtp_username'] !== '' ? $settings['smtp_username'] : $mailbox->address,
+                password: (string) $mailbox->credential(),
+            ));
+        } catch (\Throwable $e) {
+            return $e->getMessage();
+        }
+
+        return null;
+    }
+
     public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
         $smtp = $mailbox->smtpHost();
@@ -793,6 +822,16 @@ final class ImapMailboxReader implements MailboxReader
      * @param  callable(): T  $work
      * @return T
      */
+    /**
+     * The searcher's words as one IMAP quoted string. A line break would end
+     * the command and start another one the searcher typed (audit 11-27); it
+     * means nothing in a search, so it becomes a space.
+     */
+    public static function searchTerm(string $query): string
+    {
+        return '"'.str_replace(['\\', '"', "\r", "\n", "\0"], ['\\\\', '\\"', ' ', ' ', ' '], trim($query)).'"';
+    }
+
     private function translate(Mailbox $mailbox, callable $work): mixed
     {
         try {

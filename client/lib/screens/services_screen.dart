@@ -1,3 +1,4 @@
+import '../widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -32,8 +33,11 @@ class _ServicesScreenState extends State<ServicesScreen> {
       'catalogue',
       'Catalogue',
       Icons.handyman_outlined,
-      (visible) =>
-          ServiceList(api: widget.api, session: widget.session, visible: visible),
+      (visible) => ServiceList(
+        api: widget.api,
+        session: widget.session,
+        visible: visible,
+      ),
     ),
     (
       'settings',
@@ -99,9 +103,12 @@ class _ServicesScreenState extends State<ServicesScreen> {
               for (var i = 0; i < tabs.length; i++)
                 Offstage(
                   offstage: i != selected,
-                  child: _shown.contains(i)
-                      ? tabs[i].$4(i == selected)
-                      : const SizedBox.shrink(),
+                  child: ModuleActionGate(
+                    active: i == selected,
+                    child: _shown.contains(i)
+                        ? tabs[i].$4(i == selected)
+                        : const SizedBox.shrink(),
+                  ),
                 ),
             ],
           ),

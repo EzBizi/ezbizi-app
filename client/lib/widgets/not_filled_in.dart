@@ -39,10 +39,19 @@ InputDecoration notFilledIn(
 /// How many amber boxes a row's record has, beside the row in its list.
 /// Nothing at all at zero, rather than a badge saying 0.
 class MissingCount extends StatelessWidget {
-  const MissingCount(this.count, {super.key, required this.tooltip});
+  const MissingCount(
+    this.count, {
+    super.key,
+    required this.tooltip,
+    this.suffix = '',
+  });
 
   final int count;
   final String tooltip;
+
+  /// Words after the number, e.g. ' missing': a phone has no hover, so a
+  /// bare number there means nothing (UI-UX, 2026-11-16).
+  final String suffix;
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +68,7 @@ class MissingCount extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
         ),
         child: Text(
-          '$count',
+          '$count$suffix',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
             color: caution,
             fontWeight: FontWeight.w700,

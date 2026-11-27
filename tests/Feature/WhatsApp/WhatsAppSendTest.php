@@ -84,7 +84,7 @@ class WhatsAppSendTest extends TestCase
         $this->metaAccepts();
 
         $row = $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
-            ->send('job_booked', '(305) 724-2199', ['Thursday']));
+            ->send('job_booked', '(305) 555-0107', ['Thursday']));
 
         $this->assertSame(self::PHONE_ID, $row->phone_number_id);
         $this->assertNotSame('+18778536971', $row->phone_number_id);
@@ -101,14 +101,14 @@ class WhatsAppSendTest extends TestCase
         $this->numberBelongsTo($t);
         $this->metaAccepts();
 
-        foreach (['(305) 724-2199', '305-724-2199', '+1 305 724 2199', '13057242199'] as $typed) {
+        foreach (['(305) 555-0107', '305-555-0107', '+1 305 555 0107', '13055550107'] as $typed) {
             $row = $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
                 ->send('job_booked', $typed));
 
             // Digits, no `+`. Meta sends every inbound `from` in this shape, so
             // both directions of one conversation key the same way; a stored
             // `+1305...` would thread as a separate conversation.
-            $this->assertSame('13057242199', $row->counterparty, "failed for: {$typed}");
+            $this->assertSame('13055550107', $row->counterparty, "failed for: {$typed}");
         }
     }
 
@@ -163,7 +163,7 @@ class WhatsAppSendTest extends TestCase
 
         try {
             $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
-                ->send('job_booked', '13057242199'));
+                ->send('job_booked', '13055550107'));
         } catch (RuntimeException) {
             // expected
         }
@@ -187,7 +187,7 @@ class WhatsAppSendTest extends TestCase
         $this->expectExceptionMessage('No WhatsApp number is attached to this organization');
 
         $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
-            ->send('job_booked', '13057242199'));
+            ->send('job_booked', '13055550107'));
     }
 
     public function test_it_sends_from_this_tenants_number_and_never_anothers(): void
@@ -207,7 +207,7 @@ class WhatsAppSendTest extends TestCase
         $this->expectExceptionMessage('No WhatsApp number is attached to this organization');
 
         $this->inTenant($mine['org'], fn () => app(WhatsAppCloud::class)
-            ->send('job_booked', '13057242199'));
+            ->send('job_booked', '13055550107'));
     }
 
     public function test_the_parameters_reach_meta_in_order(): void
@@ -217,7 +217,7 @@ class WhatsAppSendTest extends TestCase
         $this->metaAccepts();
 
         $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
-            ->send('invoice_overdue', '13057242199', ['Jose', 4182.60]));
+            ->send('invoice_overdue', '13055550107', ['Jose', 4182.60]));
 
         Http::assertSent(function ($request) {
             $p = $request->data()['template']['components'][0]['parameters'];
@@ -245,7 +245,7 @@ class WhatsAppSendTest extends TestCase
          */
         try {
             $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
-                ->send('job_booked', '13057242199'));
+                ->send('job_booked', '13055550107'));
             $this->fail('sending with two numbers and no choice must refuse, not pick one');
         } catch (RuntimeException $e) {
             // The message has to name the options, or the caller cannot act on it.
@@ -266,7 +266,7 @@ class WhatsAppSendTest extends TestCase
         // However it is written. Jose asks for "the EzBizi - Reports one" and
         // a caller should not have to know its provider id to honour that.
         $row = $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
-            ->send('job_booked', '13057242199', [], 'en_US', '+1 (877) 450-8572'));
+            ->send('job_booked', '13055550107', [], 'en_US', '+1 (877) 450-8572'));
 
         $this->assertSame(self::REPORTS_PHONE_ID, $row->phone_number_id);
         $this->assertNotSame(self::PHONE_ID, $row->phone_number_id);
@@ -287,7 +287,7 @@ class WhatsAppSendTest extends TestCase
         $this->expectExceptionMessage('No WhatsApp number matching');
 
         $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
-            ->send('job_booked', '13057242199', [], 'en_US', '+18889999999'));
+            ->send('job_booked', '13055550107', [], 'en_US', '+18889999999'));
     }
 
     public function test_one_number_and_no_choice_is_still_unambiguous(): void
@@ -299,7 +299,7 @@ class WhatsAppSendTest extends TestCase
         // The refusal is about ambiguity, not about ceremony. With a single
         // number there is nothing to choose, so callers keep working.
         $row = $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
-            ->send('job_booked', '13057242199'));
+            ->send('job_booked', '13055550107'));
 
         $this->assertSame(self::PHONE_ID, $row->phone_number_id);
     }
@@ -311,7 +311,7 @@ class WhatsAppSendTest extends TestCase
         $this->metaAccepts();
 
         $send = fn () => $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
-            ->send('job_booked', '13057242199', [], 'en_US', null, 'weekly:alpha:2026-10-12'));
+            ->send('job_booked', '13055550107', [], 'en_US', null, 'weekly:alpha:2026-10-12'));
 
         $first = $send();
         $second = $send();
@@ -330,7 +330,7 @@ class WhatsAppSendTest extends TestCase
             ->push(['messages' => [['id' => 'wamid.RETRY']]]);
 
         $send = fn () => $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
-            ->send('job_booked', '13057242199', [], 'en_US', null, 'weekly:alpha:2026-10-12'));
+            ->send('job_booked', '13055550107', [], 'en_US', null, 'weekly:alpha:2026-10-12'));
 
         try {
             $send();

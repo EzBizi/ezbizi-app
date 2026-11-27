@@ -16,19 +16,20 @@ No purchases, subscriptions or paid content. Nothing is sold in the app.
 No user-generated public content, no feed and no public profiles. Everything written is a private business record visible only to that organization. People can reach only colleagues inside their own organization - for example by dialling a coworker's phone extension - and never anyone outside it.
 
 PERMISSIONS
-The app asks for two permissions, each only at the moment it is needed:
+The app asks for these permissions, each only at the moment it is needed:
 - Microphone: the first time someone makes or takes a phone call in the app, and used only during that call.
 - Notifications: so a job assigned to someone reaches their phone.
-It does not use location (location sharing is in the iPhone app only), contacts, camera, photos or App Tracking Transparency.
+- Camera: only during a video call with a colleague in Chat, after the person starts or answers it; the microphone is used for Chat voice and video calls too. Calls are live only, never recorded.
+It does not use location (location sharing is in the iPhone app only), contacts, photos or App Tracking Transparency.
 
 ACCOUNT DELETION
 A person deletes their own account from the account screen. It requires their password and typing DELETE, then erases their personal details and signs them out on every device. The sole administrator of an organization is refused and told to make somebody else an administrator first, so a business is never left with nobody able to run it.
 
 EXTERNAL SERVICES
 Infrastructure: Amazon Web Services (hosting, database), Amazon SES (transactional email), WhatsApp Business by Meta (messaging).
-Optional per-tenant integrations, none required and none configured in the demo organization, each connected by the customer with their own account and disconnectable at any time: Twilio (phone, SMS); Google and Microsoft 365 (company mailbox); Meta, TikTok, Pinterest, LinkedIn, X, YouTube (publishing the customer's own posts to their own accounts); Google Ads, Google Business Profile, Thumbtack (lead sources).
+Optional integrations, none in the demo, each connected by the customer with their own account and removable any time: Twilio (phone, SMS); Google and Microsoft 365 (company mailbox); Meta, TikTok, Pinterest, LinkedIn, X, YouTube (publishing the customer's own posts to their own accounts); Google Ads, Google Business Profile, Thumbtack (lead sources).
 No payment processor and no advertising, analytics, attribution or crash-reporting SDK.
-The Assistant tab answers questions by searching the organization's own help entries. It uses no outside AI or machine-learning service and sends no data to one.
+AI: call summaries, lead notes, review-reply drafts and the staff Assistant send the organization's own business records to xAI (Grok) to write that text. Results are shown only inside that organization; xAI is not used for advertising or tracking.
 
 REGIONS
 Identical in every region. English (United States) only, no region-gated features, no regional pricing, no content varying by territory.

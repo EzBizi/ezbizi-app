@@ -276,6 +276,20 @@ final class ModuleDefinition
          * @var array<string, string> action => description
          */
         public readonly array $actionDescriptions = [],
+        /**
+         * Actions done TO the people holding them, not acts they perform:
+         * `monitoring.unmonitored` takes their own PC out of screen monitoring
+         * (Jose, 2026-11-17: "Lead Managers should not be desktop monitored as
+         * they may handle financial information").
+         *
+         * Holding one does NOT imply the module's view, on the server
+         * (PermissionCatalogue::withImpliedView) or in the roles editor:
+         * being monitored must not open the Monitoring screen to everyone
+         * who is.
+         *
+         * @var string[] actions, each also in $actions
+         */
+        public readonly array $passiveActions = [],
     ) {
         if ($parent !== null && $parent === $key) {
             throw new InvalidArgumentException(
@@ -397,6 +411,14 @@ final class ModuleDefinition
         }
 
         $this->actions = $actions;
+
+        // After the tabs merge: a tab action may be passive (Monitoring's
+        // Activity and API activity, 2026-11-25).
+        if (array_diff($passiveActions, $actions) !== []) {
+            throw new InvalidArgumentException(
+                "Module '{$key}' declares passive actions it does not declare as actions."
+            );
+        }
 
         // `array` cannot say "array of what", so it is said here. A bare string
         // used to be legal and is exactly the regression to catch: it would

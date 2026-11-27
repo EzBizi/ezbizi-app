@@ -86,7 +86,11 @@ final class HardenedPdf
      * this — it stamps the page between render and output — and takes
      * `options()` alone.
      */
-    public static function render(string $html, string $paper): string
+    /**
+     * @param  string|null  $pageNumbers  drawn at the foot of every page, right, e.g. "Page {PAGE_NUM} of {PAGE_COUNT}":
+     *                                    CSS counter(pages) reads 0 in dompdf, the canvas knows the count
+     */
+    public static function render(string $html, string $paper, ?string $pageNumbers = null): string
     {
         $dompdf = new Dompdf(self::options($paper));
 
@@ -94,6 +98,13 @@ final class HardenedPdf
         // accented name in a Spanish document on the day a meta tag moved.
         $dompdf->loadHtml($html, 'UTF-8');
         $dompdf->render();
+
+        if ($pageNumbers !== null) {
+            $canvas = $dompdf->getCanvas();
+            $font = $dompdf->getFontMetrics()->getFont('DejaVu Sans');
+            $width = $dompdf->getFontMetrics()->getTextWidth(str_replace(['{PAGE_NUM}', '{PAGE_COUNT}'], '99', $pageNumbers), $font, 8);
+            $canvas->page_text($canvas->get_width() - 40 - $width, $canvas->get_height() - 28, $pageNumbers, $font, 8, [0.61, 0.64, 0.69]);
+        }
 
         return (string) $dompdf->output();
     }

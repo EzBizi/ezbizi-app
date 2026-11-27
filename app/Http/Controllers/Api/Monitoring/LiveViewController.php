@@ -91,7 +91,7 @@ class LiveViewController extends Controller
     private const MAX_KILOBYTES = 2048;
 
     /** The SECURITY exemption's refusal sentence — same wording every screen-reaching guard uses. */
-    private const EXEMPT_REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
+    private const EXEMPT_REFUSAL = ScreenMonitoringExemption::REFUSAL;
 
     public function __construct(
         private readonly TenantContext $tenant,

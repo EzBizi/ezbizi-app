@@ -2,13 +2,13 @@
 
 namespace App\Support\Reports\Texts;
 
-use App\Http\Controllers\Api\ExperimentalCallReportController;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\Organization;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
+use App\Support\Reports\ReportView;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 
@@ -28,20 +28,20 @@ final class NewClientConversion
         $calls = app(TenantContext::class)->run($organization, function () use ($day) {
             $report = app(CallReconciliation::class)->forRange(
                 app(RingCentralCallLog::class)->forPeriod($day, $day->endOfDay()),
-                app(WorkizJobs::class)->storedAll($day->subDays(ExperimentalCallReportController::LOOKBACK_DAYS)->toDateString())['jobs'],
+                app(WorkizJobs::class)->storedAll($day->subDays(ReportView::lookbackDays())->toDateString())['jobs'],
                 $day->toDateString(),
                 $day->toDateString(),
                 CallReportConversion::query()->pluck('call_id')->all(),
                 CallReportDispatcherTag::query()->pluck('tag', 'person')->all(),
             );
 
-            return array_values(array_filter($report['calls'] ?? [], fn ($c) => ($c['queue'] ?? null) === RingCentralCallLog::NEW_CLIENT_QUEUE
+            return array_values(array_filter($report['calls'] ?? [], fn ($c) => RingCentralCallLog::clientOf($c['queue'] ?? null) === 'new' && ($c['mark'] ?? null) === null
                 && ($c['direction'] ?? 'Inbound') === 'Inbound'));
         });
 
         $answered = array_values(array_filter($calls, fn ($c) => ($c['answered_by'] ?? null) !== null));
         // A caller who already had a job is not a booking to win or lose.
-        $counted = array_values(array_filter($answered, fn ($c) => ($c['existing_job'] ?? null) === null));
+        $counted = array_values(array_filter($answered, fn ($c) => ($c['existing_job'] ?? null) === null && ! ($c['needs_attention'] ?? false) && ! ($c['awaiting_review'] ?? false)));
         $booked = count(array_filter($counted, fn ($c) => $c['booked']));
         $rate = fn (int $won, int $of) => $of > 0 ? round($won / $of * 100).'%' : '—';
 
@@ -54,8 +54,16 @@ final class NewClientConversion
             '📈 Conversion: *'.$rate($booked, count($counted)).'*',
         ];
 
-        if (($existing = count($answered) - count($counted)) > 0) {
+        $attention = count(array_filter($answered, fn ($c) => $c['needs_attention'] ?? false));
+        $review = count(array_filter($answered, fn ($c) => $c['awaiting_review'] ?? false));
+        if (($existing = count($answered) - count($counted) - $attention - $review) > 0) {
             $lines[] = '🔁 '.$existing.' already had a job (not counted)';
+        }
+        if ($attention > 0) {
+            $lines[] = '🔎 '.$attention.' need attention: AI heard a booking, no job yet (not counted)';
+        }
+        if ($review > 0) {
+            $lines[] = '⏳ '.$review." awaiting review: another company's calls (not counted)";
         }
 
         $people = [];

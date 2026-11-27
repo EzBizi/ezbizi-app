@@ -122,6 +122,24 @@ void main() {
   /// A fresh CallTab with the preference already set is exactly the state of
   /// coming back to the tab, which is why the test is written this way round
   /// rather than by tapping the pin and rebuilding.
+  testWidgets('with the customer pane open the history keeps 260 px', (
+    tester,
+  ) async {
+    // Desktop review 2026-11-13, Top 8: ~170 px cut names and numbers; the
+    // customer pane gives the width back first.
+    await _pump(
+      tester,
+      size: const Size(900, 900),
+      preferences: const {'phone.customer_panel_pinned': true},
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getRect(find.byKey(const Key('phone-call-history'))).width,
+      greaterThanOrEqualTo(260),
+    );
+  });
+
   testWidgets('a pinned customer panel is still pinned on the way back', (
     tester,
   ) async {
@@ -163,7 +181,7 @@ void main() {
     // pin to click.
     await tester.enterText(
       find.widgetWithText(TextField, 'Name or number'),
-      '305 724 2199',
+      '305 555 0107',
     );
     await tester.pumpAndSettle();
 
@@ -244,7 +262,7 @@ void main() {
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Name or number'),
-      '305 724 2199',
+      '305 555 0107',
     );
     await tester.pumpAndSettle();
 
@@ -262,7 +280,7 @@ void main() {
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Name or number'),
-      '305 724 2199',
+      '305 555 0107',
     );
     await tester.pumpAndSettle();
 
@@ -475,7 +493,7 @@ void main() {
       // there is somebody to show. Typing the number is what opens it.
       await tester.enterText(
         find.widgetWithText(TextField, 'Name or number'),
-        '305 724 2199',
+        '305 555 0107',
       );
       await tester.pumpAndSettle();
 
@@ -811,7 +829,7 @@ void main() {
     // until there is somebody to show. Typing the number is what opens it.
     await tester.enterText(
       find.widgetWithText(TextField, 'Name or number'),
-      '305 724 2199',
+      '305 555 0107',
     );
     await tester.pumpAndSettle();
 
@@ -1018,8 +1036,8 @@ void main() {
 
   /// The bug that made outbound calling fail for weeks.
   ///
-  /// "305 724 2199" is how a phone number is written here. Stripping the
-  /// spaces and putting a `+` in front turns it into `+3057242199`, which is
+  /// "305 555 0107" is how a phone number is written here. Stripping the
+  /// spaces and putting a `+` in front turns it into `+3055550107`, which is
   /// not that number — the country code is missing, and +305 is not a country.
   /// Every outbound call went to it. Nothing rejected it, because it is
   /// well-formed enough to pass a length check, so it was dialled and the
@@ -1038,7 +1056,7 @@ void main() {
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Name or number'),
-      '305 724 2199',
+      '305 555 0107',
     );
     await tester.pumpAndSettle();
 
@@ -1046,7 +1064,7 @@ void main() {
 
     expect(
       device.connectedTo,
-      '+13057242199',
+      '+13055550107',
       reason: 'the country code was dropped, so the call went nowhere',
     );
   });
@@ -1073,7 +1091,7 @@ void main() {
   });
 
   /// Too short to complete, so it is refused rather than guessed at —
-  /// guessing a country code is precisely what produced +3057242199.
+  /// guessing a country code is precisely what produced +3055550107.
   testWidgets('a number too short to complete is not dialled at all', (
     tester,
   ) async {
@@ -1112,7 +1130,7 @@ void main() {
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Name or number'),
-      '305 724 2199',
+      '305 555 0107',
     );
     await tester.pumpAndSettle();
     await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
@@ -1125,7 +1143,7 @@ void main() {
 
     final bridge = seen.where((r) => r.url.path.endsWith('/phone/calls/bridge'));
     expect(bridge, hasLength(1), reason: 'no bridged call was asked for');
-    expect(jsonDecode(bridge.first.body)['to'], '+13057242199');
+    expect(jsonDecode(bridge.first.body)['to'], '+13055550107');
   });
 
   /// And a browser build still uses the device, because it can.
@@ -1138,12 +1156,12 @@ void main() {
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Name or number'),
-      '305 724 2199',
+      '305 555 0107',
     );
     await tester.pumpAndSettle();
     await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
 
-    expect(device.connectedTo, '+13057242199');
+    expect(device.connectedTo, '+13055550107');
     expect(
       seen.where((r) => r.url.path.endsWith('/phone/calls/bridge')),
       isEmpty,
@@ -1165,7 +1183,7 @@ void main() {
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Name or number'),
-      '305 724 2199',
+      '305 555 0107',
     );
     await tester.pumpAndSettle();
     await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
@@ -1189,7 +1207,7 @@ void main() {
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Name or number'),
-      '305 724 2199',
+      '305 555 0107',
     );
     await tester.pumpAndSettle();
     await _tap(tester, find.byKey(const Key('dial-availability')));
@@ -1302,7 +1320,7 @@ void main() {
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Name or number'),
-      '305 724 2199',
+      '305 555 0107',
     );
     await tester.pumpAndSettle();
     await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
@@ -1685,7 +1703,7 @@ void main() {
           .controller!
           .text,
       '+1 (305) 555-0199',
-      reason: 'the box read +13057242199 before',
+      reason: 'the box read +13055550107 before',
     );
     expect(find.widgetWithText(FilledButton, 'Call Maria Lopez'), findsOne);
   });

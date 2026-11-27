@@ -27,6 +27,9 @@ final class FieldType
     public const FILE      = 'file';
     public const SIGNATURE = 'signature';
 
+    /** Hourly rate stages: "after N days, $X/hr" rows (Merav, 2026-11-17). See RateSteps. */
+    public const RATE_STEPS = 'rate_steps';
+
     /** key => the wording a person choosing a type reads. */
     public const ALL = [
         self::TEXT      => 'Text',
@@ -36,6 +39,7 @@ final class FieldType
         self::CHECKLIST => 'A checklist of items',
         self::FILE      => 'A file they upload',
         self::SIGNATURE => 'A signature',
+        self::RATE_STEPS => 'Pay rate stages (after N days, a new hourly rate)',
     ];
 
     /**

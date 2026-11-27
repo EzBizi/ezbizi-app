@@ -1652,11 +1652,13 @@ class HrOnboardingTest extends TestCase
     }
 
     /**
-     * Revoked after it was accepted (Jose, 2026-10-05: "she should be able to
-     * still revoke it. regardless of anything"): the paperwork is cancelled
-     * and the account it opened is switched off. A rule still may not.
+     * An accepted invitation is not revoked (Jose, 2026-11-24: "if an
+     * invitation has been completed ... the revoke button is unnecesary",
+     * replacing 2026-10-05's "regardless of anything"): removing the person
+     * happens on their HR record. Neither a rule nor a person, and the
+     * account stays on.
      */
-    public function test_an_accepted_invitation_can_still_be_revoked_by_a_person(): void
+    public function test_an_accepted_invitation_cannot_be_revoked(): void
     {
         [$alpha, $employee, $id] = $this->scenario();
         $invitationId = $this->form($alpha['admin'], $id)['invitation_id'];
@@ -1669,11 +1671,10 @@ class HrOnboardingTest extends TestCase
             $this->assertTrue((bool) $this->inTenant($alpha['org'], fn () => $employee->fresh()->is_active));
 
             $this->as($alpha['admin'])->deleteJson("/api/v1/hr/invitations/{$invitationId}")
-                ->assertOk()
-                ->assertJsonPath('data.status', 'revoked');
+                ->assertUnprocessable()->assertJsonValidationErrors('invitation');
 
-            $this->assertSame('cancelled', $this->form($alpha['admin'], $id)['status']);
-            $this->assertFalse((bool) $this->inTenant($alpha['org'], fn () => $employee->fresh()->is_active));
+            $this->assertNotSame('cancelled', $this->form($alpha['admin'], $id)['status']);
+            $this->assertTrue((bool) $this->inTenant($alpha['org'], fn () => $employee->fresh()->is_active));
         }
     }
 
@@ -2063,5 +2064,127 @@ class HrOnboardingTest extends TestCase
         parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
 
         return $query['token'];
+    }
+
+    /**
+     * Social Security card photo (Merav, 2026-11-09): a required sensitive file
+     * field, stored encrypted, served only as an audited reveal, and shown on the
+     * HR record as on file or missing.
+     */
+    public function test_the_social_security_card_photo_is_encrypted_and_a_reveal(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario([
+            ['key' => 'ssn_card', 'label' => 'Social Security card photo', 'type' => 'file', 'filled_by' => 'employee', 'required' => true, 'sensitive' => true],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+        $this->as($alpha['admin'])->getJson("/api/v1/hr/people/{$employee->id}")->assertJsonPath('data.ssn_card', 'missing');
+
+        $bytes = "%PDF-1.4 card front
+%%EOF
+";
+        $file = $this->as($employee)->postJson('/api/v1/attachments', [
+            'attachable_type' => 'onboardings', 'attachable_id' => $id,
+            'file' => UploadedFile::fake()->createWithContent('card.pdf', $bytes),
+        ])->assertCreated()->json('data.id');
+        $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['ssn_card' => $file]])->assertOk();
+
+        // Encrypted at rest: the stored bytes are not the card.
+        $row = $this->inTenant($alpha['org'], fn () => \App\Models\Attachment::query()->find($file));
+        $this->assertTrue($row->encrypted);
+        $this->assertStringNotContainsString('card front', (string) app(\App\Support\Files\FileStore::class)->contents($row->path, $row->disk));
+
+        // Someone who can open the onboarding but may not reveal gets nothing.
+        $reader = $this->userWithRole($alpha, 'Reader', ['hr.view']);
+        $this->as($reader)->get("/api/v1/attachments/{$file}")->assertForbidden();
+        $this->assertSame(0, $this->revealEvents($alpha)->count());
+
+        // HR gets the card, and the view is audited.
+        $this->assertSame($bytes, $this->as($alpha['admin'])->get("/api/v1/attachments/{$file}")->assertOk()->streamedContent());
+        $this->assertSame(1, $this->revealEvents($alpha)->count());
+
+        $this->as($alpha['admin'])->getJson("/api/v1/hr/people/{$employee->id}")->assertJsonPath('data.ssn_card', 'on_file');
+    }
+
+    /** Hourly rate stages (Merav, 2026-11-17): $26, after 90 days $28, dated from the start. */
+    public function test_hourly_rate_stages_become_dated_pay_rates(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario([
+            ['key' => 'date_of_hire', 'label' => 'Date of hire', 'type' => 'date', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'pay_basis', 'label' => 'Pay basis', 'type' => 'choice', 'options' => ['Hourly', 'Salary'],
+                'filled_by' => 'employer', 'required' => true],
+            ['key' => 'hourly_rate', 'label' => 'Hourly rate', 'type' => 'number', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'hourly_rate_steps', 'label' => 'Hourly rate stages', 'type' => 'rate_steps', 'filled_by' => 'employer', 'required' => false],
+            ['key' => 'employer_sign', 'label' => 'For the employer', 'type' => 'signature', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+        $url = "/api/v1/hr/onboardings/{$id}";
+
+        $this->as($alpha['admin'])->patchJson($url, ['answers' => ['hourly_rate_steps' => [['after_days' => 0, 'rate' => 28]]]])
+            ->assertStatus(422)->assertJsonValidationErrors('answers.hourly_rate_steps');
+
+        $hired = now()->subDays(100)->toDateString();
+        $this->as($alpha['admin'])->patchJson($url, ['answers' => [
+            'date_of_hire' => $hired, 'pay_basis' => 'Hourly', 'hourly_rate' => '26',
+            'hourly_rate_steps' => [['after_days' => 180, 'rate' => '30'], ['after_days' => 90, 'rate' => '28']],
+        ]])->assertOk();
+
+        $this->signAs($alpha['admin'], $id, 'employer_sign', 'Alpha Admin');
+        $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz');
+
+        $rates = $this->inTenant($alpha['org'], fn () => PayRate::where('user_id', $employee->id)->orderBy('effective_on')->get());
+        $this->assertSame(['26', '28.00', '30.00'], $rates->map(fn ($r) => (string) $r->amount)->all());
+        $this->assertSame([$hired, now()->subDays(10)->toDateString(), now()->addDays(80)->toDateString()],
+            $rates->map(fn ($r) => $r->effective_on->toDateString())->all());
+
+        // Day 100: the 90-day stage applies today; the 180-day one is next.
+        $record = $this->as($alpha['admin'])->getJson("/api/v1/hr/people/{$employee->id}")->assertOk()->json('data');
+        $this->assertSame([$rates[1]->id, $rates[2]->id], [$record['pay_rate_now'], $record['pay_rate_next']]);
+        $this->assertSame('28.00', (string) $this->inTenant($alpha['org'], fn () => PayRate::rateOn($employee->id, now()->toDateString())->amount));
+        $this->assertSame('26', (string) $this->inTenant($alpha['org'], fn () => PayRate::rateOn($employee->id, now()->subDays(20)->toDateString())->amount));
+    }
+
+    /**
+     * Merav, 2026-11-19: the contract prints the hire's BRANCH address, and an
+     * onboarding left unfinished warns on the record and alerts that branch's
+     * managers, saying what is missing.
+     */
+    public function test_branch_address_and_unfinished_onboarding_alerts(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario();
+        $branch = $alpha['franchise'];
+        $address = fn () => $this->inTenant($alpha['org'], fn () => Onboarding::findOrFail($id)->employer()['address']);
+
+        $before = $address();
+        $this->as($alpha['admin'])->patchJson("/api/v1/franchises/{$branch->id}", ['address' => '12 Branch Rd, Bethel CT 06801'])
+            ->assertOk()->assertJsonPath('address', '12 Branch Rd, Bethel CT 06801');
+        $this->assertNotSame('12 Branch Rd, Bethel CT 06801', $before);
+        $this->assertSame('12 Branch Rd, Bethel CT 06801', $address());
+
+        // The record says it is unfinished, and what is missing.
+        $missing = $this->as($alpha['admin'])->getJson("/api/v1/hr/people/{$employee->id}")->assertOk()->json('data.onboarding_missing');
+        $this->assertNotEmpty($missing);
+
+        // A manager at that branch, and one at another, both able to read records.
+        $here = $this->userWithRole($alpha, 'Local Manager', ['hr.view', 'hr.records.view'], 'here@alpha.test', onlyAt: $branch);
+        $other = $this->userWithRole($alpha, 'Other Manager', ['hr.view', 'hr.records.view'], 'other@alpha.test',
+            onlyAt: $this->extraFranchise($alpha, 'Elsewhere'));
+        $told = fn (User $u) => $this->inTenant($alpha['org'], fn () => \App\Models\Notification::query()
+            ->where('user_id', $u->id)->where('kind', 'hr.onboarding_missing')->get());
+
+        // Too new to chase.
+        $this->artisan('ezbizi:hr-onboarding-gap-alerts')->assertSuccessful();
+        $this->assertCount(0, $told($here));
+
+        DB::table('onboardings')->where('id', $id)->update(['started_at' => now()->subDays(5)]);
+        $this->artisan('ezbizi:hr-onboarding-gap-alerts')->assertSuccessful();
+        $alerts = $told($here);
+        $this->assertCount(1, $alerts);
+        $this->assertStringContainsString('Marta', $alerts[0]->title);
+        $this->assertStringContainsString($missing[0], (string) $alerts[0]->body);
+        $this->assertCount(0, $told($other));
+
+        // Not again within the quiet days.
+        $this->artisan('ezbizi:hr-onboarding-gap-alerts')->assertSuccessful();
+        $this->assertCount(1, $told($here));
     }
 }

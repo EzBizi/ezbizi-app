@@ -95,67 +95,49 @@ class _AddVendorPaneState extends State<AddVendorPane> {
         _name.text.trim().isNotEmpty &&
         (_companyId != null || _atOrganization);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return formPane(
+      context,
+      'New vendor',
+      showBack: widget.showBack,
+      busy: _busy,
+      onCancel: widget.onCancel,
+      onSave: canSave ? _save : null,
+      backTooltip: 'Back',
       children: [
-        paneHeader(
-          context,
-          'New vendor',
-          showBack: widget.showBack,
-          onBack: _busy ? null : widget.onCancel,
-          backTooltip: 'Back',
+        InventoryPlaceFields(
+          me: _me,
+          companyId: _companyId,
+          franchiseId: _franchiseId,
+          enabled: !_busy,
+          onCompanyChanged: (v) => setState(() {
+            _companyId = v;
+            _franchiseId = null;
+          }),
+          onFranchiseChanged: (v) => setState(() => _franchiseId = v),
         ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                InventoryPlaceFields(
-                  me: _me,
-                  companyId: _companyId,
-                  franchiseId: _franchiseId,
-                  enabled: !_busy,
-                  onCompanyChanged: (v) => setState(() {
-                    _companyId = v;
-                    _franchiseId = null;
-                  }),
-                  onFranchiseChanged: (v) => setState(() => _franchiseId = v),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _name,
-                  enabled: !_busy,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _phone,
-                  enabled: !_busy,
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: const [PhoneNumberInputFormatter()],
-                  decoration: const InputDecoration(labelText: 'Phone'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _email,
-                  enabled: !_busy,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  ErrorNote(_error!),
-                ],
-              ],
-            ),
-          ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _name,
+          enabled: !_busy,
+          decoration: const InputDecoration(labelText: 'Name'),
+          onChanged: (_) => setState(() {}),
         ),
-        paneFooter(
-          onCancel: _busy ? null : widget.onCancel,
-          onSave: canSave ? _save : null,
+        const SizedBox(height: 12),
+        TextField(
+          controller: _phone,
+          enabled: !_busy,
+          keyboardType: TextInputType.phone,
+          inputFormatters: const [PhoneNumberInputFormatter()],
+          decoration: const InputDecoration(labelText: 'Phone'),
         ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _email,
+          enabled: !_busy,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(labelText: 'Email'),
+        ),
+        if (_error != null) ...[const SizedBox(height: 14), ErrorNote(_error!)],
       ],
     );
   }

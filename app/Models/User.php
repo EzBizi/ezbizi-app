@@ -9,6 +9,8 @@ use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -20,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection;
 use Laravel\Sanctum\HasApiTokens;
 
 /**
@@ -39,16 +42,31 @@ use Laravel\Sanctum\HasApiTokens;
     'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'country',
     // Records may switch the lock screen off for one person (design 2026-09-08 §4).
     'lock_screen_exempt',
+    // Full or part time, chosen by HR; null infers it from the schedule (2026-11-25).
+    'hours_type',
+    // Who they answer to (Jose, 2026-11-03, the ownership chart).
+    'reports_to_user_id',
 ])]
 #[Hidden(['password', 'remember_token', 'totp_secret', 'pending_totp_secret', 'recovery_codes', 'saved_signature'])]
 class User extends Authenticatable implements HoldsPersonalData
 {
+    use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'people';
+
+    /** Written in passing: saved filters, sign-in and two-step bookkeeping. */
+    protected static array $changeFeedIgnores = [
+        'preferences', 'remember_token', 'password', 'totp_secret', 'pending_totp_secret',
+        'totp_confirmed_at', 'last_totp_timestamp', 'recovery_codes', 'email_verified_at',
+    ];
+
+    use HasApiTokens;
     /** @use HasFactory<UserFactory> */
     use HasFactory;
-    use HasUuids;
-    use BelongsToTenant;
     use HasTotp;
-    use HasApiTokens;
+    use HasUuids;
     use Notifiable;
 
     // ── §9 data inventory ────────────────────────────────────────
@@ -71,6 +89,12 @@ class User extends Authenticatable implements HoldsPersonalData
         );
     }
 
+    /** An erased account's stand-in name (see personalDataHeld), or no name at all. */
+    public static function isErasedName(?string $name): bool
+    {
+        return $name === null || trim($name) === '' || in_array($name, ['Former staff', 'Removed account'], true);
+    }
+
     public static function personalDataHeld(): array
     {
         return [
@@ -83,7 +107,7 @@ class User extends Authenticatable implements HoldsPersonalData
                  * audit trail beside it still shows their actions, since §5
                  * requires those to stay attributed.
                  */
-                Erasure::erase('Removed account')),
+                Erasure::erase('Former staff')),
             new PersonalDataEntry('first_name, middle_name, last_name',
                 PersonalDataEntry::IDENTITY,
                 'The parts the display name is composed from, stored separately because '
@@ -139,6 +163,9 @@ class User extends Authenticatable implements HoldsPersonalData
                 'Which weekdays and hours they are expected to work, in the zone of the '
                 .'place that set it. Read by the shift-end reminder and the lock screen.',
                 Erasure::erase()),
+            new PersonalDataEntry('reports_to_user_id', PersonalDataEntry::IDENTITY,
+                'The colleague this person answers to, drawn on the ownership chart.',
+                Erasure::erase()),
             new PersonalDataEntry('lock_screen_exempt', PersonalDataEntry::TECHNICAL,
                 'Whether the lock screen is switched off for this person (a remote worker).',
                 // NOT NULL boolean: the purge's stand-in string cannot land
@@ -186,30 +213,30 @@ class User extends Authenticatable implements HoldsPersonalData
         return [
             'date_of_birth' => 'date',
             'email_verified_at' => 'datetime',
-            'password'          => 'hashed',
-            'is_active'         => 'boolean',
+            'password' => 'hashed',
+            'is_active' => 'boolean',
             'totp_confirmed_at' => 'datetime',
             // Encrypted at rest: a leak that exposes TOTP secrets makes the
             // second factor worthless, and recovery codes are a full bypass.
-            'totp_secret'         => 'encrypted',
+            'totp_secret' => 'encrypted',
             'pending_totp_secret' => 'encrypted',
-            'recovery_codes'      => 'encrypted:array',
+            'recovery_codes' => 'encrypted:array',
             'last_totp_timestamp' => 'integer',
 
             // Codes texted by EzBizi itself. `sms_code_hash` is a hash of a
             // six-digit number that lives for ten minutes, hashed for the same
             // reason a password is: a code readable in a backup is a code
             // somebody can use.
-            'sms_code_consent_at'   => 'datetime',
+            'sms_code_consent_at' => 'datetime',
             'sms_code_confirmed_at' => 'datetime',
-            'sms_code_expires_at'   => 'datetime',
+            'sms_code_expires_at' => 'datetime',
             // §2.1 category 6 — theirs, nobody else's.
-            'preferences'         => 'array',
+            'preferences' => 'array',
             // HR data, not a preference: Records sets it. Shape in WorkSchedule.
-            'work_schedule'       => 'array',
+            'work_schedule' => 'array',
             // Their own drawn signature, saved to reuse on contracts.
-            'saved_signature'     => 'encrypted',
-            'lock_screen_exempt'  => 'boolean',
+            'saved_signature' => 'encrypted',
+            'lock_screen_exempt' => 'boolean',
             'time_clock_edits_unmarked' => 'boolean',
         ];
     }
@@ -264,10 +291,10 @@ class User extends Authenticatable implements HoldsPersonalData
         if (preg_match('/^(.+?),\s*([^,]+?),\s*([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)(?:,\s*([^,]+))?$/', $line, $m)) {
             return array_merge($parts, [
                 'address_line1' => trim($m[1]),
-                'city'          => trim($m[2]),
-                'state'         => strtoupper($m[3]),
-                'postal_code'   => $m[4],
-                'country'       => isset($m[5]) ? trim($m[5]) : null,
+                'city' => trim($m[2]),
+                'state' => strtoupper($m[3]),
+                'postal_code' => $m[4],
+                'country' => isset($m[5]) ? trim($m[5]) : null,
             ]);
         }
 
@@ -326,6 +353,16 @@ class User extends Authenticatable implements HoldsPersonalData
         return $this->belongsTo(Role::class);
     }
 
+    /**
+     * Removed (deleted) people: the Anonymiser rewrites their email to
+     * removed-{ref}@invalid (see personalDataHeld). Off HR's lists and counts
+     * (Jose, 2026-11-12: "Removed Accounts should not show up on Records").
+     */
+    public function scopeRemoved(Builder $query, bool $removed = true): void
+    {
+        $query->where('users.email', $removed ? 'like' : 'not like', 'removed-%@invalid');
+    }
+
     public function assignments(): HasMany
     {
         return $this->hasMany(Assignment::class);
@@ -357,7 +394,37 @@ class User extends Authenticatable implements HoldsPersonalData
             return false;
         }
 
-        return $this->role?->hasPermission($key) ?? false;
+        return ($this->role?->hasPermission($key) ?? false)
+            || in_array($key, $this->personalGrantKeys(), true);
+    }
+
+    /** The same question, answered by the role alone -- no per-person grant counted. */
+    public function roleAllows(string $key): bool
+    {
+        if (! $this->is_active || $this->awaitingOnboardingApproval()) {
+            return false;
+        }
+
+        return app(ModuleAvailability::class)->isPermissionAvailable($key, $this->organization)
+            && ($this->role?->hasPermission($key) ?? false);
+    }
+
+    /**
+     * Permissions a person holds because somebody gave them an inbox by name.
+     *
+     * Jose, 2026-11-09: "if she can see the email she should be able to assign
+     * someone to it, and that person in turn should see it." So an inbox given
+     * to a person opens the Email tab for them even when their role has no
+     * Email -- and {@see \App\Support\Email\MailboxAccess} lets them into
+     * THAT inbox only, whatever their branch or role.
+     *
+     * @return list<string>
+     */
+    public function personalGrantKeys(): array
+    {
+        $holds = MailboxGrant::query()->where('user_id', $this->ownRowsKey())->exists();
+
+        return $holds ? [\App\Support\Email\MailboxAccess::READ, 'email.inbox.view'] : [];
     }
 
     /**
@@ -378,7 +445,7 @@ class User extends Authenticatable implements HoldsPersonalData
 
         // In this person's own tenant: hasPermission is also asked where no
         // request has set one, and both reads below are tenant-scoped.
-        return app(\App\Support\Tenancy\TenantContext::class)->run($organization, fn () => (bool) app(\App\Support\Settings\SettingsResolver::class)
+        return app(TenantContext::class)->run($organization, fn () => (bool) app(SettingsResolver::class)
             ->get('hr.onboarding_approval', $organization)
             && Onboarding::query()->where('user_id', $this->getKey())
                 ->whereIn('status', Onboarding::OPEN)->exists());
@@ -410,22 +477,19 @@ class User extends Authenticatable implements HoldsPersonalData
         foreach ($this->assignments as $assignment) {
             $reachable = match ($assignment->scopeType()) {
                 // Organization-level: the whole tenant.
-                Assignment::SCOPE_ORGANIZATION =>
-                    $assignment->assigned_organization_id === $franchise->organization_id,
+                Assignment::SCOPE_ORGANIZATION => $assignment->assigned_organization_id === $franchise->organization_id,
 
                 // Company-level: this company's franchises, plus those of its
                 // Sub Companies. The Sub Company step is easy to miss and would
                 // silently hide half a company's work from its own manager.
-                Assignment::SCOPE_COMPANY =>
-                    in_array(
-                        $franchise->company_id,
-                        $assignment->assignedCompany?->subtreeCompanyIds() ?? [],
-                        strict: true
-                    ),
+                Assignment::SCOPE_COMPANY => in_array(
+                    $franchise->company_id,
+                    $assignment->assignedCompany?->subtreeCompanyIds() ?? [],
+                    strict: true
+                ),
 
                 // Franchise-level: exactly this one.
-                Assignment::SCOPE_FRANCHISE =>
-                    $assignment->assigned_franchise_id === $franchise->getKey(),
+                Assignment::SCOPE_FRANCHISE => $assignment->assigned_franchise_id === $franchise->getKey(),
             };
 
             if ($reachable) {
@@ -469,18 +533,16 @@ class User extends Authenticatable implements HoldsPersonalData
         foreach ($this->assignments as $assignment) {
             $reachable = match ($assignment->scopeType()) {
                 // The whole tenant, so every company in it.
-                Assignment::SCOPE_ORGANIZATION =>
-                    $assignment->assigned_organization_id === $company->organization_id,
+                Assignment::SCOPE_ORGANIZATION => $assignment->assigned_organization_id === $company->organization_id,
 
                 // The company itself, or its Sub Companies — authority runs
                 // down the subtree. A Sub Company's manager does NOT reach the
                 // parent, which is the direction that has to stay closed.
-                Assignment::SCOPE_COMPANY =>
-                    in_array(
-                        $company->getKey(),
-                        $assignment->assignedCompany?->subtreeCompanyIds() ?? [],
-                        strict: true,
-                    ),
+                Assignment::SCOPE_COMPANY => in_array(
+                    $company->getKey(),
+                    $assignment->assignedCompany?->subtreeCompanyIds() ?? [],
+                    strict: true,
+                ),
 
                 // A franchise assignment is beneath a company, so it confers
                 // nothing over the company that contains it.
@@ -526,7 +588,7 @@ class User extends Authenticatable implements HoldsPersonalData
     }
 
     /** Every franchise this user may act on, across all their assignments. */
-    public function reachableFranchises(): \Illuminate\Support\Collection
+    public function reachableFranchises(): Collection
     {
         return Franchise::query()
             ->where('organization_id', $this->organization_id)
@@ -536,7 +598,7 @@ class User extends Authenticatable implements HoldsPersonalData
     }
 
     /** Every company this user may act on, parents and Sub Companies alike. */
-    public function reachableCompanies(): \Illuminate\Support\Collection
+    public function reachableCompanies(): Collection
     {
         return Company::query()
             ->where('organization_id', $this->organization_id)
@@ -548,5 +610,15 @@ class User extends Authenticatable implements HoldsPersonalData
     public function isAdministrator(): bool
     {
         return $this->role?->isAdministrator() ?? false;
+    }
+
+    /**
+     * The id to read this person's OWN per-user rows by (grants, assignments,
+     * board memberships). A View-as role clone answers a nil id, so it sees
+     * only what the role holds, never its actor's personal rows (2026-11-23).
+     */
+    public function ownRowsKey(): string
+    {
+        return (string) $this->getKey();
     }
 }

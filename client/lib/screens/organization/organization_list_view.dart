@@ -46,7 +46,12 @@ class OrganizationListView extends StatefulWidget {
     required this.onMoveCompany,
     required this.onRenameFranchise,
     required this.onToggleFranchise,
+    this.onPageOpen,
   });
+
+  /// Told when a node's page replaces the tree on a narrow tab, and when Back
+  /// returns to it, so the screen can give the page its header's height.
+  final ValueChanged<bool>? onPageOpen;
 
   final ApiClient api;
   final Session session;
@@ -203,10 +208,13 @@ class _OrganizationListViewState extends State<OrganizationListView> {
   _Node _current(List<_Node> all) =>
       all.firstWhere((n) => n.key == _selected, orElse: () => all.first);
 
-  void _pick(_Node node) => setState(() {
-    _selected = node.key;
-    _open = true;
-  });
+  void _pick(_Node node) {
+    setState(() {
+      _selected = node.key;
+      _open = true;
+    });
+    widget.onPageOpen?.call(true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -220,7 +228,13 @@ class _OrganizationListViewState extends State<OrganizationListView> {
 
         if (narrow) {
           return _open
-              ? _detail(current, back: () => setState(() => _open = false))
+              ? _detail(
+                  current,
+                  back: () {
+                    setState(() => _open = false);
+                    widget.onPageOpen?.call(false);
+                  },
+                )
               : _treePane(rows, current, narrow: true);
         }
 
@@ -416,6 +430,9 @@ class _OrganizationListViewState extends State<OrganizationListView> {
         Refused(
           reason: no.toggle,
           child: OutlinedButton.icon(
+            // Switching off reads red, not like Rename beside it (phone
+            // audit 2026-11-04); switching back on stays plain.
+            style: active ? _danger(context) : null,
             onPressed: no.toggle == null
                 ? () => widget.onToggleCompany(raw)
                 : null,
@@ -460,6 +477,7 @@ class _OrganizationListViewState extends State<OrganizationListView> {
         Refused(
           reason: no,
           child: OutlinedButton.icon(
+            style: active ? _danger(context) : null,
             onPressed: mayEdit ? () => widget.onToggleFranchise(raw) : null,
             icon: Icon(
               active ? Icons.archive_outlined : Icons.unarchive_outlined,
@@ -816,6 +834,7 @@ class _NodePageState extends State<_NodePage> {
         ),
         TabBarLike(
           key: const ValueKey('org-page-tabs'),
+          level: TabLevel.secondary,
           labels: const [
             ('Details', Icons.edit_note_outlined),
             ('Settings', Icons.tune_outlined),
@@ -909,18 +928,16 @@ class _CompanyFormState extends State<_CompanyForm> {
       _saving = true;
       _error = null;
     });
-    final response = await widget.api.patch(
-      '/companies/${widget.company['id']}',
-      {
-        'name': _name.text.trim(),
-        'address_line1': _orNull(_line1),
-        'address_line2': _orNull(_line2),
-        'city': _orNull(_city),
-        'state': _orNull(_state)?.toUpperCase(),
-        'postal_code': _orNull(_postal),
-        'phone': _orNull(_phone),
-      },
-    );
+    final response = await widget.api
+        .patch('/companies/${widget.company['id']}', {
+          'name': _name.text.trim(),
+          'address_line1': _orNull(_line1),
+          'address_line2': _orNull(_line2),
+          'city': _orNull(_city),
+          'state': _orNull(_state)?.toUpperCase(),
+          'postal_code': _orNull(_postal),
+          'phone': _orNull(_phone),
+        });
     if (!mounted) return;
     setState(() {
       _saving = false;
@@ -1016,12 +1033,18 @@ class _FranchiseFormState extends State<_FranchiseForm> {
     text: widget.franchise['name'] as String? ?? '',
   )..addListener(() => setState(() {}));
   late String _baseline = _name.text.trim();
+  // Printed on this branch's hires' contracts (Merav, 2026-11-19).
+  late final _address = TextEditingController(
+    text: widget.franchise['address'] as String? ?? '',
+  )..addListener(() => setState(() {}));
+  late String _baselineAddress = _address.text.trim();
   bool _saving = false;
   String? _error;
 
   @override
   void dispose() {
     _name.dispose();
+    _address.dispose();
     super.dispose();
   }
 
@@ -1029,13 +1052,16 @@ class _FranchiseFormState extends State<_FranchiseForm> {
     setState(() => _saving = true);
     final response = await widget.api.patch(
       '/franchises/${widget.franchise['id']}',
-      {'name': _name.text.trim()},
+      {'name': _name.text.trim(), 'address': _address.text.trim()},
     );
     if (!mounted) return;
     setState(() {
       _saving = false;
       _error = response.ok ? null : response.message;
-      if (response.ok) _baseline = _name.text.trim();
+      if (response.ok) {
+        _baseline = _name.text.trim();
+        _baselineAddress = _address.text.trim();
+      }
     });
     if (response.ok) widget.onSaved();
   }
@@ -1043,6 +1069,8 @@ class _FranchiseFormState extends State<_FranchiseForm> {
   @override
   Widget build(BuildContext context) {
     final name = _name.text.trim();
+    final changed =
+        name != _baseline || _address.text.trim() != _baselineAddress;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1058,9 +1086,21 @@ class _FranchiseFormState extends State<_FranchiseForm> {
           ),
         ),
         const SizedBox(width: 12),
+        Expanded(
+          flex: 2,
+          child: TextField(
+            key: const ValueKey('org-franchise-address'),
+            controller: _address,
+            decoration: const InputDecoration(
+              labelText: 'Address',
+              helperText: 'Printed on contracts for people hired here',
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
         FilledButton(
           key: const ValueKey('org-franchise-save'),
-          onPressed: name != _baseline && name.isNotEmpty && !_saving
+          onPressed: changed && name.isNotEmpty && !_saving
               ? _save
               : null,
           child: Text(_saving ? 'Saving…' : 'Save'),
@@ -1068,4 +1108,12 @@ class _FranchiseFormState extends State<_FranchiseForm> {
       ],
     );
   }
+}
+
+ButtonStyle _danger(BuildContext context) {
+  final error = Theme.of(context).colorScheme.error;
+  return OutlinedButton.styleFrom(
+    foregroundColor: error,
+    side: BorderSide(color: error),
+  );
 }

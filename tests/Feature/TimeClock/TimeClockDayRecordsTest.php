@@ -122,6 +122,24 @@ class TimeClockDayRecordsTest extends TestCase
         $this->assertSame(120 * 60, $person['average_seconds'], 'and does not drag the average down');
     }
 
+    /** Day tags are the organization's setting (Jose, 2026-11-04): a new one is accepted, a removed one refused. */
+    public function test_day_tags_come_from_the_setting(): void
+    {
+        [$alpha, $manager, $tech] = $this->tenant();
+        $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)->set('time_clock.day_tags', $alpha['org'], [
+            ['value' => 'office', 'label' => 'Office'], ['value' => 'training', 'label' => 'Training'],
+        ]));
+        $url = "/api/v1/hr/time-clock/people/{$tech->id}/days/2026-09-22";
+
+        $this->signedInAs($manager)->putJson($url, ['tag' => 'training'])->assertOk();
+        $this->signedInAs($manager)->putJson($url, ['tag' => 'sick'])->assertUnprocessable();
+
+        $this->assertSame(
+            [['value' => 'office', 'label' => null], ['value' => 'training', 'label' => 'Training']],
+            $this->signedInAs($manager)->getJson('/api/v1/hr/time-clock/week?on=2026-09-22')->assertOk()->json('data.day_tags'),
+        );
+    }
+
     /** Absent is UNCHANGED; null clears; a day with nothing left on it is gone. */
     public function test_keys_are_independent_and_an_emptied_day_is_deleted(): void
     {

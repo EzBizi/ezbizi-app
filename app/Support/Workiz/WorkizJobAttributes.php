@@ -61,10 +61,10 @@ final class WorkizJobAttributes
             'job_type' => self::text($payload['JobType'] ?? null),
             'job_source' => self::text($payload['JobSource'] ?? null),
 
-            'booked_at' => self::moment($payload['CreatedDate'] ?? null),
-            'scheduled_for' => self::moment($payload['JobDateTime'] ?? null),
-            'scheduled_end' => self::moment($payload['JobEndDateTime'] ?? null),
-            'last_status_update' => self::moment($payload['LastStatusUpdate'] ?? null),
+            'booked_at' => WorkizValue::moment($payload['CreatedDate'] ?? null),
+            'scheduled_for' => WorkizValue::moment($payload['JobDateTime'] ?? null),
+            'scheduled_end' => WorkizValue::moment($payload['JobEndDateTime'] ?? null),
+            'last_status_update' => WorkizValue::moment($payload['LastStatusUpdate'] ?? null),
 
             'created_by' => self::text($payload['CreatedBy'] ?? null),
 
@@ -101,27 +101,5 @@ final class WorkizJobAttributes
     private static function float(mixed $value): ?float
     {
         return is_numeric($value) ? (float) $value : null;
-    }
-
-    /**
-     * A wall-clock string, kept as one.
-     *
-     * No zone is available — `Timezone` is absent from every real payload — so
-     * this refuses to invent one. A1 Tools' schema stores absent dates as
-     * '0000-00-00', which MySQL will not accept into a DATETIME column.
-     */
-    private static function moment(mixed $value): ?string
-    {
-        if (! is_string($value)) {
-            return null;
-        }
-
-        $value = trim($value);
-
-        if ($value === '' || str_starts_with($value, '0000-00-00')) {
-            return null;
-        }
-
-        return $value;
     }
 }

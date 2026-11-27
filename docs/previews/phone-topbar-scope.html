@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Phone top bar scope</title>
+<style>
+:root{--bg:#f3f6f9;--card:#fff;--ink:#111;--mut:#5b6670;--line:#d9dee3;--pri:#0b6e8a;--red:#f6d4d4}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151a;--card:#1a2027;--ink:#e8ecef;--mut:#9aa6b0;--line:#2c343d;--pri:#4fb3cf;--red:#5a2a2a}}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 4px}p{margin:0 0 16px;color:var(--mut)}
+.row{display:flex;flex-wrap:wrap;gap:24px}
+.opt{width:375px}.opt h2{font-size:15px;margin:0 0 4px}.opt p{font-size:13px}
+.ph{width:375px;height:300px;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.bar{height:52px;background:var(--card);display:flex;align-items:center;padding:0 6px;gap:2px;border-bottom:1px solid var(--line)}
+.ic{width:40px;height:40px;display:grid;place-items:center;font-size:18px;flex:none}
+.clk{width:32px;height:22px;border-radius:6px;background:var(--red);margin:0 4px;flex:none}
+.pick{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-weight:600;font-size:13.5px;min-width:0}
+.pick span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.sub{background:var(--card);padding:6px 12px;border-bottom:1px solid var(--line)}
+.sub .pick{width:100%;box-sizing:border-box;justify-content:space-between}
+.av{width:30px;height:30px;border-radius:50%;background:var(--line);flex:none;margin-left:4px}
+.page{padding:12px;font-size:22px;font-weight:700}
+.badge{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}
+.rec{color:var(--pri);font-weight:700}
+.now{margin-bottom:24px}
+</style></head><body>
+<h1>Phone top bar: where the company picker goes</h1>
+<p>Live 0.0.0597 at 375 px: the picker gets about 20 px between the hamburger and the icons and draws an empty box. Desktop is unchanged; phone only.</p>
+<div class="opt now"><h2>Now (prod)</h2>
+<div class="ph"><div class="bar"><div class="ic">☰</div><div class="pick" style="width:22px"><span></span>⇕</div><div style="flex:1"></div><div class="clk"></div><div class="ic">📞</div><div class="ic">📱</div><div class="ic">🔍</div><div class="ic">🔔</div><div class="av"></div></div><div class="page">Marketing</div></div></div>
+<div class="row">
+<div class="opt"><h2>A · Own row under the bar <span class="rec">(recommended)</span></h2><p>Full name, full width, one tap. Costs 44 px of height, only for people who have more than one place to stand.</p>
+<div class="ph"><div class="bar"><div class="ic">☰</div><div style="flex:1"></div><div class="clk"></div><div class="ic">📞</div><div class="ic">📱</div><div class="ic">🔍</div><div class="ic">🔔</div><div class="av"></div></div><div class="sub"><div class="pick"><span>Triplex Group · All branches</span>⇕</div></div><div class="page">Marketing</div></div></div>
+<div class="opt"><h2>B · Initials badge in the bar</h2><p>No height spent. The bar shows "TG"; the name is only in the tooltip and the panel, so the bar no longer says where you are.</p>
+<div class="ph"><div class="bar"><div class="ic">☰</div><div class="badge">TG</div><div style="flex:1"></div><div class="clk"></div><div class="ic">📞</div><div class="ic">📱</div><div class="ic">🔍</div><div class="ic">🔔</div><div class="av"></div></div><div class="page">Marketing</div></div></div>
+<div class="opt"><h2>C · Search moves into the drawer</h2><p>The bar loses the magnifier, the picker gets ~60 px: "Triplex…". Search becomes two taps away.</p>
+<div class="ph"><div class="bar"><div class="ic">☰</div><div class="pick" style="max-width:96px"><span>Triplex Group</span>⇕</div><div style="flex:1"></div><div class="clk"></div><div class="ic">📞</div><div class="ic">📱</div><div class="ic">🔔</div><div class="av"></div></div><div class="page">Marketing</div></div></div>
+</div></body></html>

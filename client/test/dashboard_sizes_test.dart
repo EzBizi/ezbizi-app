@@ -92,7 +92,8 @@ void main() {
       expect(_rect(tester, 'Alpha').width, 326);
       expect(_rect(tester, 'Charlie').width, 668);
       expect(_rect(tester, 'Delta').width, 1352);
-      expect(_rect(tester, 'Echo').width, 326);
+      // Echo is alone on the last row, so it stretches over it: no hole.
+      expect(_rect(tester, 'Echo').width, 1352);
 
       // Alpha, Bravo and Charlie fill a row; Delta and Echo each start one.
       expect(_rect(tester, 'Bravo').top, _rect(tester, 'Alpha').top);

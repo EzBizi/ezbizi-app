@@ -179,6 +179,7 @@ class RingCentralLeadCallsTest extends TestCase
         $this->assertSame(0, $events['lead.customer_replied'] ?? 0);
         $this->assertSame(0, $events['lead.contact_received'] ?? 0);
         $this->assertSame(1, $events['lead.missed_call'] ?? 0, 'the one missed call, once');
+        $this->assertSame(1, $events['lead.received'] ?? 0, 'one new caller in the window; the second call is the same lead');
 
         $unreplied = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?unreplied=1')->json('data');
         $this->assertSame([], array_column($unreplied, 'id'), 'a call owes no reply');
@@ -217,6 +218,7 @@ class RingCentralLeadCallsTest extends TestCase
 
         $events = \App\Models\AutomationEvent::withoutGlobalScopes()->pluck('event_key')->countBy();
         $this->assertSame(2, $events['lead.missed_call'] ?? 0, 'missed and voicemail, not the hang-ups');
+        $this->assertSame(2, $events['lead.received'] ?? 0, 'the two new callers, not the hang-up or the catch-up run');
 
         $rc = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?source=ringcentral')->json('data');
         $this->assertCount(5, $rc, 'all five under RC Calls');
@@ -239,21 +241,21 @@ class RingCentralLeadCallsTest extends TestCase
         });
     }
 
-    /** Jose, 2026-10-16 (James Blanke, C-06974): a known customer's hang-up is Existing client, never spam. */
+    /** Jose, 2026-10-16 (James Barrow, C-06974): a known customer's hang-up is Existing client, never spam. */
     public function test_a_customers_hang_up_is_existing_client_not_spam(): void
     {
         $t = $this->setUpTenant();
 
         $this->inTenant($t['org'], function () use ($t) {
-            \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'James Blanke', 'phone' => '(314) 409-1888']);
+            \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'James Barrow', 'phone' => '(314) 555-0100']);
             app(RingCentralLeadCalls::class)->file([
-                self::rc('50', '+13144091888', now()->subMinutes(30)->toIso8601String(), queue: null,
+                self::rc('50', '+13145550100', now()->subMinutes(30)->toIso8601String(), queue: null,
                     extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'rang' => [], 'result' => 'Accepted']),
-                self::rc('51', '+13144091999', now()->subMinutes(30)->toIso8601String()),   // pressed New, a stranger
+                self::rc('51', '+13145550101', now()->subMinutes(30)->toIso8601String()),   // pressed New, a stranger
             ], self::LINES, $t['company']->id);
 
             $tags = Lead::query()->orderBy('phone')->pluck('source_status', 'phone')->all();
-            $this->assertSame(['+13144091888' => RingCentralLeadCalls::EXISTING_CLIENT, '+13144091999' => null], $tags);
+            $this->assertSame(['+13145550100' => RingCentralLeadCalls::EXISTING_CLIENT, '+13145550101' => null], $tags);
         });
     }
 
@@ -340,7 +342,7 @@ class RingCentralLeadCallsTest extends TestCase
 
         $this->inTenant($t['org'], function () use ($t, $asLogged) {
             app(RingCentralLeadCalls::class)->file([
-                self::rc('97', '+17322757027', now()->subMinutes(3)->toIso8601String(), extra: $asLogged + ['live' => true]),
+                self::rc('97', '+17325550102', now()->subMinutes(3)->toIso8601String(), extra: $asLogged + ['live' => true]),
             ], self::LINES, $t['company']->id);
 
             $this->assertSame(RingCentralLeadCalls::IN_PROGRESS, Lead::query()->value('source_status'));
@@ -402,15 +404,88 @@ class RingCentralLeadCallsTest extends TestCase
         $this->inTenant($t['org'], fn () => $this->assertSame('Sasha', LeadConversation::query()->value('answered_by')));
     }
 
+    /**
+     * Desk, 2026-11-18: Bar's missed-call alert came ~6 minutes late. RingCentral
+     * keeps an ended call on its active list for minutes (measured: 9 of 10
+     * listed had stopped growing), so the call was held "In progress" a pass.
+     */
+    public function test_a_missed_call_still_on_the_active_list_but_ended_alerts_on_this_pass(): void
+    {
+        $t = $this->setUpTenant();
+        $this->inTenant($t['org'], function () use ($t) {
+            $rc = new \App\Models\SocialConnection;
+            $rc->forceFill(['organization_id' => $t['org']->id, 'scope_type' => 'company', 'scope_id' => $t['company']->id,
+                'provider' => 'ringcentral', 'remote_id' => '123', 'display_name' => 'RingCentral']);
+            $rc->connect(['refresh_token' => '-', 'server' => 'https://rc.test', 'client_id' => 'id', 'client_secret' => 's', 'jwt' => 'j']);
+            $rc->save();
+        });
+        $call = fn (string $id, int $agoSeconds, int $duration) => ['id' => $id, 'direction' => 'Inbound',
+            'startTime' => now()->subSeconds($agoSeconds)->toIso8601String(), 'duration' => $duration,
+            'from' => ['phoneNumber' => $id === 'ended1' ? '+15550000041' : '+15550000042'], 'to' => ['phoneNumber' => '+17320000001'], 'result' => 'Missed',
+            'legs' => [['legType' => 'PstnToSip', 'result' => 'Missed', 'duration' => $duration]]];
+        \Illuminate\Support\Facades\Http::fake([
+            'rc.test/restapi/oauth/token' => \Illuminate\Support\Facades\Http::response(['access_token' => 't', 'expires_in' => 3600]),
+            // Both still listed: one ended a minute ago, one is ringing now.
+            'rc.test/restapi/v1.0/account/~/active-calls*' => \Illuminate\Support\Facades\Http::response(['records' => [['id' => 'ended1'], ['id' => 'ringing']]]),
+            'rc.test/restapi/v1.0/account/~/phone-number*' => \Illuminate\Support\Facades\Http::response(['records' => [['phoneNumber' => '+17320000001', 'label' => 'NJ - GMB']]]),
+            'rc.test/restapi/v1.0/account/~/call-log*' => \Illuminate\Support\Facades\Http::response(['records' => [
+                $call('ended1', 100, 40),     // rang 40 s, ended a minute ago
+                $call('ringing', 50, 50),     // still reaching now
+            ]]),
+        ]);
+
+        $this->artisan('ezbizi:leads-ringcentral')->assertSuccessful();
+
+        $this->inTenant($t['org'], function () {
+            $this->assertSame(\App\Support\Leads\RingCentralLeadCalls::MISSED,
+                Lead::query()->whereHas('conversations', fn ($q) => $q->where('remote_id', 'rc_ended1'))->value('source_status'), 'filed as missed, not In progress');
+            $this->assertSame(1, \App\Models\AutomationEvent::query()->where('event_key', 'lead.missed_call')->count(), 'alerted now, once');
+            $this->assertFalse(LeadConversation::query()->where('remote_id', 'rc_ringing')->exists(), 'a call still reaching now waits');
+        });
+    }
+
+    /** Desk audit, 2026-11-12: Triplex holds two RingCentral accounts; the second's calls were never read. */
+    public function test_every_connected_account_is_read_not_just_the_first(): void
+    {
+        $t = $this->setUpTenant();
+        foreach (['one', 'two'] as $i => $server) {
+            $this->inTenant($t['org'], function () use ($t, $server, $i) {
+                $rc = new \App\Models\SocialConnection;
+                $rc->forceFill(['organization_id' => $t['org']->id, 'scope_type' => 'company', 'scope_id' => $t['company']->id,
+                    'provider' => 'ringcentral', 'remote_id' => "acct-$server", 'display_name' => "RingCentral $server",
+                    'created_at' => now()->subMinutes(10 - $i)]);
+                $rc->connect(['refresh_token' => '-', 'server' => "https://$server.test", 'client_id' => 'one-app', 'client_secret' => 's', 'jwt' => "jwt-$server"]);
+                $rc->save();
+            });
+        }
+        $fake = [];
+        foreach (['one', 'two'] as $server) {
+            $fake["$server.test/restapi/oauth/token"] = \Illuminate\Support\Facades\Http::response(['access_token' => "t-$server", 'expires_in' => 3600]);
+            $fake["$server.test/restapi/v1.0/account/~/active-calls*"] = \Illuminate\Support\Facades\Http::response(['records' => []]);
+            $fake["$server.test/restapi/v1.0/account/~/phone-number*"] = \Illuminate\Support\Facades\Http::response(['records' => []]);
+            $fake["$server.test/restapi/v1.0/account/~/call-log*"] = \Illuminate\Support\Facades\Http::response(['records' => [
+                ['id' => "call-$server", 'direction' => 'Inbound', 'startTime' => now()->subHours(5)->toIso8601String(),
+                    'from' => ['phoneNumber' => $server === 'one' ? '+15550000001' : '+15550000002'], 'to' => ['phoneNumber' => '+17320000001'], 'result' => 'Accepted',
+                    'legs' => [['legType' => 'PstnToSip', 'from' => ['name' => 'Sasha'], 'result' => 'Call connected', 'duration' => 60]]],
+            ]]);
+        }
+        \Illuminate\Support\Facades\Http::fake($fake);
+
+        $this->artisan('ezbizi:leads-ringcentral')->assertSuccessful();
+
+        $this->inTenant($t['org'], fn () => $this->assertEqualsCanonicalizing(['rc_call-one', 'rc_call-two'],
+            LeadConversation::query()->pluck('remote_id')->all()));
+    }
+
     /** Jose, 2026-10-19: "think we can also get the lenght of the call" (B Imperato, 0:00:01). */
     public function test_an_unanswered_call_says_how_long_it_lasted(): void
     {
         $t = $this->setUpTenant();
         $this->inTenant($t['org'], function () use ($t) {
             app(RingCentralLeadCalls::class)->file([
-                self::rc('98', '+16313106166', now()->subMinutes(30)->toIso8601String(), queue: null,
+                self::rc('98', '+16315550100', now()->subMinutes(30)->toIso8601String(), queue: null,
                     extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'rang' => [], 'result' => 'Accepted', 'duration' => 1]),
-                self::rc('99', '+16313106199', now()->subMinutes(30)->toIso8601String(),
+                self::rc('99', '+16315550101', now()->subMinutes(30)->toIso8601String(),
                     extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'result' => 'Missed', 'duration' => 75]),
             ], self::LINES, $t['company']->id);
 
@@ -534,5 +609,134 @@ class RingCentralLeadCallsTest extends TestCase
         $this->assertSame('c', RingCentralLeadCalls::companyFor('Ace Fireplace', $companies));
         $this->assertSame('d', RingCentralLeadCalls::companyFor('08 Roofirst', $companies));
         $this->assertSame('NJ-PHL', RingCentralLeadCalls::market('NJ-PHL - SEO'));
+    }
+
+    /**
+     * Jose, 2026-11-17: "ED - MA - GBP" is an Everdoors line, but "ED" is too
+     * short to match a company name, so the call landed on A-1 and the caller
+     * got A-1's missed-call text. leads.line_brands names the brand codes.
+     */
+    public function test_a_brand_code_line_is_that_brands_call_in_its_branch(): void
+    {
+        $t = $this->setUpTenant();
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $ed = Company::create(['organization_id' => $t['org']->id, 'name' => 'Everdoors']);
+            $edNj = Franchise::create(['organization_id' => $t['org']->id, 'company_id' => $ed->id, 'name' => 'New Jersey']);
+            app(\App\Support\Settings\SettingsResolver::class)->set('leads.line_brands', $t['org'], ['ED' => 'Everdoors']);
+            $lines = ['+17320000101' => 'ED - NJ - GBP', '+17320000102' => 'ED - MA - GBP', '+17320000103' => 'NJ - GMB'];
+
+            app(RingCentralLeadCalls::class)->file([
+                self::rc('e1', '+15550000101', '2026-10-14T14:00:00Z', '+17320000101'),
+                self::rc('e2', '+15550000102', '2026-10-14T14:05:00Z', '+17320000102'),
+                self::rc('e3', '+15550000103', '2026-10-14T14:10:00Z', '+17320000103'),
+            ], $lines, $t['company']->id);
+
+            $by = Lead::query()->where('source', Lead::SOURCE_RINGCENTRAL)->get()->keyBy('category');
+            $this->assertSame([$ed->id, $edNj->id], [$by['ED - NJ - GBP']->company_id, $by['ED - NJ - GBP']->franchise_id], 'Everdoors, its own New Jersey');
+            $this->assertSame([$ed->id, null], [$by['ED - MA - GBP']->company_id, $by['ED - MA - GBP']->franchise_id], 'Everdoors has no MA branch: company level, never A-1 Chimney');
+            $this->assertSame([$t['company']->id, $t['franchise']->id], [$by['NJ - GMB']->company_id, $by['NJ - GMB']->franchise_id], 'a market line is unchanged');
+        });
+    }
+
+    /**
+     * Jose, 2026-11-17: whose call it is comes from the RingCentral account it
+     * was read through. EverDoors' own account is scoped to its Connecticut
+     * branch, and only a company scope was read, so its calls fell to A-1.
+     */
+    public function test_a_branch_scoped_ringcentral_account_files_under_that_branchs_company(): void
+    {
+        $t = $this->setUpTenant();
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $ed = Company::create(['organization_id' => $t['org']->id, 'name' => 'Everdoors']);
+            $edCt = Franchise::create(['organization_id' => $t['org']->id, 'company_id' => $ed->id, 'name' => 'Connecticut']);
+            app(\App\Support\Settings\SettingsResolver::class)->set('leads.calls_company', $t['org'], $t['company']->id);
+            $conn = fn (string $type, string $id) => \App\Models\SocialConnection::create(['organization_id' => $t['org']->id,
+                'scope_type' => $type, 'scope_id' => $id, 'provider' => 'ringcentral', 'remote_id' => (string) random_int(1000000, 9999999), 'display_name' => 'RingCentral']);
+            $companyFor = fn ($c) => (fn () => self::companyFor($t['org'], $c))->call(new \App\Console\Commands\LeadsRingCentralCalls);
+
+            $this->assertSame($ed->id, $companyFor($conn(\App\Models\SocialConnection::SCOPE_FRANCHISE, $edCt->id)), 'the branch account is Everdoors\'');
+            $this->assertSame($t['company']->id, $companyFor($conn(\App\Models\SocialConnection::SCOPE_COMPANY, $t['company']->id)));
+        });
+    }
+
+    /**
+     * Jose, 2026-11-17: the number the call came in on decides whose it is,
+     * before any line name. An unassigned number falls back and is logged.
+     */
+    public function test_an_assigned_number_decides_the_company_and_branch_before_the_name(): void
+    {
+        $t = $this->setUpTenant();
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $ed = Company::create(['organization_id' => $t['org']->id, 'name' => 'Everdoors']);
+            $edCt = Franchise::create(['organization_id' => $t['org']->id, 'company_id' => $ed->id, 'name' => 'Connecticut']);
+            // The name says NJ - an A-1 market - and AngiSweep; the numbers say otherwise.
+            app(\App\Support\Settings\SettingsResolver::class)->set('leads.line_numbers', $t['org'], [
+                '+17320000201' => 'franchise:'.$edCt->id,
+                '+17320000202' => 'company:'.$ed->id,
+            ]);
+            $lines = ['+17320000201' => 'NJ - GMB', '+17320000202' => 'AngiSweep', '+17320000203' => 'NJ - GMB'];
+            \Illuminate\Support\Facades\Log::spy();
+
+            app(RingCentralLeadCalls::class)->file([
+                self::rc('n1', '+15550000201', '2026-10-14T14:00:00Z', '+17320000201'),
+                self::rc('n2', '+15550000202', '2026-10-14T14:05:00Z', '+17320000202'),
+                self::rc('n3', '+15550000203', '2026-10-14T14:10:00Z', '+17320000203'),
+            ], $lines, $t['company']->id);
+
+            $by = Lead::query()->where('source', Lead::SOURCE_RINGCENTRAL)->get()->keyBy('remote_id');
+            $this->assertSame([$ed->id, $edCt->id], [$by['rc_n1']->company_id, $by['rc_n1']->franchise_id], 'a number given a branch');
+            $this->assertSame([$ed->id, null], [$by['rc_n2']->company_id, $by['rc_n2']->franchise_id], 'a number given a company');
+            $this->assertSame([$t['company']->id, $t['franchise']->id], [$by['rc_n3']->company_id, $by['rc_n3']->franchise_id], 'unassigned: by its name');
+            \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->withArgs(fn ($m) => str_contains($m, '+17320000203'))->once();
+        });
+    }
+
+    public function test_phone_lines_saves_and_clears_a_numbers_place(): void
+    {
+        $t = $this->setUpTenant();
+        $ed = $this->inTenant($t['org'], fn () => Company::create(['organization_id' => $t['org']->id, 'name' => 'Everdoors']));
+        $as = $this->signedInAs($t['admin']->fresh());
+
+        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17815550100', 'place' => 'company:'.$ed->id])->assertOk();
+        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17815550101', 'place' => 'company:01a0a0b8-5383-7315-9884-1524f0f2b81c'])
+            ->assertUnprocessable();
+        $read = fn () => $this->inTenant($t['org'], fn () => (array) app(\App\Support\Settings\SettingsResolver::class)->get('leads.line_numbers', $t['org']));
+        $this->assertSame(['+17815550100' => 'company:'.$ed->id], $read());
+
+        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17815550100', 'place' => null])->assertOk();
+        $this->assertSame([], $read());
+    }
+
+    /**
+     * 2026-11-17, read back on prod: viewing A-1 Chimney, the EverDoors account
+     * (scoped to an Everdoors branch) was listed with the env account's numbers.
+     */
+    public function test_an_account_outside_the_view_is_not_listed_with_another_accounts_numbers(): void
+    {
+        $t = $this->setUpTenant();
+        $t['org']->forceFill(['slug' => \App\Support\Reports\Experimental\RingCentralCallLog::ENV_ORGANIZATION_SLUG])->save();
+        config(['experimental_reports.ringcentral' => array_merge((array) config('experimental_reports.ringcentral'),
+            ['client_id' => 'env', 'client_secret' => 'env', 'jwt' => 'env', 'server' => 'https://rc.test', 'company_id' => $t['company']->id])]);
+        \Illuminate\Support\Facades\Http::fake([
+            '*/oauth/token' => \Illuminate\Support\Facades\Http::response(['access_token' => 'x', 'expires_in' => 3600]),
+            '*/phone-number*' => \Illuminate\Support\Facades\Http::response(['records' => [['phoneNumber' => '+12035550100', 'label' => 'A1 line']]]),
+        ]);
+        $edConn = $this->inTenant($t['org'], function () use ($t) {
+            $ed = Company::create(['organization_id' => $t['org']->id, 'name' => 'Everdoors']);
+            $edCt = Franchise::create(['organization_id' => $t['org']->id, 'company_id' => $ed->id, 'name' => 'Connecticut']);
+
+            return \App\Models\SocialConnection::create(['organization_id' => $t['org']->id, 'scope_type' => \App\Models\SocialConnection::SCOPE_FRANCHISE,
+                'scope_id' => $edCt->id, 'provider' => 'ringcentral', 'remote_id' => '63713602007', 'display_name' => 'RingCentral', 'status' => \App\Models\SocialConnection::STATUS_CONNECTED,
+                'credentials' => ['client_id' => 'ed', 'client_secret' => 'ed', 'jwt' => 'ed']]);
+        });
+
+        $ids = collect($this->signedInAs($t['admin']->fresh())
+            ->withHeader('X-EzBizi-View', 'company:'.$t['company']->id)
+            ->getJson('/api/v1/leads/phone-lines')->assertOk()->json('data.accounts'))->pluck('id');
+
+        $this->assertNotContains($edConn->id, $ids->all());
     }
 }

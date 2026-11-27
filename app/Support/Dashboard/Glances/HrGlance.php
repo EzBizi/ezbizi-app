@@ -261,7 +261,10 @@ final class HrGlance extends DescribedGlance
         $places = $this->placesInView($user);
         $withUnplaced = $this->countsUnplaced($places);
 
-        return User::query()->where(function (Builder $visible) use ($places, $withUnplaced) {
+        // removed(false): the same people HR's own On the books tile counts
+        // (HrOverview). Without it the box counted erased accounts too:
+        // 150 here against 137 on the HR page (UI/UX audit, 2026-11-13).
+        return User::query()->removed(false)->where(function (Builder $visible) use ($places, $withUnplaced) {
             $visible->whereHas(
                 'assignments',
                 fn (Builder $a) => $this->constrainToPlaces($a, $places),

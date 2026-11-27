@@ -365,6 +365,7 @@ class _ActionRow {
     'report_text_kind',
     'roles',
     'status',
+    'task_board',
     'training',
     'trigger_field',
   };
@@ -533,8 +534,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// The most events `would-have-run` reads.
   static const _rehearsalCeiling = 500;
 
-  bool get _isEdit => widget.editing != null;
-  String? get _id => widget.editing?['id'] as String?;
+  // Set once a new rule is created, so a retry after a failed "Turn on" edits it instead of creating a twin (audit 2026-11-27).
+  String? _createdId;
+  bool get _isEdit => widget.editing != null || _createdId != null;
+  String? get _id => widget.editing?['id'] as String? ?? _createdId;
 
   /// The phone lines this company holds, for the "Send from" picker.
   ///
@@ -1697,7 +1700,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   }
 
   /// Whether the rule being edited is switched on now. A new one is not.
-  bool get _isOn => widget.editing?['is_active'] == true;
+  // A rule EzBizi stopped after failures is off, whatever is_active says (Jose, 2026-11-17).
+  bool get _isOn =>
+      widget.editing?['is_active'] == true &&
+      widget.editing?['disabled_at'] == null;
 
   /// Save it. [turnOn] also switches it on: a new rule is created switched
   /// off by the server and then turned on, an edit carries `is_active`.
@@ -1778,6 +1784,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       if (!mounted) return;
       if (on == null || !on.ok) {
         setState(() {
+          if (id is String) _createdId = id;
           _busy = false;
           _error =
               'It was saved switched off, and could not be turned on: '
@@ -3168,6 +3175,11 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         row.dispose();
       }
       _actions.clear();
+      // The previous template's tree, lock and steps go too (audit 2026-11-27).
+      _opaqueConditions = null;
+      _hasOpaque = false;
+      _lockedBecause = null;
+      _loadedActions = [];
     });
 
     // AFTER the clear, and through the same readers a saved rule goes through:
@@ -3718,7 +3730,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             spacing: 8,
             runSpacing: 4,
             children: [
-              for (final day in _weekdays)
+              for (final day in weekdayKeys)
                 FilterChip(
                   label: Text(_dayLabel(day)),
                   selected: _scheduleDays.contains(day),
@@ -3800,9 +3812,6 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
-  static const _weekdays = [
-    'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
-  ];
 
   String _dayLabel(String day) =>
       day.substring(0, 1).toUpperCase() + day.substring(1, 3);
@@ -4693,6 +4702,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     if (value.isEmpty) return 'nobody yet';
     if (value == 'customer:') return 'the customer it is about';
     if (value == 'assignee:') return 'whoever the task is given to';
+    if (value == 'branch_managers:') return "the managers of the person's branch";
     if (value.startsWith('user:')) {
       final person = widget.catalogue.people
           .where((p) => p.key == value)
@@ -5176,6 +5186,24 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                           chosen,
                     ),
             )
+          else if (definition.parameters[i].kind == 'task_board')
+            SearchPickerField<String>(
+              value: row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              label: definition.parameters[i].label,
+              isDense: true,
+              options: [
+                for (final board in widget.catalogue.taskBoards)
+                  SearchOption<String>(value: board.key, label: board.label),
+              ],
+              onChanged: _busy
+                  ? null
+                  : (chosen) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          chosen ?? '',
+                    ),
+            )
           else if (definition.parameters[i].kind == 'training')
             SearchPickerField<String>(
               value: row.parameter(definition.parameters[i].key).text.isEmpty
@@ -5575,6 +5603,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 value: 'assignee',
                 label: 'Whoever the task is given to',
               ),
+            // Whoever approves hours at the person's branch (Clock In, 2026-11-13).
+            if (const {'whatsapp.send', 'email.send'}.contains(row.type))
+              const SearchOption(
+                value: 'branch_managers',
+                label: "Managers of the person's branch",
+              ),
             SearchOption(value: 'field', label: kindOf == 'person_or_field'
                   ? 'Whoever the event names'
                   : wantsPhone
@@ -5588,6 +5622,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                   controller.text = switch (chosen) {
                     'customer' => 'customer:',
                     'assignee' => 'assignee:',
+                    'branch_managers' => 'branch_managers:',
                     _ => '',
                   };
                 }),
@@ -5602,6 +5637,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 : 'Their address is read when the rule runs. A rule about something '
                     'with no customer, or a customer with no address, sends nothing '
                     'and says so in the run log.',
+            style: Theme.of(context).textTheme.bodySmall,
+          )
+        else if (kind == 'branch_managers')
+          Text(
+            'Everyone who approves hours at the branch of the person the event '
+            'is about, read when the rule runs. Each gets their own message.',
             style: Theme.of(context).textTheme.bodySmall,
           )
         else if (kind == 'person')
@@ -5903,6 +5944,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     if (value.startsWith('user:')) return 'person';
     if (value == 'customer:') return 'customer';
     if (value == 'assignee:') return 'assignee';
+    if (value == 'branch_managers:') return 'branch_managers';
     // An assignment names a person or a field and never a typed value, so a
     // non-empty value there can only be a field.
     if (kindOf != 'person_or_field') {
@@ -6370,7 +6412,9 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         // The button says no; this says why. A disabled control with no
         // explanation is the thing people file bugs about.
         ? (blocker ??
-              (turnOnBlocker != null && !_isOn
+              (widget.editing?['disabled_reason'] is String && !_isOn
+                  ? 'Stopped: ${widget.editing!['disabled_reason']} Turn it on after fixing it.'
+                  : turnOnBlocker != null && !_isOn
                   ? 'Turn on is greyed out until this is fixed: $turnOnBlocker'
                   : _isOn
                   ? 'Saving makes this the live version straight away.'

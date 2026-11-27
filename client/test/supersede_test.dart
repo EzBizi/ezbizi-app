@@ -43,6 +43,16 @@ void main() {
 
     await _pump(tester, (request) async {
       if (request.url.path.endsWith('/me')) return _json({'data': _me});
+      // The tag list (UI queue 174) is its own request, not a list load.
+      if (request.url.path.endsWith('/customers/tags')) {
+        return _json({'data': const []});
+      }
+      // The live feed's own read, not a list load.
+      if (request.url.path.endsWith('/changes')) {
+        return _json({
+          'data': {'cursor': 1, 'reload': false, 'changes': const []},
+        });
+      }
 
       final term = request.url.queryParameters['search'] ?? '';
       searches.add(term);

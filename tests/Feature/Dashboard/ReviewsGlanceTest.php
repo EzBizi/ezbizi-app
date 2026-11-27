@@ -338,7 +338,7 @@ class ReviewsGlanceTest extends TestCase
         $this->review(null, rating: 4);
 
         $this->assertContains(
-            '4.5 stars across 2.',
+            '4.5 stars across 2, all time.',
             $this->glance($this->alpha['admin'])['sentences'],
         );
     }

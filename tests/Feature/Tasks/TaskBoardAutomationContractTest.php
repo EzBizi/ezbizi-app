@@ -21,6 +21,26 @@ class TaskBoardAutomationContractTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    public function test_the_board_counts_the_task_rules_conditioned_on_it(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+        [$a, $b] = $this->inTenant($tenant['org'], fn () => [
+            TaskBoard::query()->where('franchise_id', $tenant['franchise']->id)->first(),
+            TaskBoard::query()->where('company_id', $tenant['company']->id)->where('kind', 'company')->first(),
+        ]);
+
+        $this->signedInAs($admin)->postJson('/api/v1/automations', [
+            'name' => 'Board A rule',
+            'trigger_key' => 'task.status_changed',
+            'conditions' => ['all' => [['field' => 'board_id', 'op' => 'eq', 'value' => $a->id]]],
+            'actions' => [['type' => 'task.assign', 'user_field' => 'user:'.$admin->id]],
+        ])->assertCreated();
+
+        $this->signedInAs($admin)->getJson("/api/v1/task-boards/{$a->id}")->assertOk()->assertJsonPath('data.automations_count', 1);
+        $this->signedInAs($admin)->getJson("/api/v1/task-boards/{$b->id}")->assertOk()->assertJsonPath('data.automations_count', 0);
+    }
+
     public function test_a_rule_conditioned_on_board_id_runs_for_that_board_only(): void
     {
         $tenant = $this->provisionTenant('Alpha');

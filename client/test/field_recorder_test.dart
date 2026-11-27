@@ -88,7 +88,13 @@ void main() {
 
     expect(await recorder.start(jobId: 'job-1'), isTrue);
     expect(recorder.state.value.status, FieldRecorderStatus.recording);
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+    // Wait for two rotations by what they did, not by the clock: a loaded
+    // machine fires 150 ms timers late (0525 gate: one chunk in 400 ms).
+    final deadline = DateTime.now().add(const Duration(seconds: 20));
+    while (paths().where((p) => p.endsWith('/chunks')).length < 2 &&
+        DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
     await recorder.stop('done');
 
     final chunks = paths().where((p) => p.endsWith('/chunks')).length;

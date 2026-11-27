@@ -8,9 +8,11 @@ import 'side_panel.dart';
 
 /// Handing someone their second factor (plan §4.2).
 ///
-/// Shown in three situations — a new account, a lost phone, and moving your own
-/// authenticator — because they are the same moment from different directions.
-/// One panel means one set of instructions to keep correct.
+/// Shown in five situations — a new account, a lost phone, moving your own
+/// authenticator, a staff member bootstrapping their own account at sign-in,
+/// and a client switching two-factor on in Settings — because they are the
+/// same moment from different directions: here is a QR, prove it works, keep
+/// these codes. One panel means one set of instructions to keep correct.
 ///
 /// The QR is drawn from the otpauth:// URI the server issues. The server does
 /// not render an image: the URI is the single source of truth, and generating
@@ -23,12 +25,35 @@ class EnrolmentDialog extends StatefulWidget {
     required this.uri,
     required this.onConfirm,
     this.title = 'Set up the authenticator',
+    this.intro,
+    this.note = lockAccountOutNote,
+    this.autofocus = false,
+    this.codesOptional = false,
   });
 
   final String email;
   final String secret;
   final String uri;
   final String title;
+
+  /// A sentence above the QR.
+  final String? intro;
+
+  /// The sentence above the code box.
+  final String note;
+
+  static const lockAccountOutNote =
+      'Then type the six digits it shows. Nothing is saved until a code '
+      'verifies — an unproven secret would lock the account out.';
+  static const lockYouOutNote =
+      'Then type the six digits it shows. Nothing takes effect until a code '
+      'verifies — an unproven secret would lock you out.';
+
+  final bool autofocus;
+
+  /// A confirmation with no recovery codes still finishes, on an empty list.
+  /// Without it the panel stays on the code box.
+  final bool codesOptional;
 
   /// Verifies the six digits. Kept out here because confirming your own
   /// authenticator and confirming someone else's are different endpoints.
@@ -74,8 +99,9 @@ class _EnrolmentDialogState extends State<EnrolmentDialog> {
 
     setState(() {
       _busy = false;
+      final codes = response.body['recovery_codes'] as List?;
       _recoveryCodes =
-          (response.body['recovery_codes'] as List?)?.map((c) => c as String).toList();
+          (widget.codesOptional ? codes ?? [] : codes)?.map((c) => c as String).toList();
     });
   }
 
@@ -117,6 +143,11 @@ class _EnrolmentDialogState extends State<EnrolmentDialog> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.intro != null) ...[
+          Text(widget.intro!, style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: 16),
+        ],
+
         // Always on white. A QR has to be dark-on-light to scan, and in dark
         // mode a transparent background inverts it — most phone cameras then
         // silently refuse to read it.
@@ -144,17 +175,14 @@ class _EnrolmentDialogState extends State<EnrolmentDialog> {
         authenticatorField(context, 'Type of key', 'Time based'),
 
         const SizedBox(height: 18),
-        Text(
-          'Then type the six digits it shows. Nothing is saved until a code '
-          'verifies — an unproven secret would lock the account out.',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+        Text(widget.note, style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 12),
 
         TextField(
           controller: _code,
           decoration: const InputDecoration(labelText: 'Code from the app'),
           enabled: !_busy,
+          autofocus: widget.autofocus,
           onSubmitted: (_) => _confirm(),
         ),
 

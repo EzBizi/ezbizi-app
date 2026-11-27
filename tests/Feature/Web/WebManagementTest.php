@@ -421,7 +421,7 @@ class WebManagementTest extends TestCase
          * together — consistent with each other and wrong about the world.
          * Pinning the number here means the next such revert goes red.
          */
-        $this->assertStringContainsString('Tested up to: 7.1', $readme);
+        $this->assertStringContainsString('Tested up to: 7.2', $readme);
 
         $this->assertNotFalse(
             $zip->locateName('ezbizi/uninstall.php'),
@@ -468,6 +468,46 @@ class WebManagementTest extends TestCase
         $this->assertSame($counted - 2, $missing['a-1chimney.com']);
         // Inherits both, adds a city; the cleared phone does not hide the primary's.
         $this->assertSame($counted - 3, $missing['nj.a-1chimney.com']);
+    }
+
+    /** Audit 01a1ef57: the list says when details last changed, to compare with the site's last read. */
+    public function test_each_site_says_when_its_details_were_last_saved(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $saved = $this->registerSite($editor, $tenant, 'a-1chimney.com')['data']['id'];
+        $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+
+        $this->travelTo(now()->startOfMinute());
+        $this->setValues($editor, $saved, ['phone' => '555-0100']);
+
+        $at = collect($this->signedInAs($editor)->getJson('/api/v1/web/sites')->assertOk()->json('data'))
+            ->pluck('values_saved_at', 'host');
+
+        $this->assertSame(now()->utc()->toIso8601String(), $at['a-1chimney.com']);
+        $this->assertNull($at['nj.a-1chimney.com']);
+    }
+
+    public function test_a_field_marked_not_needed_stops_counting_and_can_be_undone(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com')['data']['id'];
+        $count = fn () => collect($this->signedInAs($editor)->getJson('/api/v1/web/sites')->json('data'))->first()['missing'];
+        $before = $count();
+
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site}/values", ['not_needed' => ['city', 'postal_code']])
+            ->assertOk()->assertJsonPath('data.not_needed', ['city', 'postal_code']);
+        $this->assertSame($before - 2, $count());
+        $this->signedInAs($editor)->getJson("/api/v1/web/sites/{$site}/values")->assertJsonPath('data.not_needed', ['city', 'postal_code']);
+
+        // A save of values alone leaves the marks; an empty list clears them.
+        $this->setValues($editor, $site, ['phone' => '555-0100']);
+        $this->assertSame($before - 3, $count());
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site}/values", ['not_needed' => []])->assertOk();
+        $this->assertSame($before - 1, $count());
+
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site}/values", ['not_needed' => ['nonsense']])->assertStatus(422);
     }
 
     // ── 7. §4: permissions and tenants ──────────────────────────────
@@ -1526,6 +1566,64 @@ class WebManagementTest extends TestCase
             ], $overrides),
             ['Authorization' => 'Bearer '.$token],
         );
+    }
+
+    /** Jose, 2026-11-20: the badge is the company's real total, every location, never a typed number. */
+    public function test_the_plugin_gets_the_companys_real_review_total_and_average(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $connection = \App\Models\SocialConnection::create([
+                'organization_id' => $tenant['org']->id,
+                'scope_type' => \App\Models\SocialConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $tenant['org']->id,
+                'provider' => \App\Support\Social\SocialProvider::GoogleBusinessProfile->value,
+                'remote_id' => 'accounts/1',
+                'display_name' => 'A-1',
+            ]);
+            foreach ([[5, 'loc1'], [5, 'loc2'], [4, 'loc2'], [null, 'loc1']] as $i => [$rating, $loc]) {
+                \App\Models\Review::create([
+                    'organization_id' => $tenant['org']->id,
+                    'company_id' => $tenant['company']->id,
+                    'connection_id' => $connection->id,
+                    'remote_name' => "accounts/1/locations/$loc/reviews/$i",
+                    'location_name' => "accounts/1/locations/$loc",
+                    'reviewer_name' => 'R'.$i,
+                    'rating' => $rating,
+                    'reviewed_at' => now()->subDays($i),
+                ]);
+            }
+            // The same review synced through a second account (the manager account) is one review.
+            \App\Models\Review::create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'connection_id' => $connection->id,
+                'remote_name' => 'accounts/2/locations/loc1/reviews/0',
+                'location_name' => 'accounts/2/locations/loc1',
+                'reviewer_name' => 'R0',
+                'rating' => 5,
+                'reviewed_at' => now(),
+            ]);
+        });
+
+        $this->pluginRead($site['token'], 'a-1chimney.com')->assertOk()
+            ->assertJsonPath('review_summary.count', 3)
+            ->assertJsonPath('review_summary.average', 4.7);
+
+        // Once the sync has read Google's own totals, the badge is Google's figure (Jose, 2026-11-20).
+        \Illuminate\Support\Facades\Cache::flush();
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            foreach ([['locations/1', 13000, 4.9], ['locations/2', 583, 4.2]] as [$name, $n, $avg]) {
+                (new \App\Models\BusinessLocation)->forceFill(['organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id,
+                    'remote_name' => $name, 'title' => $name, 'google_review_count' => $n, 'google_rating' => $avg, 'google_totals_at' => now()])->save();
+            }
+        });
+        $this->pluginRead($site['token'], 'a-1chimney.com')->assertOk()
+            ->assertJsonPath('review_summary.count', 13583)
+            ->assertJsonPath('review_summary.average', 4.9);
     }
 
     private function pluginRead(string $token, string $host): TestResponse

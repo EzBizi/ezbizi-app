@@ -1,4 +1,7 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -82,179 +85,256 @@ class MailMessageView extends StatelessWidget {
     final customer = this.customer;
 
     return LayoutBuilder(
-      builder: (context, constraints) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ConstrainedBox(
-            // The header scrolls on its own past half the pane, so a long
-            // subject and the From picker never push the mail off a phone.
-            constraints: BoxConstraints(
-              maxHeight: constraints.maxHeight * 0.55,
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    message.subject.isEmpty ? 'No subject' : message.subject,
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontSize: 21,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SenderAvatar(
-                        name: message.fromName,
-                        email: message.fromAddress,
+      builder: (context, constraints) {
+        // Below 900 the mail gets the screen: icon actions, a header capped at
+        // a third (Jose 11-03: "take over the entire screen not half of it").
+        final compact = MediaQuery.sizeOf(context).width < 900;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ConstrainedBox(
+              // The header scrolls on its own past its cap, so a long subject
+              // and the From picker never push the mail off a phone.
+              constraints: BoxConstraints(
+                maxHeight: constraints.maxHeight * 0.3,
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      message.subject.isEmpty ? 'No subject' : message.subject,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontSize: 21,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              message.from,
-                              style: theme.textTheme.bodyMedium,
-                            ),
-                            Text(
-                              'to ${mailbox.address} · '
-                              '${formatStamp(message.receivedAt, 'No date', formats: formats)}',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                            if (message.thread.length > 1)
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SenderAvatar(
+                          name: message.fromName,
+                          email: message.fromAddress,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                '${message.thread.length} messages',
+                                message.from,
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                              Text(
+                                'to ${mailbox.address} · '
+                                '${formatStamp(message.receivedAt, 'No date', formats: formats)}',
                                 style: theme.textTheme.bodySmall,
                               ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (customer != null) ...[
-                    const SizedBox(height: 10),
-                    ActionChip(
-                      key: const ValueKey('email-customer-chip'),
-                      avatar: Icon(
-                        customer.type == 'lead'
-                            ? Icons.person_search_outlined
-                            : Icons.person_outline,
-                        size: 18,
-                      ),
-                      label: Text(
-                        '${customer.type == 'lead' ? 'Lead' : 'Customer'} · '
-                        '${customer.name.isEmpty ? 'Open record' : customer.name}',
-                      ),
-                      onPressed: onOpenCustomer,
-                    ),
-                  ],
-                  if (seen != null) ...[
-                    const SizedBox(height: 8),
-                    SeenByLine(sentence: seen),
-                  ],
-                  const SizedBox(height: 12),
-                  if (copies.length > 1) ...[
-                    Wrap(
-                      key: const ValueKey('email-from-picker'),
-                      spacing: 6,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text('From', style: theme.textTheme.labelMedium),
-                        for (final copy in copies)
-                          ChoiceChip(
-                            label: Text(copy.address),
-                            selected: copy.mailboxId == mailbox.id,
-                            onSelected: (_) =>
-                                onFromChanged?.call(copy.mailboxId),
+                              if (message.thread.length > 1)
+                                Text(
+                                  '${message.thread.length} messages',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                            ],
                           ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                  ],
-                  // Wrap, not Row: "Reply as bookings@…" beside a second control
-                  // overflows a 375px pane.
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Refused(
-                        reason: refusal,
-                        child: FilledButton.icon(
-                          onPressed: refusal == null ? onReply : null,
-                          icon: const Icon(Icons.reply, size: 18),
-                          label: Text('Reply as ${mailbox.address}'),
-                        ),
-                      ),
-                      if (onReplyAll != null)
-                        Refused(
-                          reason: refusal,
-                          child: OutlinedButton.icon(
-                            key: const ValueKey('email-reply-all'),
-                            onPressed: refusal == null ? onReplyAll : null,
-                            icon: const Icon(Icons.reply_all, size: 18),
-                            label: const Text('Reply all'),
-                          ),
-                        ),
-                      if (onForward != null)
-                        OutlinedButton.icon(
-                          key: const ValueKey('email-forward'),
-                          onPressed: onForward,
-                          icon: const Icon(Icons.forward, size: 18),
-                          label: const Text('Forward'),
-                        ),
-                      if (onCompose != null)
-                        OutlinedButton.icon(
-                          key: const ValueKey('email-reader-compose'),
-                          onPressed: onCompose,
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          label: const Text('Compose'),
-                        ),
-                      // Handled, which is NOT the same as read: the inbox's
-                      // fact that the customer has been answered.
-                      OutlinedButton.icon(
-                        key: const ValueKey('email-handled-toggle'),
-                        onPressed: onToggleDealt,
-                        icon: Icon(
-                          dealt != null
-                              ? Icons.check_circle
-                              : Icons.check_circle_outline,
+                    if (customer != null) ...[
+                      const SizedBox(height: 10),
+                      ActionChip(
+                        key: const ValueKey('email-customer-chip'),
+                        avatar: Icon(
+                          customer.type == 'lead'
+                              ? Icons.person_search_outlined
+                              : Icons.person_outline,
                           size: 18,
                         ),
                         label: Text(
-                          dealt != null
-                              ? handledSentence(dealt!, formats)
-                              : 'Mark handled',
+                          '${customer.type == 'lead' ? 'Lead' : 'Customer'} · '
+                          '${customer.name.isEmpty ? 'Open record' : customer.name}',
                         ),
+                        onPressed: onOpenCustomer,
                       ),
                     ],
-                  ),
+                    if (seen != null) ...[
+                      const SizedBox(height: 8),
+                      SeenByLine(sentence: seen),
+                    ],
+                    const SizedBox(height: 12),
+                    if (copies.length > 1) ...[
+                      Wrap(
+                        key: const ValueKey('email-from-picker'),
+                        spacing: 6,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text('From', style: theme.textTheme.labelMedium),
+                          for (final copy in copies)
+                            ChoiceChip(
+                              label: Text(copy.address),
+                              selected: copy.mailboxId == mailbox.id,
+                              onSelected: (_) =>
+                                  onFromChanged?.call(copy.mailboxId),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    if (compact)
+                      _iconActions(context)
+                    else
+                      // Wrap, not Row: "Reply as bookings@…" beside a second control
+                      // overflows a 375px pane.
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Refused(
+                            reason: refusal,
+                            child: FilledButton.icon(
+                              onPressed: refusal == null ? onReply : null,
+                              icon: const Icon(Icons.reply, size: 18),
+                              label: Text('Reply as ${mailbox.address}'),
+                            ),
+                          ),
+                          if (onReplyAll != null)
+                            Refused(
+                              reason: refusal,
+                              child: OutlinedButton.icon(
+                                key: const ValueKey('email-reply-all'),
+                                onPressed: refusal == null ? onReplyAll : null,
+                                icon: const Icon(Icons.reply_all, size: 18),
+                                label: const Text('Reply all'),
+                              ),
+                            ),
+                          if (onForward != null)
+                            OutlinedButton.icon(
+                              key: const ValueKey('email-forward'),
+                              onPressed: onForward,
+                              icon: const Icon(Icons.forward, size: 18),
+                              label: const Text('Forward'),
+                            ),
+                          if (onCompose != null)
+                            OutlinedButton.icon(
+                              key: const ValueKey('email-reader-compose'),
+                              onPressed: onCompose,
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              label: const Text('Compose'),
+                            ),
+                          // Handled, which is NOT the same as read: the inbox's
+                          // fact that the customer has been answered.
+                          OutlinedButton.icon(
+                            key: const ValueKey('email-handled-toggle'),
+                            onPressed: onToggleDealt,
+                            icon: Icon(
+                              dealt != null
+                                  ? Icons.check_circle
+                                  : Icons.check_circle_outline,
+                              size: 18,
+                            ),
+                            label: Text(
+                              dealt != null
+                                  ? handledSentence(dealt!, formats)
+                                  : 'Mark handled',
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _conversation(mailbox, message)),
+                  if (_files.isNotEmpty)
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: constraints.maxHeight * 0.3,
+                      ),
+                      child: SingleChildScrollView(
+                        child: _attachments(context),
+                      ),
+                    ),
                 ],
               ),
             ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: _conversation(mailbox, message)),
-                if (_files.isNotEmpty) _attachments(context),
-              ],
-            ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
+
+  Widget _iconActions(BuildContext context) => Row(
+    key: const ValueKey('email-icon-actions'),
+    children: [
+      Refused(
+        reason: refusal,
+        child: IconButton(
+          key: const ValueKey('email-reply'),
+          tooltip: 'Reply as ${mailbox.address}',
+          icon: const Icon(Icons.reply),
+          onPressed: refusal == null ? onReply : null,
+        ),
+      ),
+      if (onReplyAll != null)
+        Refused(
+          reason: refusal,
+          child: IconButton(
+            key: const ValueKey('email-reply-all'),
+            tooltip: 'Reply all',
+            icon: const Icon(Icons.reply_all),
+            onPressed: refusal == null ? onReplyAll : null,
+          ),
+        ),
+      if (onForward != null)
+        IconButton(
+          key: const ValueKey('email-forward'),
+          tooltip: 'Forward',
+          icon: const Icon(Icons.forward),
+          onPressed: onForward,
+        ),
+      if (onCompose != null)
+        IconButton(
+          key: const ValueKey('email-reader-compose'),
+          tooltip: 'Compose',
+          icon: const Icon(Icons.edit_outlined),
+          onPressed: onCompose,
+        ),
+      IconButton(
+        key: const ValueKey('email-handled-toggle'),
+        tooltip: dealt != null
+            ? handledSentence(dealt!, formats)
+            : 'Mark handled',
+        icon: Icon(
+          dealt != null ? Icons.check_circle : Icons.check_circle_outline,
+        ),
+        onPressed: onToggleDealt,
+      ),
+    ],
+  );
 
   Widget _conversation(Mailbox mailbox, MessageDetail message) {
     if (message.thread.length <= 1) {
       return _body(mailbox, message);
+    }
+
+    // An HTML page inside a scrolled list traps the wheel: over the page the
+    // events go to it and never come back, so once scrolled down the thread
+    // cannot be scrolled up (Nick Frias 11-23, web). So, as in Gmail, the
+    // other messages fold to one line each and one is open at full height.
+    if (_htmlInThread && message.thread.any((p) => (p.html ?? '').isNotEmpty)) {
+      return _FoldedThread(
+        parts: message.thread,
+        header: _partHeader,
+        body: (part) => _body(mailbox, part),
+      );
     }
 
     return ListView.separated(
@@ -263,58 +343,83 @@ class MailMessageView extends StatelessWidget {
       separatorBuilder: (_, _) => const Divider(height: 24),
       itemBuilder: (context, index) {
         final part = message.thread[index];
-        final theme = Theme.of(context);
 
+        // Blocks at full length, so the thread scrolls as one page; a box
+        // of its own trapped the scroll on Eve's iPhone (11-11).
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SenderAvatar(name: part.fromName, email: part.fromAddress),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(part.from, style: theme.textTheme.titleSmall),
-                      Text(
-                        formatStamp(
-                          part.receivedAt,
-                          'No date',
-                          formats: formats,
-                        ),
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            _partHeader(context, part),
             const SizedBox(height: 8),
-            SizedBox(height: 420, child: _body(mailbox, part)),
+            _blocks(mailbox, part, EdgeInsets.zero),
           ],
         );
       },
     );
   }
 
+  Widget _partHeader(BuildContext context, MessageDetail part) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SenderAvatar(name: part.fromName, email: part.fromAddress),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(part.from, style: theme.textTheme.titleSmall),
+              Text(
+                formatStamp(part.receivedAt, 'No date', formats: formats),
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// HTML mail is drawn by a real engine wherever there is one (Jose 11-12:
+  /// the block body drops table layouts, so Google's call notices showed only
+  /// their logos on Windows). A sandboxed iframe on the web, WebView2 on
+  /// Windows, the system WebView elsewhere; Linux keeps the blocks.
+  static bool get _htmlEngine =>
+      kIsWeb || defaultTargetPlatform != TargetPlatform.linux;
+
+  /// In a thread each part is a fixed-height box, which on a phone traps the
+  /// scroll -- so phones keep blocks there.
+  static bool get _htmlInThread =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS;
+
   Widget _body(Mailbox mailbox, MessageDetail message) {
     final html = message.html;
-    if (kIsWeb && html != null && html.isNotEmpty) {
+    if (_htmlEngine && html != null && html.isNotEmpty) {
       return MessageHtmlView(html: html);
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-      child: MessageBody(
-        blocks: message.blocks,
-        api: api,
-        picturePath:
-            '/email/mailboxes/${mailbox.id}/messages/${message.id}/picture',
+      child: _blocks(
+        mailbox,
+        message,
+        const EdgeInsets.fromLTRB(20, 4, 20, 28),
       ),
     );
   }
+
+  Widget _blocks(Mailbox mailbox, MessageDetail message, EdgeInsets padding) =>
+      Padding(
+        padding: padding,
+        child: MessageBody(
+          blocks: message.blocks,
+          api: api,
+          picturePath:
+              '/email/mailboxes/${mailbox.id}/messages/${message.id}/picture',
+        ),
+      );
 
   /// Files on this message, or on every part of the conversation. Nothing is
   /// stored: a tap streams the bytes through EzBizi as a download.
@@ -324,66 +429,25 @@ class MailMessageView extends StatelessWidget {
     return [for (final part in message.thread) ...part.attachments];
   }
 
-  Widget _attachments(BuildContext context) {
-    final theme = Theme.of(context);
-    final files = _files;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Divider(height: 1),
-          const SizedBox(height: 14),
-          Text('ATTACHMENTS', style: theme.textTheme.labelSmall),
-          const SizedBox(height: 8),
-          for (final file in files)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: InkWell(
-                onTap: file.token == null
-                    ? null
-                    : () => _downloadAttachment(context, file),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.attach_file,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          file.size == null
-                              ? file.name
-                              : '${file.name} · ${_size(file.size!)}',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: file.token == null
-                                ? null
-                                : theme.colorScheme.primary,
-                            decoration: file.token == null
-                                ? null
-                                : TextDecoration.underline,
-                          ),
-                        ),
-                      ),
-                      if (file.token != null)
-                        Icon(
-                          Icons.download_outlined,
-                          size: 18,
-                          color: theme.colorScheme.primary,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+  /// Gmail's chips: a wrapping row, the first four and "+N more" (Eve 11-11:
+  /// a list of ten signature logos took her whole screen).
+  Widget _attachments(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 1),
+        const SizedBox(height: 10),
+        _AttachmentChips(
+          files: _files,
+          label: (file) => file.size == null
+              ? file.name
+              : '${file.name} · ${_size(file.size!)}',
+          onOpen: (file) => _downloadAttachment(context, file),
+        ),
+      ],
+    ),
+  );
 
   Future<void> _downloadAttachment(
     BuildContext context,
@@ -416,5 +480,126 @@ class MailMessageView extends StatelessWidget {
     if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} KB';
 
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+}
+
+class _AttachmentChips extends StatefulWidget {
+  const _AttachmentChips({
+    required this.files,
+    required this.label,
+    required this.onOpen,
+  });
+
+  final List<MailAttachment> files;
+  final String Function(MailAttachment) label;
+  final void Function(MailAttachment) onOpen;
+
+  @override
+  State<_AttachmentChips> createState() => _AttachmentChipsState();
+}
+
+class _AttachmentChipsState extends State<_AttachmentChips> {
+  static const _shown = 4;
+  bool _all = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final files = widget.files;
+    final more = files.length - _shown;
+    final visible = _all || more <= 0 ? files : files.take(_shown);
+
+    return Wrap(
+      key: const ValueKey('email-attachments'),
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final file in visible)
+          ActionChip(
+            avatar: const Icon(Icons.attach_file, size: 16),
+            label: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: Text(widget.label(file), overflow: TextOverflow.ellipsis),
+            ),
+            tooltip: file.token == null ? null : 'Download ${file.name}',
+            onPressed: file.token == null ? null : () => widget.onOpen(file),
+          ),
+        if (more > 0 && !_all)
+          ActionChip(
+            key: const ValueKey('email-attachments-more'),
+            label: Text('+$more more'),
+            onPressed: () => setState(() => _all = true),
+          ),
+      ],
+    );
+  }
+}
+
+/// A conversation with one message open and the rest folded to their header
+/// line, newest open first. Only the open one is an HTML page, and it fills
+/// the space below the headers, so no page ever sits inside a scrolled list.
+class _FoldedThread extends StatefulWidget {
+  const _FoldedThread({
+    required this.parts,
+    required this.header,
+    required this.body,
+  });
+
+  final List<MessageDetail> parts;
+  final Widget Function(BuildContext, MessageDetail) header;
+  final Widget Function(MessageDetail) body;
+
+  @override
+  State<_FoldedThread> createState() => _FoldedThreadState();
+}
+
+class _FoldedThreadState extends State<_FoldedThread> {
+  late int _open = widget.parts.length - 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = widget.parts;
+    final open = _open.clamp(0, parts.length - 1);
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            // The folded lines scroll on their own past a third of the pane;
+            // they hold no page, so the wheel works over them.
+            constraints: BoxConstraints(
+              maxHeight: math.min(constraints.maxHeight / 4, 180),
+            ),
+            child: ListView(
+              key: const ValueKey('email-thread-folded'),
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+              children: [
+                for (var i = 0; i < parts.length; i++)
+                  InkWell(
+                    key: ValueKey('email-thread-part-$i'),
+                    onTap: () => setState(() => _open = i),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      color: i == open
+                          ? Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: 0.08)
+                          : null,
+                      child: widget.header(context, parts[i]),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: KeyedSubtree(
+              key: ValueKey('email-thread-open-$open'),
+              child: widget.body(parts[open]),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

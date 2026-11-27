@@ -50,6 +50,24 @@ class DispatchAutomationEvents extends Command
             ->get();
 
         foreach ($due as $event) {
+            // One record's events in the order they happened: while an earlier
+            // one for the same subject is still undelivered, this one waits,
+            // so parallel workers never run them out of order (desk, 11-18).
+            // A blocker must already be due (a rule delayed an hour must not
+            // hold a reply), and one stuck over 15 minutes stops blocking, said in the log.
+            $blocker = $event->subject_id === null ? null : AutomationEvent::withoutGlobalScopes()
+                ->where('subject_type', $event->subject_type)->where('subject_id', $event->subject_id)
+                ->whereNull('delivered_at')->whereNull('failed_at')
+                ->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()))
+                ->where(fn ($q) => $q->where('occurred_at', '<', $event->occurred_at)
+                    ->orWhere(fn ($q) => $q->where('occurred_at', $event->occurred_at)->where('id', '<', $event->getKey())))
+                ->orderBy('occurred_at')->first(['id', 'occurred_at', 'available_at']);
+            if ($blocker !== null) {
+                if (($blocker->available_at ?? $blocker->occurred_at)->gt(now()->subMinutes(15))) {
+                    continue;
+                }
+                \Illuminate\Support\Facades\Log::warning("Automation event {$event->getKey()} sent past stuck earlier event {$blocker->getKey()} on the same record (due over 15 minutes).");
+            }
             // Claimed before dispatch, so two overlapping sweeps cannot both
             // queue the same event.
             $claimed = AutomationEvent::withoutGlobalScopes()
@@ -58,7 +76,7 @@ class DispatchAutomationEvents extends Command
                 ->update(['queued_at' => now()]);
 
             if ($claimed === 1) {
-                DeliverAutomationEvent::dispatch($event->getKey());
+                DeliverAutomationEvent::queueFor($event);
             }
         }
 

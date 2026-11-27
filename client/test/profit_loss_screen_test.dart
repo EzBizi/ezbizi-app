@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/profit_loss_screen.dart';
+import 'package:ezbizi_client/widgets/loading_skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -14,6 +16,31 @@ import 'package:http/testing.dart';
 /// Shaped like A-1's three bases on 2026-09-24: the first two have tables and
 /// no weeks in them, the third is the P&L. The tab opened blank on the first.
 void main() {
+  testWidgets('a read that never answers ends in a sentence and Try again', (
+    tester,
+  ) async {
+    // Desktop review 2026-11-13, Top 2: the skeleton stayed for good.
+    final api = ApiClient(
+      client: MockClient((_) => Completer<http.Response>().future),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: ProfitLossScreen(api: api, session: Session(api)),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.byType(LoadingSkeleton), findsOneWidget);
+
+    await tester.pump(ProfitLossScreen.timeout);
+    await tester.pump();
+    expect(find.byType(LoadingSkeleton), findsNothing);
+    expect(find.textContaining('took too long'), findsOneWidget);
+    expect(find.byKey(const ValueKey('pl-try-again')), findsOneWidget);
+  });
+
   testWidgets('opens on the first base that has weeks, not the first base', (
     tester,
   ) async {

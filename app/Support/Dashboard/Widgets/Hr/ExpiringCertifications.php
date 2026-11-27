@@ -4,6 +4,7 @@ namespace App\Support\Dashboard\Widgets\Hr;
 
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
+use App\Models\PersonCertification;
 use App\Models\User;
 use App\Support\Contracts\FieldDefinition;
 use Illuminate\Database\Eloquent\Builder;
@@ -77,6 +78,25 @@ class ExpiringCertifications
                     'expires_on' => $expires->toDateString(),
                 ];
             }
+        }
+
+        // Certifications recorded on the person (Jose, 2026-11-20), in the same view.
+        $held = PersonCertification::query()->with('user:id,name')
+            ->whereHas('user', fn (Builder $u) => $u->where(function (Builder $visible) use ($places) {
+                $visible->whereHas('assignments', fn (Builder $a) => $this->constrainToPlaces($a, $places));
+                if ($places['organization'] !== null) {
+                    $visible->orWhereDoesntHave('assignments');
+                }
+            }))
+            ->whereNotNull('expires_on')->whereDate('expires_on', '<=', $until)
+            ->whereDate('expires_on', '>=', now()->startOfDay()->subYear())->get();
+        $marked += $held->count();
+        foreach ($held as $c) {
+            $rows[] = [
+                'title'      => $c->user?->name ?? 'Somebody',
+                'field'      => $c->name,
+                'expires_on' => $c->expires_on->toDateString(),
+            ];
         }
 
         usort($rows, fn (array $a, array $b) => strcmp($a['expires_on'], $b['expires_on']));

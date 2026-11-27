@@ -1,3 +1,5 @@
+import 'dart:ui' show PointerDeviceKind;
+
 import 'package:ezbizi_client/widgets/tab_bar_like.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -95,7 +97,49 @@ void main() {
     expect(find.byKey(const Key('tab-bar-more')), findsNothing);
   });
 
-  testWidgets('a strip that fits has no fade, and a desk wraps instead', (
+  // Phone audit 2026-11-04: tabs past the edge went unannounced, and a tab
+  // only half on screen took two taps.
+  testWidgets('a phone strip shows a chevron that pages it, and one tap on a '
+      'half-shown tab selects it', (tester) async {
+    await _phone(tester);
+    int? picked;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TabBarLike(
+            labels: [for (final l in many) (l, Icons.folder_outlined)],
+            selected: 0,
+            onSelected: (i) => picked = i,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('tab-bar-chevron')), findsOneWidget);
+
+    // The first tab whose left edge is in view but whose right runs on past
+    // where the strip ends, beside the chevron (tab widths vary with the
+    // style, so the edge is measured, not assumed).
+    final end = tester.getRect(find.byKey(const Key('tab-bar-chevron'))).left;
+    final half = many.indexWhere((l) {
+      final r = tester.getRect(find.text(l));
+      return r.left < end - 12 && r.right > end;
+    });
+    if (half >= 0) {
+      await tester.tapAt(
+        tester.getRect(find.text(many[half])).centerLeft + const Offset(4, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(picked, half);
+    }
+
+    await tester.tap(find.byKey(const Key('tab-bar-chevron')));
+    final before = tester.getRect(find.text(many.last)).left;
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.text(many.last)).left, lessThan(before));
+  });
+
+  testWidgets('a strip that fits has no fade, on a phone or a desk', (
     tester,
   ) async {
     await _phone(tester);
@@ -107,6 +151,47 @@ void main() {
     await _pump(tester, labels: many, at: 0);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('tab-bar-more')), findsNothing);
+  });
+
+  // Desktop review 2026-11-13: Reports' 11 tabs wrapped onto two lines. A
+  // desk now gets the one sideways strip: one line, a fade and chevron where
+  // tabs go on, and the mouse can drag it along.
+  testWidgets('on a desk eleven tabs stay on one line and scroll sideways', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    const reports = [
+      'Overview',
+      'Sales by Technician',
+      'Jobs by Source',
+      'Leads by Source',
+      'Revenue by Service',
+      'Estimates Conversion',
+      'Payments Received',
+      'Outstanding Invoices',
+      'Technician Hours',
+      'Customer Retention',
+      'Marketing Spend',
+    ];
+    await _pump(tester, labels: reports, at: 0);
+    await tester.pumpAndSettle();
+
+    final tops = {for (final l in reports) tester.getRect(find.text(l)).top};
+    expect(tops, hasLength(1), reason: 'Every tab on one line, none wrapped.');
+    expect(find.byKey(const Key('tab-bar-more')), findsOneWidget);
+    expect(find.byKey(const Key('tab-bar-chevron')), findsOneWidget);
+
+    final before = tester.getRect(find.text(reports.last)).left;
+    await tester.dragFrom(
+      tester.getCenter(find.text('Jobs by Source')),
+      const Offset(-400, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.text(reports.last)).left, lessThan(before));
+    expect(find.byKey(const Key('tab-bar-less')), findsOneWidget);
   });
 
   testWidgets('a tab is a selected button to a screen reader, not a checkbox', (

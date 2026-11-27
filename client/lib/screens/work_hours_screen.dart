@@ -14,12 +14,14 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../core/app_window.dart';
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'hr/pto_tab.dart';
 import 'hr/work_hours_approval_tab.dart';
+import 'hr/work_hours_payroll_tab.dart';
 import 'hr/work_hours_reports_tab.dart';
 import 'hr/work_hours_tab.dart';
 import 'settings_screen.dart';
@@ -41,6 +43,12 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
   @override
   void initState() {
     super.initState();
+    // A phone bottom-bar slot (design 208).
+    if (DeepLinks.pending.value case final l?
+        when l.module == 'work_hours' && l.type == 'tab') {
+      _tab = DeepLinks.take('work_hours')!.id;
+      _shown.add(_tab);
+    }
     // A Daily approval reminder tapped before this screen existed.
     final waiting = DeepLinks.pending.value;
     if (waiting?.module == 'work_hours' && waiting?.type == approvalLinkType) {
@@ -68,6 +76,14 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
   void _toLinkedTab() {
     final link = DeepLinks.pending.value;
     if (link?.module != 'work_hours') return;
+    if (link?.type == 'tab') {
+      final tab = DeepLinks.take('work_hours')!.id;
+      setState(() {
+        _tab = tab;
+        _shown.add(tab);
+      });
+      return;
+    }
     final tab = switch (link?.type) {
       approvalLinkType => 'approval',
       ptoRequestLinkType => 'pto',
@@ -122,6 +138,15 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
         'Daily approval',
         Icons.fact_check_outlined,
         () => WorkHoursApprovalTab(api: widget.api, session: widget.session),
+      ),
+    // Payroll (design 198, 2026-11-19): one week's pay, bonus, deductions
+    // and tech expenses, approved per person; behind `work_hours.payroll`.
+    if (_may('work_hours.payroll'))
+      (
+        'payroll',
+        'Payroll',
+        Icons.payments_outlined,
+        () => WorkHoursPayrollTab(api: widget.api, session: widget.session),
       ),
     if (_may('work_hours.settings.view'))
       (
@@ -178,6 +203,10 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
           color: theme.colorScheme.surface,
           child: TabBarLike(
             key: const ValueKey('tour-work_hours-tabs'),
+            windowPaths: [
+              for (final tab in tabs)
+                AppWindow.pathFor('work_hours', tab: tab.$1),
+            ],
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: index < 0 ? 0 : index,
             onSelected: (i) => setState(() {

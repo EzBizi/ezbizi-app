@@ -4,12 +4,10 @@ import '../core/deep_links.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
-import '../widgets/api_activity.dart';
-import '../widgets/async_body.dart';
 import '../widgets/tab_bar_like.dart';
 import 'organization_screen.dart';
 import 'roles_screen.dart';
-import 'settings/activity_screen.dart';
+import 'settings/lists_screen.dart';
 import 'settings/integrations_screen.dart';
 import 'settings/settings_hub.dart';
 
@@ -116,43 +114,13 @@ class _SettingsShellState extends State<SettingsShell> {
         ),
       // Who did what in this view (A1 Leads takeover, 2026-10-16). Its own
       // module grant, like Roles, because the log is not a setting.
-      if (me.can('audit.view'))
+      // A business's own lists (design 181, 2026-11-04).
+      if (me.can('organizations.settings.view'))
         (
-          'activity',
-          'Activity',
-          Icons.history,
-          () => ActivityScreen(api: widget.api, session: widget.session),
-        ),
-      // Everything anybody did with an API key, for administrators (UI queue
-      // 66). After Roles, where the kinds of key are decided; a key's owner
-      // reads their own under Your account.
-      if (me.can('organizations.api_activity.view'))
-        (
-          'api_activity',
-          'API activity',
-          Icons.manage_search_outlined,
-          () => SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // The same header as every Settings tab (UI queue 110).
-                const PanelHeader(
-                  note:
-                      'Everything anybody did with an API key, newest first. '
-                      'Open a row to see what was sent.',
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: ApiActivity(
-                    api: widget.api,
-                    formats: me.display,
-                    everyone: true,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          'lists',
+          'Lists',
+          Icons.list_alt_outlined,
+          () => ListsScreen(api: widget.api),
         ),
     ];
 

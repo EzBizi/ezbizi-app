@@ -66,22 +66,6 @@ class JobLabelsTest extends TestCase
             ->assertJsonPath('meta.labels.job_types', ['Chimney Inspection', 'Chimney Sweep']);
     }
 
-    /** History from Workiz fills only what nobody has set, so a person's edit survives a re-run. */
-    public function test_the_backfill_copies_workiz_labels_onto_empty_jobs_only(): void
-    {
-        $alpha = $this->provisionTenant('Alpha');
-        $fresh = $this->mirrored($alpha, 'A1', ['JobType' => 'Free Estimate ', 'SubStatus' => 'Duplicate Job', 'Tags' => ['DEPOSIT RECIEVED', '']]);
-        $edited = $this->mirrored($alpha, 'A2', ['JobType' => 'Redo', 'Tags' => ['x']]);
-        $this->inTenant($alpha['org'], fn () => Job::query()->whereKey($edited)->update(['job_type' => 'Masonry Work']));
-
-        $this->artisan('jobs:backfill-workiz-labels')->assertSuccessful();
-
-        $read = fn (string $id) => $this->inTenant($alpha['org'], fn () => Job::query()->findOrFail($id));
-        $this->assertSame(['Free Estimate', 'Duplicate Job', ['DEPOSIT RECIEVED']],
-            [$read($fresh)->job_type, $read($fresh)->sub_status, $read($fresh)->tags]);
-        $this->assertSame('Masonry Work', $read($edited)->job_type, "a person's word stays");
-    }
-
     /** Jose's scope review, 2026-10-27: the list carries the statuses where the viewer looks, for a branch-only person too. */
     public function test_the_list_carries_the_job_statuses_for_a_branch_only_person(): void
     {

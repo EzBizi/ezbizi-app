@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter/material.dart';
@@ -780,17 +781,10 @@ class _FilesTabState extends State<FilesTab> {
   // Standard field height, as tall as Leads search (Jose, 2026-10-27).
   Widget _searchField() => SizedBox(
     width: 240,
-    child: TextField(
+    child: ListSearch(
       key: const Key('files-search'),
       controller: _search,
-      textAlignVertical: TextAlignVertical.center,
-      decoration: const InputDecoration(
-        isDense: true,
-        prefixIconConstraints: BoxConstraints(minWidth: 36),
-        prefixIcon: Icon(Icons.search, size: 18),
-        hintText: 'Find a file or folder',
-        border: OutlineInputBorder(),
-      ),
+      hint: 'Find a file or folder',
       onChanged: (v) => setState(() => _query = v),
     ),
   );
@@ -1321,12 +1315,34 @@ class _FilesTabState extends State<FilesTab> {
               ],
             ),
           ),
+          // Every list has search (phone audit 2026-11-04, Section 4 #12).
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            child: ListSearch(
+              key: const Key('files-device-search'),
+              hint: 'Find a person or computer',
+              width: double.infinity,
+              onChanged: (v) => setState(() => _deviceQuery = v),
+            ),
+          ),
           for (final device in _devices)
-            if (_platform == null || device['platform'] == _platform)
+            if ((_platform == null || device['platform'] == _platform) &&
+                _deviceMatches(device))
               _deviceTile(context, device),
         ],
       ),
     );
+  }
+
+  String _deviceQuery = '';
+
+  bool _deviceMatches(Map<String, dynamic> device) {
+    final q = _deviceQuery.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    final user = device['user'] as Map<String, dynamic>? ?? const {};
+    return '${user['name'] ?? ''} ${device['label'] ?? ''}'
+        .toLowerCase()
+        .contains(q);
   }
 
   Widget _deviceTile(BuildContext context, Map<String, dynamic> device) {

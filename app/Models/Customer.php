@@ -3,10 +3,13 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Memberships\CustomerLinks;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
+use App\Support\Settings\Lists\BusinessLists;
+use App\Support\Tenancy\TenantContext;
 use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -32,19 +35,24 @@ use Illuminate\Support\Collection;
 #[Fillable([
     'owning_franchise_id', 'number', 'name', 'email', 'phone',
     'address_line1', 'address_line2', 'city', 'state', 'postal_code',
-    'notes', 'is_active', 'customer_since',
+    'notes', 'is_active', 'customer_since', 'tags',
 ])]
 class Customer extends Model implements HoldsPersonalData
 {
+    use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'customers';
+
     /** @use HasFactory<CustomerFactory> */
     use HasFactory;
     use HasUuids;
-    use BelongsToTenant;
     use SoftDeletes;
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean', 'customer_since' => 'date'];
+        return ['is_active' => 'boolean', 'customer_since' => 'date', 'tags' => 'array'];
     }
 
     /**
@@ -96,7 +104,7 @@ class Customer extends Model implements HoldsPersonalData
      *
      * Each was measured as many DIFFERENT names at different addresses --
      * 3236761570 on 28 customers under 28 names; 8187482055 on 388 A1 rows. That
-     * is the test, not the count: 3477245006 sits on 12 customers but only 8
+     * is the test, not the count: 3475550100 sits on 12 customers but only 8
      * names and 7 addresses, which reads as a real property manager, so it is
      * deliberately NOT here. An SMS automation would text a stranger for every
      * row one of these is on, and the duplicate sweep would call them one
@@ -119,7 +127,7 @@ class Customer extends Model implements HoldsPersonalData
     {
         $normal = strtolower(trim((string) $email));
 
-        return $normal === '' || in_array($normal, self::PLACEHOLDER_EMAILS, true)
+        return $normal === '' || in_array($normal, self::placeholders('customers.placeholder_emails'), true)
             ? null
             : trim((string) $email);
     }
@@ -142,7 +150,27 @@ class Customer extends Model implements HoldsPersonalData
 
         $national = strlen($digits) === 11 && $digits[0] === '1' ? substr($digits, 1) : $digits;
 
-        return in_array($national, self::PLACEHOLDER_PHONES, true) ? null : trim((string) $phone);
+        return in_array($national, self::placeholders('customers.placeholder_phones'), true) ? null : trim((string) $phone);
+    }
+
+    /**
+     * A business list of placeholders (Settings › Lists), lower-cased. The
+     * constants above are only its defaults (Jose, 2026-11-04: every business
+     * value editable). Memoized per org for the request or job, because the
+     * importers call this once per row.
+     */
+    public static function placeholders(string $list): array
+    {
+        return self::placeholderList($list, app(TenantContext::class)->id());
+    }
+
+    private static function placeholderList(string $list, ?string $organizationId): array
+    {
+        // once() keys on the closure's captured variables, so the org must be one.
+        return once(fn () => $organizationId === false ? [] : array_map(
+            fn (array $row) => mb_strtolower(trim((string) $row['key'])),
+            app(BusinessLists::class)->rows($list),
+        ));
     }
 
     // ── §9 data inventory ────────────────────────────────────────
@@ -211,6 +239,23 @@ class Customer extends Model implements HoldsPersonalData
         return $subject instanceof self
             ? static::query()->withTrashed()->whereKey($subject->getKey())
             : null;
+    }
+
+    /**
+     * Tags as written once: trimmed, blanks dropped, one per spelling
+     * regardless of case (the first spelling wins), in the order given.
+     */
+    public function setTagsAttribute(?array $tags): void
+    {
+        $kept = [];
+        foreach ($tags ?? [] as $tag) {
+            $tag = trim((string) $tag);
+            if ($tag !== '' && ! isset($kept[mb_strtolower($tag)])) {
+                $kept[mb_strtolower($tag)] = $tag;
+            }
+        }
+
+        $this->attributes['tags'] = $kept === [] ? null : json_encode(array_values($kept));
     }
 
     // ── relations ────────────────────────────────────────────────
@@ -292,7 +337,7 @@ class Customer extends Model implements HoldsPersonalData
      */
     public function getReviewLinkAttribute(): ?string
     {
-        return \App\Support\Memberships\CustomerLinks::reviewLink($this);
+        return CustomerLinks::reviewLink($this);
     }
 
     /**
@@ -307,11 +352,25 @@ class Customer extends Model implements HoldsPersonalData
 
         return $member || ! MembershipPlan::query()->where('is_active', true)->exists()
             ? null
-            : \App\Support\Memberships\CustomerLinks::joinLink($this);
+            : CustomerLinks::joinLink($this);
     }
 
     public function getMembershipJoinUrlAttribute(): string
     {
-        return \App\Support\Memberships\CustomerLinks::joinUrl($this);
+        return CustomerLinks::joinUrl($this);
+    }
+
+    /**
+     * A search term that reads as a phone, in any format: "(305) 555-0107",
+     * "305.555.0107", "+13055550107" (Trey, 2026-11-11). Matches no rows when
+     * the term has under four digits.
+     */
+    public static function phoneLike(Builder $q, string $term): void
+    {
+        $digits = preg_replace('/\D/', '', $term) ?? '';
+        $digits = strlen($digits) === 11 && $digits[0] === '1' ? substr($digits, 1) : $digits;
+        strlen($digits) < 4
+            ? $q->whereRaw('1 = 0')
+            : $q->whereRaw("REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '') LIKE ?", ['%'.$digits.'%']);
     }
 }

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+
+import '../../widgets/list_table.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
@@ -99,7 +101,10 @@ class _GuidePlayerState extends State<GuidePlayer> {
       return;
     }
 
-    final entries = [..._rows(response.body['assigned']), ..._rows(response.body['library'])];
+    final entries = [
+      ..._rows(response.body['assigned']),
+      ..._rows(response.body['library']),
+    ];
 
     final guide = entries.firstWhere(
       (e) => e['type'] == 'guide' && e['id'] == widget.guideId,
@@ -131,7 +136,9 @@ class _GuidePlayerState extends State<GuidePlayer> {
       _completedAt = _parseIso(guide['completed_at'] as String?);
       _test = test.isEmpty ? null : test;
       // Resume at the first topic not yet completed.
-      _current = topics.isEmpty ? 0 : (last + 1).clamp(0, topics.length - 1).toInt();
+      _current = topics.isEmpty
+          ? 0
+          : (last + 1).clamp(0, topics.length - 1).toInt();
     });
   }
 
@@ -141,9 +148,13 @@ class _GuidePlayerState extends State<GuidePlayer> {
 
   void _select(int i) {
     if (!_unlocked(i)) {
-      ScaffoldMessenger.maybeOf(
-        context,
-      )?.showSnackBar(const SnackBar(content: Text('This topic is locked. Complete the topics before it first.')));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This topic is locked. Complete the topics before it first.',
+          ),
+        ),
+      );
       return;
     }
     setState(() {
@@ -157,13 +168,18 @@ class _GuidePlayerState extends State<GuidePlayer> {
   Future<void> _complete() async {
     setState(() => _completing = true);
 
-    final response = await widget.api.post('/training/learn/guides/${widget.guideId}/seen', {'screen': _current});
+    final response = await widget.api.post(
+      '/training/learn/guides/${widget.guideId}/seen',
+      {'screen': _current},
+    );
     if (!mounted) return;
 
     setState(() => _completing = false);
 
     if (!response.ok) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(response.message)));
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text(response.message)));
       return;
     }
 
@@ -214,7 +230,12 @@ class _GuidePlayerState extends State<GuidePlayer> {
         );
 
         final reader = total == 0
-            ? Center(child: Text('This guide has no topics yet.', style: Theme.of(context).textTheme.bodyMedium))
+            ? Center(
+                child: Text(
+                  'This guide has no topics yet.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              )
             : _Topic(
                 key: ValueKey('training.topic-$_current'),
                 topic: _topics[_current],
@@ -224,7 +245,9 @@ class _GuidePlayerState extends State<GuidePlayer> {
                 completing: _completing,
                 onPrevious: _current > 0 ? () => _select(_current - 1) : null,
                 onComplete: _complete,
-                onNext: _current < total - 1 && _unlocked(_current + 1) ? () => _select(_current + 1) : null,
+                onNext: _current < total - 1 && _unlocked(_current + 1)
+                    ? () => _select(_current + 1)
+                    : null,
               );
 
         return Column(
@@ -235,7 +258,8 @@ class _GuidePlayerState extends State<GuidePlayer> {
               wide: wide,
               outlineOpen: _outlineOpen,
               onLeave: widget.onLeave,
-              onToggleOutline: () => setState(() => _outlineOpen = !_outlineOpen),
+              onToggleOutline: () =>
+                  setState(() => _outlineOpen = !_outlineOpen),
             ),
             Divider(height: 1, color: EzBiziTheme.edge(context)),
             Expanded(
@@ -249,9 +273,16 @@ class _GuidePlayerState extends State<GuidePlayer> {
                         children: [
                           SizedBox(
                             width: 320,
-                            child: KeyedSubtree(key: const Key('training.screen-rail'), child: outline),
+                            child: KeyedSubtree(
+                              key: const Key('training.screen-rail'),
+                              child: outline,
+                            ),
                           ),
-                          VerticalDivider(width: 1, thickness: 1, color: EzBiziTheme.edge(context)),
+                          VerticalDivider(
+                            width: 1,
+                            thickness: 1,
+                            color: EzBiziTheme.edge(context),
+                          ),
                           Expanded(child: reader),
                         ],
                       )
@@ -265,10 +296,12 @@ class _GuidePlayerState extends State<GuidePlayer> {
   }
 }
 
-List<Map<String, dynamic>> _rows(Object? raw) =>
-    raw is List ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : const [];
+List<Map<String, dynamic>> _rows(Object? raw) => raw is List
+    ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+    : const [];
 
-DateTime? _parseIso(String? iso) => iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+DateTime? _parseIso(String? iso) =>
+    iso == null ? null : DateTime.tryParse(iso)?.toLocal();
 
 class _Header extends StatelessWidget {
   const _Header({
@@ -302,7 +335,12 @@ class _Header extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             Expanded(
-              child: Text(title, style: theme.textTheme.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
+              child: Text(
+                title,
+                style: theme.textTheme.titleMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             if (!wide)
               IconButton(
@@ -367,7 +405,9 @@ class _Outline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chapters = _groupBy([for (var i = 0; i < topics.length; i++) i], (i) => _label(i, 'chapter'));
+    final chapters = _groupBy([
+      for (var i = 0; i < topics.length; i++) i,
+    ], (i) => _label(i, 'chapter'));
 
     return ListView(
       padding: const EdgeInsets.all(12),
@@ -378,9 +418,14 @@ class _Outline extends StatelessWidget {
           chapter.label == null
               ? _sections(context, chapter, ci)
               : _ChapterCard(
-                  key: ValueKey('training.chapter-$ci-${chapter.topics.contains(current)}'),
+                  key: ValueKey(
+                    'training.chapter-$ci-${chapter.topics.contains(current)}',
+                  ),
                   title: chapter.label!,
-                  sectionCount: _groupBy(chapter.topics, (i) => _label(i, 'section')).length,
+                  sectionCount: _groupBy(
+                    chapter.topics,
+                    (i) => _label(i, 'section'),
+                  ).length,
                   expanded: chapter.topics.contains(current),
                   child: _sections(context, chapter, ci),
                 ),
@@ -400,21 +445,32 @@ class _Outline extends StatelessWidget {
       children: [
         for (final (si, section) in sections.indexed)
           section.label == null
-              ? Column(children: [for (final i in section.topics) _topicRow(context, i)])
+              ? Column(
+                  children: [
+                    for (final i in section.topics) _topicRow(context, i),
+                  ],
+                )
               : ExpansionTile(
-                  key: ValueKey('training.section-$ci-$si-${section.topics.contains(current)}'),
+                  key: ValueKey(
+                    'training.section-$ci-$si-${section.topics.contains(current)}',
+                  ),
                   initiallyExpanded: section.topics.contains(current),
                   shape: const Border(),
                   collapsedShape: const Border(),
                   tilePadding: const EdgeInsets.symmetric(horizontal: 8),
                   childrenPadding: const EdgeInsets.only(left: 8),
                   leading: const Icon(Icons.folder_outlined, size: 20),
-                  title: Text(section.label!, style: Theme.of(context).textTheme.bodyMedium),
+                  title: Text(
+                    section.label!,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
                   subtitle: Text(
                     '${section.topics.length} ${section.topics.length == 1 ? 'topic' : 'topics'}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
-                  children: [for (final i in section.topics) _topicRow(context, i)],
+                  children: [
+                    for (final i in section.topics) _topicRow(context, i),
+                  ],
                 ),
       ],
     );
@@ -449,9 +505,16 @@ class _Outline extends StatelessWidget {
             ? Icons.check_circle
             : Icons.play_circle_outline,
         size: 18,
-        color: !isUnlocked ? color : (isDone ? green : (selected ? scheme.primary : scheme.onSurfaceVariant)),
+        color: !isUnlocked
+            ? color
+            : (isDone
+                  ? green
+                  : (selected ? scheme.primary : scheme.onSurfaceVariant)),
       ),
-      title: Text(topics[i]['title'] as String? ?? 'Topic ${i + 1}', style: TextStyle(fontSize: 13, color: color)),
+      title: Text(
+        topics[i]['title'] as String? ?? 'Topic ${i + 1}',
+        style: TextStyle(fontSize: 13, color: color),
+      ),
       onTap: () => onSelect(i),
     );
   }
@@ -470,7 +533,10 @@ class _ProgressCard extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius)),
+      decoration: BoxDecoration(
+        color: scheme.primary,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -486,7 +552,11 @@ class _ProgressCard extends StatelessWidget {
                 ),
                 child: Text(
                   '${(fraction * 100).round()}%',
-                  style: TextStyle(color: scheme.onPrimary, fontSize: 12, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    color: scheme.onPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
@@ -494,11 +564,18 @@ class _ProgressCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             'Study Guide',
-            style: TextStyle(color: scheme.onPrimary, fontSize: 16, fontWeight: FontWeight.w700),
+            style: TextStyle(
+              color: scheme.onPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           Text(
             '$done / $total topics completed',
-            style: TextStyle(color: scheme.onPrimary.withValues(alpha: 0.85), fontSize: 12),
+            style: TextStyle(
+              color: scheme.onPrimary.withValues(alpha: 0.85),
+              fontSize: 12,
+            ),
           ),
           const SizedBox(height: 8),
           ClipRRect(
@@ -538,7 +615,10 @@ class _ChapterCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
-        border: Border.all(color: expanded ? scheme.primary : EzBiziTheme.edge(context), width: expanded ? 2 : 1),
+        border: Border.all(
+          color: expanded ? scheme.primary : EzBiziTheme.edge(context),
+          width: expanded ? 2 : 1,
+        ),
       ),
       child: ExpansionTile(
         initiallyExpanded: expanded,
@@ -553,11 +633,17 @@ class _ChapterCard extends StatelessWidget {
             color: scheme.primary.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
           ),
-          child: Icon(Icons.auto_stories_outlined, size: 20, color: scheme.primary),
+          child: Icon(
+            Icons.auto_stories_outlined,
+            size: 20,
+            color: scheme.primary,
+          ),
         ),
         title: Text(
           title,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(color: expanded ? scheme.primary : null),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: expanded ? scheme.primary : null,
+          ),
         ),
         subtitle: Text(
           '$sectionCount ${sectionCount == 1 ? 'section' : 'sections'}',
@@ -570,7 +656,11 @@ class _ChapterCard extends StatelessWidget {
 }
 
 class _TestEntry extends StatelessWidget {
-  const _TestEntry({required this.test, required this.openable, required this.onStart});
+  const _TestEntry({
+    required this.test,
+    required this.openable,
+    required this.onStart,
+  });
 
   final Map<String, dynamic> test;
   final bool openable;
@@ -587,11 +677,21 @@ class _TestEntry extends StatelessWidget {
         key: const Key('training.start-test'),
         enabled: openable,
         onTap: openable ? onStart : null,
-        leading: Icon(openable ? Icons.quiz_outlined : Icons.lock, color: openable ? scheme.tertiary : null),
-        title: Text(test['title'] as String? ?? 'Test', style: const TextStyle(fontWeight: FontWeight.w700)),
+        leading: Icon(
+          openable ? Icons.quiz_outlined : Icons.lock,
+          color: openable ? scheme.tertiary : null,
+        ),
+        title: Text(
+          test['title'] as String? ?? 'Test',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
         subtitle: Text(
-          openable ? 'Ready — tap to begin' : 'Unlocks when every topic is complete',
-          style: theme.textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+          openable
+              ? 'Ready — tap to begin'
+              : 'Unlocks when every topic is complete',
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontStyle: FontStyle.italic,
+          ),
         ),
       ),
     );
@@ -635,13 +735,19 @@ class _Topic extends StatelessWidget {
             Icon(Icons.lock_outline, size: 40, color: scheme.onSurfaceVariant),
             const SizedBox(height: 8),
             Text('This topic is locked', style: theme.textTheme.titleMedium),
-            Text('Complete the topics before it to unlock it.', style: theme.textTheme.bodySmall),
+            Text(
+              'Complete the topics before it to unlock it.',
+              style: theme.textTheme.bodySmall,
+            ),
           ],
         ),
       );
     }
 
-    final crumbs = [topic['chapter'], topic['section']].whereType<String>().where((s) => s.trim().isNotEmpty);
+    final crumbs = [
+      topic['chapter'],
+      topic['section'],
+    ].whereType<String>().where((s) => s.trim().isNotEmpty);
     final blocks = _rows(topic['blocks']);
 
     return Column(
@@ -652,16 +758,27 @@ class _Topic extends StatelessWidget {
             padding: const EdgeInsets.all(24),
             children: [
               if (crumbs.isNotEmpty) ...[
-                Text(crumbs.join(' › '), style: theme.textTheme.labelMedium?.copyWith(color: scheme.primary)),
+                Text(
+                  crumbs.join(' › '),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: scheme.primary,
+                  ),
+                ),
                 const SizedBox(height: 6),
               ],
               Text(
                 topic['title'] as String? ?? '',
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 16),
-              if (blocks.isEmpty) Text('No content yet.', style: theme.textTheme.bodyMedium),
-              for (final block in blocks) ...[_Block(block: block), const SizedBox(height: 16)],
+              if (blocks.isEmpty)
+                Text('No content yet.', style: theme.textTheme.bodyMedium),
+              for (final block in blocks) ...[
+                _Block(block: block),
+                const SizedBox(height: 16),
+              ],
             ],
           ),
         ),
@@ -684,7 +801,9 @@ class _Topic extends StatelessWidget {
               if (!done)
                 FilledButton.icon(
                   key: const Key('training.complete-topic'),
-                  style: FilledButton.styleFrom(backgroundColor: EzBiziTheme.clockIn(context)),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: EzBiziTheme.clockIn(context),
+                  ),
                   onPressed: completing ? null : onComplete,
                   icon: const Icon(Icons.check, size: 18),
                   label: const Text('Complete & Continue'),
@@ -692,7 +811,11 @@ class _Topic extends StatelessWidget {
               else if (isLast)
                 Chip(
                   key: const Key('training.all-done'),
-                  avatar: Icon(Icons.celebration, size: 18, color: ToneColours.of(context, Tone.ok).ink),
+                  avatar: Icon(
+                    Icons.celebration,
+                    size: 18,
+                    color: ToneColours.of(context, Tone.ok).ink,
+                  ),
                   label: const Text('All done!'),
                 )
               else
@@ -721,7 +844,10 @@ class _Block extends StatelessWidget {
 
     switch (block['type']) {
       case 'text':
-        return SelectableText(block['text'] as String? ?? '', style: theme.textTheme.bodyLarge?.copyWith(height: 1.6));
+        return SelectableText(
+          block['text'] as String? ?? '',
+          style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
+        );
       case 'image':
         final url = block['url'] as String?;
         return Align(
@@ -731,21 +857,31 @@ class _Block extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
               child: url == null || !isHttpUrl(url)
-                  ? const _Missing(icon: Icons.broken_image_outlined, label: 'Image unavailable')
+                  ? const _Missing(
+                      icon: Icons.broken_image_outlined,
+                      label: 'Image unavailable',
+                    )
                   : Image.network(
                       url,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, _, _) =>
-                          const _Missing(icon: Icons.broken_image_outlined, label: 'Image unavailable'),
+                      errorBuilder: (_, _, _) => const _Missing(
+                        icon: Icons.broken_image_outlined,
+                        label: 'Image unavailable',
+                      ),
                     ),
             ),
           ),
         );
       case 'video':
-        return _VideoBlock(url: block['url'] as String? ?? '', embedUrl: block['embed_url'] as String?);
+        return _VideoBlock(
+          url: block['url'] as String? ?? '',
+          embedUrl: block['embed_url'] as String?,
+        );
       case 'table':
         return _TableBlock(
-          rows: (block['rows'] as List? ?? const []).map((r) => (r as List).map((c) => '$c').toList()).toList(),
+          rows: (block['rows'] as List? ?? const [])
+              .map((r) => (r as List).map((c) => '$c').toList())
+              .toList(),
         );
       default:
         return const SizedBox.shrink();
@@ -821,12 +957,18 @@ class _VideoBlockState extends State<_VideoBlock> {
                   ? VideoEmbed(url: playable)
                   : InkWell(
                       key: const Key('training.play-video'),
-                      onTap: playable != null ? () => setState(() => _playing = true) : () => _openExternal(widget.url),
+                      onTap: playable != null
+                          ? () => setState(() => _playing = true)
+                          : () => _openExternal(widget.url),
                       child: Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.play_circle_fill, size: 72, color: scheme.primary),
+                            Icon(
+                              Icons.play_circle_fill,
+                              size: 72,
+                              color: scheme.primary,
+                            ),
                             const SizedBox(height: 8),
                             Text(
                               playable != null ? 'Play video' : 'Open video',
@@ -853,29 +995,22 @@ class _TableBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     if (rows.isEmpty) return const SizedBox.shrink();
 
-    final scheme = Theme.of(context).colorScheme;
     final header = rows.first;
-    List<String> fit(List<String> r) => [for (var i = 0; i < header.length; i++) i < r.length ? r[i] : ''];
+    List<String> fit(List<String> r) => [
+      for (var i = 0; i < header.length; i++) i < r.length ? r[i] : '',
+    ];
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: EzBiziTheme.edge(context)),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: DataTable(
-          headingRowColor: WidgetStatePropertyAll(scheme.primary.withValues(alpha: 0.1)),
-          columns: [
-            for (final h in header)
-              DataColumn(
-                label: Text(h, style: const TextStyle(fontWeight: FontWeight.w700)),
-              ),
-          ],
-          rows: [
-            for (final r in rows.skip(1)) DataRow(cells: [for (final c in fit(r)) DataCell(Text(c))]),
-          ],
-        ),
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: EzBiziTheme.edge(context)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: ListTable(
+        key: const Key('guide-table'),
+        columns: [for (final h in header) ListColumn(h)],
+        rows: [
+          for (final r in rows.skip(1)) [for (final c in fit(r)) Text(c)],
+        ],
       ),
     );
   }

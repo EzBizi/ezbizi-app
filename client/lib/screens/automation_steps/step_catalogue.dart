@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/catalogue_picker.dart';
@@ -58,13 +59,9 @@ class _StepCatalogueState extends State<StepCatalogue> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
+        ListSearch(
           controller: _search,
-          decoration: const InputDecoration(
-            isDense: true,
-            hintText: 'Search steps',
-            prefixIcon: Icon(Icons.search, size: 18),
-          ),
+          hint: 'Search steps',
         ),
         const SizedBox(height: 8),
         SizedBox(

@@ -106,6 +106,20 @@ void main() {
             },
           });
         }
+        if (path.endsWith('/activity')) {
+          return json({
+            'data': [
+              {
+                'id': 'a1',
+                'at': '2026-11-09T15:00:00Z',
+                'who': 'Omar Feld',
+                'label': 'Status',
+                'from': 'Working on it',
+                'to': 'Stuck',
+              },
+            ],
+          });
+        }
         if (path == '/task-boards') {
           return json({
             'data': [
@@ -153,6 +167,8 @@ void main() {
               'kind': 'user',
               'name': 'Maya Lopez',
               'can_edit': true,
+              'can_set_edit_mode': true,
+              'can_delete': true,
               'statuses': statuses,
               // A personal board is given only to its owner.
               'assignable': [
@@ -306,7 +322,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('tasks-quick-boards')),
-        matching: find.text('My Board'),
+        matching: find.text('Personal Task Board'),
       ),
       findsOneWidget,
     );
@@ -378,11 +394,29 @@ void main() {
       'two-step delete', (tester) async {
     await pumpBoard(tester);
 
-    await tester.tap(find.byKey(const ValueKey('task-t2')));
+    // The name opens the task; Owner and About edit in place (Jose, 2026-11-13).
+    await tester.tap(find.byKey(const ValueKey('task-open-t2')));
     await tester.pumpAndSettle();
-    expect(find.text('Automation "Liner job booked"'), findsOneWidget);
+    expect(find.text('EzBizi · automation "Liner job booked"'), findsOneWidget);
     expect(find.text('Late'), findsOneWidget);
 
+    // Activity: who changed what, from and to (Jose, 2026-11-09).
+    // Chaim 11-24: the Activity Log is a tab over the thread.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('task-thread-activity')),
+    );
+    await tester.tap(find.byKey(const ValueKey('task-thread-activity')));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Status: Working on it → Stuck'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('task-thread-updates')));
+    await tester.pumpAndSettle();
+
+    // One status chip opens the statuses (sidebar option A, 11-12).
+    await tester.tap(find.byKey(const Key('task-panel-status')));
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('task-panel-status-working_on_it')),
     );
@@ -393,6 +427,8 @@ void main() {
       find.byKey(const Key('task-update-body')),
       'Elgin has them.',
     );
+    await tester.ensureVisible(find.byKey(const Key('task-update-post')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('task-update-post')));
     await tester.pumpAndSettle();
     sent(log.last, 'POST', '/tasks/t2/updates', {'body': 'Elgin has them.'});
@@ -408,11 +444,45 @@ void main() {
     expect(find.byKey(const ValueKey('task-t2')), findsNothing);
   });
 
+  testWidgets('the board menu archives, and deletes only once the name is '
+      'typed back', (tester) async {
+    await pumpBoard(tester);
+
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('board-archive')));
+    await tester.pumpAndSettle();
+    expect(log.last.$1, 'POST');
+    expect(log.last.$2, '/task-boards/b-me/archive');
+
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('board-delete')));
+    await tester.pumpAndSettle();
+    final confirm = find.byKey(const Key('board-delete-confirm'));
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    await tester.enterText(
+      find.byKey(const Key('board-delete-name')),
+      'Maya Lopez',
+    );
+    await tester.pump();
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    // Jose 11-19: and a fresh authenticator code.
+    expect(log.last.$1, isNot('DELETE'));
+    await tester.enterText(find.byKey(const Key('delete-code')), '123456');
+    await tester.tap(find.byKey(const Key('delete-code-go')));
+    await tester.pumpAndSettle();
+    expect(log.last.$1, 'DELETE');
+    expect(log.last.$2, '/task-boards/b-me');
+  });
+
   testWidgets("the Owner picker offers the board's assignable people, not "
       'everybody who owns a task on it', (tester) async {
     await pumpBoard(tester);
 
-    await tester.tap(find.byKey(const ValueKey('task-t1')));
+    // The name opens the task; Owner and About edit in place (Jose, 2026-11-13).
+    await tester.tap(find.byKey(const ValueKey('task-open-t1')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('task-panel-owner')));
     await tester.pumpAndSettle();
@@ -425,38 +495,36 @@ void main() {
   // UI queue 84: in the organization view the tabs wrapped into four rows,
   // twenty of them "Main · 0".
   testWidgets('the picker groups boards under their company, so two Mains '
-      'are told apart, with my open count on each', (tester) async {
+      'are told apart, and no open count', (tester) async {
     await pumpBoard(tester);
 
     expect(
       find.byKey(const ValueKey('tasks-fold-company:Northside Chimney')),
       findsOneWidget,
     );
+    // Design 211 (Jose 11-25): a company of one board is that board, drawn
+    // as the company, so Everdoors' Main reads "Everdoors Garage".
     expect(
       find.byKey(const ValueKey('tasks-fold-company:Everdoors Garage')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('Main'), findsNWidgets(2));
-    expect(find.text('2 open'), findsOneWidget);
-    // Companies in alphabetical order, each Main under its own.
-    final everdoors = tester
-        .getTopLeft(
-          find.byKey(const ValueKey('tasks-fold-company:Everdoors Garage')),
-        )
-        .dy;
+    final everdoors = find.descendant(
+      of: find.byKey(const ValueKey('tasks-board-b-m2')),
+      matching: find.text('Everdoors Garage'),
+    );
+    expect(everdoors, findsOneWidget);
+    expect(find.text('Main'), findsOneWidget);
+    // No "N open" (Jose 11-20, design 200: Monday shows none).
+    expect(find.text('2 open'), findsNothing);
+    // The company with more boards first; Northside's Main under it.
     final northside = tester
         .getTopLeft(
           find.byKey(const ValueKey('tasks-fold-company:Northside Chimney')),
         )
         .dy;
-    final mains = [
-      for (final e in find.text('Main').evaluate())
-        tester.getTopLeft(find.byWidget(e.widget)).dy,
-    ]..sort();
-    expect(everdoors, lessThan(northside));
-    expect(mains.first, greaterThan(everdoors));
-    expect(mains.first, lessThan(northside));
-    expect(mains.last, greaterThan(northside));
+    final main = tester.getTopLeft(find.text('Main')).dy;
+    expect(northside, lessThan(main));
+    expect(main, lessThan(tester.getTopLeft(everdoors).dy));
   });
 
   testWidgets('a board I may only read says so and offers no add', (
@@ -477,7 +545,7 @@ void main() {
   ) async {
     await pumpBoard(tester);
 
-    await tester.tap(find.text('Kanban'));
+    await pickView(tester, 'Kanban');
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('kanban-stuck')), findsOneWidget);
     expect(find.text('Working on it · 1'), findsOneWidget);
@@ -487,6 +555,43 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('task-t2')), findsOneWidget);
     expect(find.byKey(const ValueKey('task-t1')), findsNothing);
+  });
+
+  testWidgets('Kanban columns keep a readable width and scroll sideways', (
+    tester,
+  ) async {
+    // Desktop review 2026-11-13, Top 1: at 1440 eleven columns were squeezed
+    // into the width, about 30 px each, one letter per line.
+    await pumpBoard(tester);
+
+    await pickView(tester, 'Kanban');
+    await tester.pumpAndSettle();
+    final column = find.byKey(const ValueKey('kanban-stuck'));
+    expect(tester.getSize(column).width, 280);
+    expect(
+      find.ancestor(of: column, matching: find.byType(Scrollable)),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('on a phone the view switcher is one dropdown', (tester) async {
+    // Phone review 2026-11-13, item 7: the segments broke "Kanb/an".
+    await pumpBoard(tester, size: const Size(390, 844));
+
+    expect(find.byKey(const Key('tasks-view-picker')), findsOneWidget);
+    expect(find.byType(SegmentedButton<String>), findsNothing);
+    await tester.tap(find.byKey(const Key('tasks-view-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kanban').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w.key is ValueKey<String> &&
+            (w.key! as ValueKey<String>).value.startsWith('kanban-'),
+      ),
+      findsWidgets,
+    );
   });
 
   testWidgets('on a phone each task is a card with its status in words', (
@@ -505,4 +610,18 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+}
+
+/// Switches the board's view by its segment, or by the picker where the
+/// toolbar has no room for segments.
+Future<void> pickView(WidgetTester tester, String name) async {
+  final segments = find.byKey(const Key('tasks-view'));
+  if (segments.evaluate().isNotEmpty) {
+    await tester.tap(find.descendant(of: segments, matching: find.text(name)));
+  } else {
+    await tester.tap(find.byKey(const Key('tasks-view-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(name).last);
+  }
+  await tester.pumpAndSettle();
 }

@@ -7,6 +7,7 @@ import '../core/timestamps.dart';
 import '../screens/leads_screen.dart' show sourceColours;
 import 'calendar_day_field.dart';
 import 'search_picker.dart';
+import 'user_avatar.dart';
 
 /// Leads › Manage › Dashboard: UI queue 38, Jose's 7 and 10 (2026-09-30,
 /// "a new tab called Dashboard which gathers info, reply rates from each
@@ -54,6 +55,7 @@ const _sources = <({String word, String source, String? leadType})>[
   (word: 'RC Calls', source: 'ringcentral', leadType: null),
   (word: 'EZ Calls', source: 'ez_calls', leadType: null),
   (word: 'EZ Texts', source: 'ez_texts', leadType: null),
+  (word: 'Promotions', source: 'promotions', leadType: null),
 ];
 
 /// The badge word for a (source, lead_type) pair, as the list says it.
@@ -216,7 +218,7 @@ class _LeadsDashboardState extends State<LeadsDashboard> {
 
   Widget _filters(BuildContext context, {required bool desk}) {
     final formats = widget.session.me?.display ?? DisplayFormats.fallback;
-    final companies = widget.session.me?.companies ?? const [];
+    final companies = widget.session.me?.switchableCompanies ?? const [];
 
     return Wrap(
       spacing: 8,
@@ -807,6 +809,10 @@ class _LeadsDashboardState extends State<LeadsDashboard> {
   }
 
   Widget _avatar(BuildContext context, String seed, String name) {
+    // A real user: their photo, initials when none (Jose, 2026-11-13).
+    if (seed != name) {
+      return UserAvatar(api: widget.api, userId: seed, name: name, radius: 13);
+    }
     final colours = PersonColours.forSeed(seed, Theme.of(context).brightness);
     final initials = [
       for (final w in name.trim().split(RegExp(r'\s+')).take(2))

@@ -55,3 +55,14 @@ String? installedAssetPath(String assetKey) {
 /// the server. Reporting false rather than pretending is what lets the update
 /// screen offer a download instead of a button that would appear to do nothing.
 bool reload() => false;
+
+/// The phone's operating system and version, for the Field technician bar.
+/// See client_platform.dart's [fieldOsVersion].
+String? osVersion() {
+  final name = Platform.isIOS
+      ? 'iOS'
+      : Platform.isAndroid
+      ? 'Android'
+      : null;
+  return name == null ? null : '$name ${Platform.operatingSystemVersion}';
+}

@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\Invoice;
+use App\Support\Invoices\InvoiceChannels;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
@@ -69,9 +70,18 @@ class InvoiceMail extends Mailable
         }
         $foot .= '<td '.$cell.'><strong>'.$money($grand).'</strong></td></tr>';
 
+        $pay = '';
+        foreach ($this->invoices as $invoice) {
+            if (($url = InvoiceChannels::payLink($invoice)) !== null) {
+                $pay .= '<p><a href="'.$e($url).'" style="display:inline-block;background:#00B4D8;color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none;font-weight:bold">'
+                    .'Pay '.$e($invoice->number).' online</a></p>';
+            }
+        }
+
         return new Content(htmlString: '<div style="font-family:Arial,sans-serif;font-size:13px">'
             .'<p>Hello,</p><p>Please find the invoices attached.</p>'
             .'<table style="border-collapse:collapse">'.$head.$body.(count($this->invoices) > 1 ? $foot : '').'</table>'
+            .$pay
             .'<p>Thank you,<br>'.$e($this->issuerName).'</p></div>');
     }
 

@@ -78,6 +78,14 @@ class ConnectionsController extends Controller
      * deliberately narrow: an account this filter hides can still be adopted by
      * pasting its SID, where the token remains the gate.
      */
+    /** @return list<string> Twilio accounts another organization's connection holds (audit 11-27). */
+    private function heldByAnotherOrg(): array
+    {
+        return PhoneConnection::query()->withoutGlobalScopes()
+            ->where('organization_id', '!=', $this->tenant->idOrFail())
+            ->pluck('account_sid')->filter()->all();
+    }
+
     public function subaccounts(Request $request): JsonResponse
     {
         $this->authorize('create', [PhoneConnection::class, 'organization', null]);
@@ -100,10 +108,12 @@ class ConnectionsController extends Controller
             ->all();
 
         $mine = $this->namesInReach($request->user());
+        $foreign = $this->heldByAnotherOrg();
 
         $rows = [];
         foreach ($available as $sub) {
-            if (! in_array($this->normalise($sub['friendly_name']), $mine, true)) {
+            if (! in_array($this->normalise($sub['friendly_name']), $mine, true)
+                || in_array($sub['account_sid'], $foreign, true)) {
                 continue;
             }
 
@@ -235,6 +245,12 @@ class ConnectionsController extends Controller
                     ]);
                 }
 
+                if (in_array((string) $input['account_sid'], $this->heldByAnotherOrg(), true)) {
+                    throw ValidationException::withMessages([
+                        'account_sid' => 'That phone account belongs to another EzBizi organization.',
+                    ]);
+                }
+
                 $adopted = $this->twilio->adoptSubaccount(
                     (string) $input['account_sid'],
                     (string) $input['auth_token'],
@@ -305,6 +321,9 @@ class ConnectionsController extends Controller
         }
 
         $connection->update(['twiml_app_sid' => $app['sid']]);
+
+        // Comes out answering calls: an "Everyone" ring group and a voicemail box.
+        \App\Support\Phone\ConnectionDefaults::ensure($connection);
 
         return response()->json(['data' => $this->row($connection->fresh())], Response::HTTP_CREATED);
     }

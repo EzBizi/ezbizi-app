@@ -14,6 +14,7 @@ use App\Support\Scheduling\Overbooking;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Support\Collection;
 
 /**
  * Scheduling box: how many jobs this business is SET UP to take, per weekday.
@@ -57,10 +58,15 @@ use App\Support\Tenancy\TenantContext;
 final class SchedulingGlance extends DescribedGlance
 {
     protected const KEY = 'scheduling';
+
     protected const LABEL = 'Scheduling';
+
     protected const PERMISSION = 'scheduling.view';
+
     protected const PRESENTATIONS = ['bar', 'pie', 'text'];
+
     protected const DEFAULT_PRESENTATION = 'bar';
+
     protected const SNAPSHOT = true;
 
     /**
@@ -214,7 +220,7 @@ final class SchedulingGlance extends DescribedGlance
      * An area with no hours stays a note: some are left empty on purpose, and
      * a row that never clears teaches the reader to skip the rows.
      *
-     * @param  \Illuminate\Support\Collection<int, string>  $areaIds
+     * @param  Collection<int, string>  $areaIds
      * @return list<array{tone: string, text: string}>
      */
     private function attention($areaIds, User $user): array
@@ -224,17 +230,17 @@ final class SchedulingGlance extends DescribedGlance
         $check = app(Overbooking::class);
 
         $days = collect($check->overbooked($areas, $tomorrow->subDay(), 7))->pluck('date')->unique()->count();
-        $full = count($check->fullyBooked($areas, $tomorrow, Overbooking::FULL_DAYS));
+        $full = count($check->fullyBooked($areas, $tomorrow, Overbooking::fullDays()));
 
         return array_values(array_filter([
             $days === 0 ? null : GlancePayload::attention('bad', "Overbooked on {$days} of the next 7 days"),
             $full === 0 ? null : GlancePayload::attention('caution', $full === 1
-                ? '1 service area with no spot for '.Overbooking::FULL_DAYS.'+ days'
-                : "{$full} service areas with no spot for ".Overbooking::FULL_DAYS.'+ days'),
+                ? '1 service area with no spot for '.Overbooking::fullDays().'+ days'
+                : "{$full} service areas with no spot for ".Overbooking::fullDays().'+ days'),
         ]));
     }
 
-    /** @param \Illuminate\Support\Collection<int, string> $areaIds */
+    /** @param Collection<int, string> $areaIds */
     private function areasWithNoHours($areaIds): int
     {
         $withHours = ServiceAreaSlot::whereIn('service_area_id', $areaIds)

@@ -29,6 +29,12 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
     public const SCOPE_COMPANY      = 'company';
     public const SCOPE_FRANCHISE    = 'franchise';
 
+    /**
+     * SQL for an account's branch: the one a person or ConnectBranch set, else
+     * the branch it was connected from (Desk audit, 2026-11-12).
+     */
+    public const BRANCH_SQL = "COALESCE(social_connections.leads_franchise_id, CASE WHEN social_connections.scope_type = 'franchise' THEN social_connections.scope_id END)";
+
     public const STATUS_CONNECTED = 'connected';
     public const STATUS_BROKEN    = 'broken';
     public const STATUS_REVOKED   = 'revoked';
@@ -37,7 +43,7 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
     {
         return RetentionPolicy::forever(
             'The connection to a social page or profile — which network it is on, the name '
-            .'shown on screen, and the key that posts as it. One row per connected account '
+            .'shown on screen, the Google login it was signed in with, and the key that posts as it. One row per connected account '
             .'the organization has, held for as long as it is connected and deleted when '
             .'somebody disconnects it. EzBizi does not store a copy of the remote feed. Who '
             .'connected it and when is in the audit log, which does expire.'
@@ -55,7 +61,11 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
         return [
             'credentials'     => 'encrypted:array',
             'last_reached_at' => 'datetime',
-            'is_manager'      => 'boolean',
+            'last_checked_at' => 'datetime',
+            // Connect's choices and its first check (ConnectSetup).
+            'setup'           => 'array',
+            'checks'          => 'array',
+            'is_manager'     => 'boolean',
         ];
     }
 
@@ -121,6 +131,8 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
             'status'          => self::STATUS_CONNECTED,
             'status_reason'   => null,
             'last_reached_at' => now(),
+            // A fresh grant starts with no verdicts (ConnectionChecks).
+            'checks'          => null,
         ]);
     }
 

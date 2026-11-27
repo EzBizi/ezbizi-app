@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AutomationEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\Organization;
@@ -21,7 +22,7 @@ use Illuminate\Support\Carbon;
  *  - every business message so far was sent by a rule - a person who replied
  *    has taken the conversation over;
  *  - the customer has written nothing since the first of them;
- *  - that first one is FOLLOW_UP_AFTER_HOURS old, and it is still the same day
+ *  - that first one is leads.follow_up_hours old, and it is still the same day
  *    where the business is (no "just following up" at midnight);
  *  - the lead is still New, and what the customer wrote is not a complaint or
  *    a cancellation;
@@ -44,8 +45,11 @@ class LeadsFollowUpDue extends Command
             ->whereIn('source', Lead::INBOX_SOURCES)
             ->where('status', Lead::STATUS_NEW)
             ->whereNull('follow_up_raised_at')
-            ->where('last_contact_from', LeadConversation::FROM_ADVERTISER)
-            ->whereBetween('last_contact_at', [now()->subDay(), now()->subHours(Lead::FOLLOW_UP_AFTER_HOURS)])
+            // Not last_contact_from: LeadThread leaves it on the customer after an
+            // automatic reply (only a person answers), so asking for ADVERTISER here
+            // matched no lead on production, ever (desk, 2026-11-02). Who spoke last is
+            // firstReplyIfQuiet's to decide, from the rows.
+            ->whereBetween('last_contact_at', [now()->subDay(), now()->subHour()]) // each org's own hours below
             ->get();
 
         foreach ($candidates->groupBy('organization_id') as $organizationId => $leads) {
@@ -58,7 +62,7 @@ class LeadsFollowUpDue extends Command
                 foreach ($leads as $lead) {
                     $firstReply = $this->firstReplyIfQuiet($lead);
                     if ($firstReply === null
-                        || $firstReply->occurred_at->gt(now()->subHours(Lead::FOLLOW_UP_AFTER_HOURS))
+                        || $firstReply->occurred_at->gt(now()->subHours((int) SettingsResolver::forOrganization('leads.follow_up_hours')))
                         || $firstReply->occurred_at->copy()->tz($zone)->toDateString() !== now()->tz($zone)->toDateString()) {
                         continue;
                     }
@@ -71,7 +75,14 @@ class LeadsFollowUpDue extends Command
                             'kind' => $lead->kind(),
                             'contact_name' => $lead->contact_name,
                             'first_name' => $first,
-                            'greeting' => $first === null ? 'Hey' : "Hi {$first}",
+                            'greeting' => Lead::greetingFor($first),
+                            // The after-call text already went, so a rule can stay at one
+                            // booking link (Jose, 2026-11-05: "send only one").
+                            'not_booked_call' => AutomationEvent::query()->where('event_key', 'lead.call_not_booked')
+                                ->where('subject_id', $lead->getKey())->exists(),
+                            // The missed-call text already went: no went-quiet text after it (desk for Jose, 2026-11-16).
+                            'missed_call' => AutomationEvent::query()->where('event_key', 'lead.missed_call')
+                                ->where('subject_id', $lead->getKey())->exists(),
                             'hours_since_reply' => (int) $firstReply->occurred_at->diffInHours(now()),
                         ],
                     ]);
@@ -88,7 +99,7 @@ class LeadsFollowUpDue extends Command
     /** The first automatic reply, when nothing a person or the customer said came after it. */
     private function firstReplyIfQuiet(Lead $lead): ?LeadConversation
     {
-        $rows = $lead->conversations()->get();
+        $rows = $lead->conversations()->orderBy('occurred_at')->get();
         $ours = $rows->where('participant', LeadConversation::FROM_ADVERTISER);
         $first = $ours->first();
 

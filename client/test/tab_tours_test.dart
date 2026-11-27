@@ -68,8 +68,18 @@ void main() {
       if (!moduleScreens.containsKey(parent ?? module)) continue;
       final base = parent == null ? module : '$parent/${m['label']}';
       if (parent != null && !tabTours.containsKey(base)) missing.add(base);
+      final within = (m['within'] as Map?)?.cast<String, String>() ?? {};
       for (final (i, tab) in (m['tabs'] as List).indexed) {
         final key = '$base/$tab';
+        // A grant drawn as a tool inside a pane with no strip of its own
+        // (Marketing › Social, UI queue 199) is walked by that pane's tour.
+        final pane = within[tab];
+        const toolPanes = {'marketing/Social Media Management'};
+        if (pane != null &&
+            toolPanes.contains('$base/$pane') &&
+            tabTours.containsKey('$base/$pane')) {
+          continue;
+        }
         // A parent's own tabs may sit under its own pane in its strip
         // (Marketing › Social Media Management › Compose).
         final depth = '$base/x/$tab'.split('/').length;

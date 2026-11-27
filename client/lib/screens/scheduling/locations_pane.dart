@@ -8,10 +8,12 @@ import '../../core/theme.dart';
 import '../../core/us_states.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/formatted_notes.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import 'availability_pane.dart';
+import 'zip_reports.dart';
 
 /// Scheduling › Locations (UI queue 49, Jose: 1 and 4): every branch, the
 /// one closest to a customer's address, and who to call (Jovanni Martin,
@@ -157,6 +159,8 @@ class _LocationsPaneState extends State<LocationsPane> {
           (location, miles[id], id == '$serving'),
     ];
   }
+
+  Map? get _servingArea => ((_result?['serving'] as Map?)?['area']) as Map?;
 
   String _addressOf(Map<String, dynamic> l, {bool withZip = true}) {
     final region = [
@@ -385,6 +389,13 @@ class _LocationsPaneState extends State<LocationsPane> {
                     onPressed: () => _copy(tel, 'Phone number'),
                     child: const Text('Copy phone'),
                   ),
+                if (zip.isNotEmpty)
+                  ReportWrongZipButton(
+                    api: widget.api,
+                    zip: zip,
+                    areaId: (_servingArea?['id'])?.toString(),
+                    areaName: (_servingArea?['name'])?.toString(),
+                  ),
               ],
             ),
           ],
@@ -416,7 +427,10 @@ class _LocationsPaneState extends State<LocationsPane> {
             style: theme.textTheme.titleSmall?.copyWith(color: c.ink),
           ),
           const SizedBox(height: 4),
-          Text(text, style: theme.textTheme.bodyMedium?.copyWith(color: c.ink)),
+          FormattedNotesText(
+            text,
+            style: theme.textTheme.bodyMedium?.copyWith(color: c.ink),
+          ),
         ],
       ),
     );
@@ -656,6 +670,8 @@ class _LocationsPaneState extends State<LocationsPane> {
               children: [
                 Expanded(flex: 5, child: Text('BRANCH', style: quiet)),
                 const SizedBox(width: 10),
+                Expanded(flex: 5, child: Text('ADDRESS', style: quiet)),
+                const SizedBox(width: 10),
                 Expanded(flex: 3, child: Text('SERVES', style: quiet)),
                 SizedBox(
                   width: 130,
@@ -726,6 +742,12 @@ class _LocationsPaneState extends State<LocationsPane> {
     final company = '${(l['company'] as Map?)?['name'] ?? ''}'.trim();
     final city = '${l['city'] ?? ''}'.trim();
     final serves = '${l['service_area'] ?? ''}'.trim();
+    // Jose, 11-24: the branch's street address in its own column; on a phone, under the name.
+    final address = _addressOf(l);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+      fontStyle: FontStyle.italic,
+    );
 
     final name = Text(
       '${l['name'] ?? ''}',
@@ -739,12 +761,19 @@ class _LocationsPaneState extends State<LocationsPane> {
     final under = Text(
       [
         if (!phone && company.isNotEmpty) company.toUpperCase(),
-        if (city.isNotEmpty) city,
+        if (!phone && city.isNotEmpty) city,
         if (phone && tel.isNotEmpty) tel,
       ].join(' · '),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: theme.textTheme.bodySmall,
+    );
+    final addressText = Text(
+      address.isEmpty ? 'No address' : address,
+      key: Key('locations-address-${l['id']}'),
+      maxLines: phone ? 2 : 1,
+      overflow: TextOverflow.ellipsis,
+      style: address.isEmpty ? muted : theme.textTheme.bodySmall,
     );
 
     return Material(
@@ -770,7 +799,7 @@ class _LocationsPaneState extends State<LocationsPane> {
                 flex: 5,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [name, under],
+                  children: [name, if (phone) addressText, under],
                 ),
               ),
               if (phone) ...[
@@ -781,6 +810,8 @@ class _LocationsPaneState extends State<LocationsPane> {
                     onPressed: () => _call(tel),
                   ),
               ] else ...[
+                const SizedBox(width: 10),
+                Expanded(flex: 5, child: addressText),
                 const SizedBox(width: 10),
                 Expanded(
                   flex: 3,
@@ -994,7 +1025,7 @@ class DispatcherNotesSettings extends StatefulWidget {
 }
 
 class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
-  final _boxes = <String, TextEditingController>{};
+  final _boxes = <String, FormattedNotesController>{};
   final _saved = <String, String>{};
   String? _saving;
   final _said = <String, String>{};
@@ -1032,16 +1063,24 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
         if (n is! Map) continue;
         final id = '${n['company_id']}';
         _saved[id] = '${n['text'] ?? ''}';
-        _box(id).text = _saved[id]!;
+        _boxes.remove(id)?.dispose();
+        _box(id, _saved[id]);
       }
     });
   }
 
-  TextEditingController _box(String id) =>
-      _boxes.putIfAbsent(id, TextEditingController.new);
+  // Eric, suggestion 01a21365 (Jose 11-25): bold, italic, underline.
+  FormattedNotesController _box(String id, [String? markup]) =>
+      _boxes.putIfAbsent(
+        id,
+        () => FormattedNotesController(markup: markup)
+          ..addListener(() {
+            if (mounted) setState(() => _said.remove(id));
+          }),
+      );
 
   Future<void> _save(String id) async {
-    final text = _box(id).text.trim();
+    final text = _box(id).markup.trim();
     setState(() {
       _saving = id;
       _said.remove(id);
@@ -1095,18 +1134,17 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
           for (final c in companies) ...[
             Text(c.name, style: theme.textTheme.titleSmall),
             const SizedBox(height: 6),
-            TextField(
-              key: Key('dispatcher-note-${c.id}'),
-              controller: _box(c.id),
-              readOnly: !canEdit,
-              minLines: 3,
-              maxLines: 8,
-              onChanged: (_) => setState(() => _said.remove(c.id)),
-              decoration: const InputDecoration(
-                hintText: 'Office lead: …, ext … · After 6 PM: …',
-                border: OutlineInputBorder(),
+            if (canEdit)
+              FormattedNotesField(
+                fieldKey: Key('dispatcher-note-${c.id}'),
+                controller: _box(c.id),
+                label: 'Office lead: …, ext … · After 6 PM: …',
+              )
+            else
+              FormattedNotesText(
+                _saved[c.id] ?? '',
+                key: Key('dispatcher-note-${c.id}'),
               ),
-            ),
             const SizedBox(height: 6),
             if (canEdit)
               Row(
@@ -1115,7 +1153,7 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
                     key: Key('dispatcher-note-save-${c.id}'),
                     onPressed:
                         _saving != null ||
-                            _box(c.id).text.trim() ==
+                            _box(c.id).markup.trim() ==
                                 (_saved[c.id] ?? '').trim()
                         ? null
                         : () => _save(c.id),

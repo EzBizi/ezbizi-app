@@ -145,6 +145,26 @@ class ImapMessageMapperTest extends TestCase
     }
 
     /**
+     * A signature logo is part of the body, not a file (Eve 11-11: ten
+     * image0NN.png buried a State Farm thread). Inline, or a Content-ID not
+     * marked attachment, is not listed; an attachment with a Content-ID is.
+     */
+    public function test_inline_pictures_are_not_attachments(): void
+    {
+        $structure = [
+            ['TEXT', 'HTML', ['CHARSET', 'utf-8'], null, null, '7BIT', '24', '1'],
+            ['IMAGE', 'PNG', ['NAME', 'image001.png'], '<image001.png@01DC>', null, 'BASE64', '9000', null,
+                ['inline', ['FILENAME', 'image001.png']]],
+            ['IMAGE', 'PNG', ['NAME', 'image002.png'], '<image002.png@01DC>', null, 'BASE64', '600'],
+            ['APPLICATION', 'PDF', ['NAME', 'claim.pdf'], '<claim@x>', null, 'BASE64', '204800', null,
+                ['attachment', ['FILENAME', 'claim.pdf']]],
+            'RELATED',
+        ];
+
+        $this->assertSame(['claim.pdf'], array_column($this->mapper->attachments($structure), 'name'));
+    }
+
+    /**
      * A text part that is an ATTACHMENT is not the body.
      *
      * A message with a .txt file attached would otherwise have the attachment

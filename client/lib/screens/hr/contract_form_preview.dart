@@ -231,6 +231,13 @@ class _ContractFormPreviewState extends State<ContractFormPreview> {
     }
 
     return switch (type) {
+      'rate_steps' => _box(
+        context,
+        Text(
+          'After N days, a new hourly rate',
+          style: theme.textTheme.bodyMedium,
+        ),
+      ),
       'checklist' => _box(
         context,
         Text(

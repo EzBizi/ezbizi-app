@@ -45,7 +45,8 @@ class PendingSettingsController
             default => $scope->companyIdsInView(),
         };
 
-        $companies = Company::query()->orderBy('name')
+        // A switched-off company or branch asks for nothing (Jose, 2026-11-10).
+        $companies = Company::query()->switchedOn()->orderBy('name')
             ->when($companyIds !== null, fn ($q) => $q->whereIn('id', $companyIds))
             ->get();
 
@@ -53,7 +54,7 @@ class PendingSettingsController
             $places[] = ['company', $company];
         }
 
-        foreach (Franchise::query()->whereIn('id', $scope->franchiseIds())->orderBy('name')->get() as $franchise) {
+        foreach (Franchise::query()->whereIn('id', $scope->switchedOnFranchiseIds())->orderBy('name')->get() as $franchise) {
             $places[] = ['franchise', $franchise];
         }
 

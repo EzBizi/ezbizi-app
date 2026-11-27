@@ -9,9 +9,13 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/email/compose_panel.dart';
 import 'package:ezbizi_client/screens/email/email_screen.dart';
 import 'package:ezbizi_client/screens/email/message_body.dart';
+import 'package:ezbizi_client/screens/email/message_html.dart';
 import 'package:ezbizi_client/screens/email/message_list.dart';
 import 'package:ezbizi_client/screens/email/reply_panel.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -78,7 +82,13 @@ void main() {
             'The message is open and nothing on screen says which inbox it '
             'arrived in. That is how a reply goes out as the wrong address.',
       );
-      expect(find.textContaining('Reply as info@a-1chimney.com'), findsOneWidget);
+      // Below 900 (Jose 11-03) the reply address is on the icon's tooltip.
+      expect(
+        width < 900
+            ? find.byTooltip('Reply as info@a-1chimney.com')
+            : find.textContaining('Reply as info@a-1chimney.com'),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   }
@@ -176,10 +186,12 @@ void main() {
     expect(find.text('Notifications'), findsOneWidget);
   });
 
-  // Design 137: the reading pane sits to the right by default, and "No
-  // reading pane" is the old behaviour -- the mail replaces the list.
-  testWidgets('at 1400px with no reading pane opening a message replaces the '
-      'list', (tester) async {
+  // Jose 11-11: an open mail takes the list's space by default, as in Gmail;
+  // side by side is the reading-pane setting.
+  testWidgets('at 1400px opening a message replaces the list; Esc and back '
+      'return to it', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     await _pump(tester, _handler(), size: const Size(1400, 900));
 
     final list = find.byKey(const ValueKey('tour-email-list'));
@@ -189,20 +201,27 @@ void main() {
     expect(list, findsOneWidget);
 
     await _tap(tester, find.textContaining('Chimney sweep quote').first);
-    expect(list, findsOneWidget, reason: 'The pane on the right keeps the list.');
-    expect(find.byType(MessageBody), findsOneWidget);
-
-    await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
-    await _tap(tester, find.byKey(const ValueKey('email-pane-off')));
-
     expect(list, findsNothing);
     expect(find.byType(MessageBody), findsOneWidget);
     expect(rail, findsOneWidget);
-    expect(find.byTooltip('Back to the messages'), findsOneWidget);
 
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(list, findsOneWidget);
+    expect(find.byType(MessageBody), findsNothing);
+
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
     await _tap(tester, find.byTooltip('Back to the messages'));
     expect(list, findsOneWidget);
+
+    // The split-view setting keeps the list beside the mail.
+    await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
+    await _tap(tester, find.byKey(const ValueKey('email-pane-right')));
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
+    expect(list, findsOneWidget);
+    expect(find.byType(MessageBody), findsOneWidget);
     expect(tester.takeException(), isNull);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   // ── "Seen by", and the setting that decides whether it exists ────
@@ -264,6 +283,7 @@ void main() {
     await _tap(tester, find.textContaining('Invoice 4471').first);
     expect(find.byType(MessageBody), findsOneWidget);
     expect(find.textContaining('Seen by'), findsNothing);
+    await _tap(tester, find.byTooltip('Back to the messages'));
 
     // The CONTROL, on the mail beside it: the indicator does appear when it
     // is somebody else, so the assertion above is about the filter and not
@@ -424,9 +444,23 @@ void main() {
       reason: 'The combined list opened a composer, and the only address it '
           'could pick is one the reader never chose.',
     );
-    expect(find.text('From info@a-1chimney.com'), findsOneWidget);
+    // A searchable "Send from" list (11-24: forty addresses filled a phone).
+    expect(find.text('Send from'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(SidePanel),
+        matching: find.text('info@a-1chimney.com'),
+      ),
+      findsOneWidget,
+    );
 
-    await _tap(tester, find.text('From bookings@a-1chimney.com'));
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byType(SidePanel),
+        matching: find.text('bookings@a-1chimney.com'),
+      ),
+    );
 
     expect(find.text('Sending as bookings@a-1chimney.com'), findsOneWidget);
   });
@@ -695,7 +729,7 @@ void main() {
     );
     await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
-    expect(find.text('ATTACHMENTS'), findsOneWidget);
+    expect(find.byKey(const ValueKey('email-attachments')), findsOneWidget);
     expect(find.textContaining('flue.jpg'), findsOneWidget);
 
     await _tap(tester, find.textContaining('flue.jpg'));
@@ -706,6 +740,50 @@ void main() {
     );
     expect(fileUrl, contains('src=sealed-att'));
     expect(fileUrl, contains('name=flue.jpg'));
+  });
+
+  /// Eve 11-11: ten files as a list took her iPhone screen and the mail
+  /// could not be read. Four chips and "+N more", and the body still shows.
+  testWidgets('many attachments are four chips and +N more, under a body '
+      'that still shows on a phone', (tester) async {
+    final detail = {
+      ..._detail('mb-1', 'm-1'),
+      'attachments': [
+        for (var i = 1; i <= 10; i++)
+          {'name': 'file$i.pdf', 'size': 20000, 'token': 'sealed-$i'},
+      ],
+    };
+    await _pump(tester, _handler(detail: detail), size: const Size(390, 844));
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
+
+    expect(find.textContaining('the flue', findRichText: true), findsWidgets);
+    expect(find.textContaining('file4.pdf'), findsOneWidget);
+    expect(find.textContaining('file5.pdf'), findsNothing);
+    expect(find.text('+6 more'), findsOneWidget);
+
+    await _tap(tester, find.byKey(const ValueKey('email-attachments-more')));
+    expect(find.textContaining('file10.pdf'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  /// Jose 11-12: on Windows, Google's call notices showed only their logos
+  /// and Pinterest's grid fell into one column, because the app drew mail as
+  /// text blocks. HTML mail now goes to the real engine (WebView2 there).
+  testWidgets('on desktop an HTML mail is drawn by the HTML engine, not as '
+      'text blocks', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final detail = {
+      ..._detail('mb-1', 'm-1'),
+      'html': '<!DOCTYPE html><html><body><table><tr><td>Call</td></tr></table></body></html>',
+    };
+
+    await _pump(tester, _handler(detail: detail), size: const Size(1400, 900));
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
+
+    expect(find.byType(MessageHtmlView), findsOneWidget);
+    expect(find.byType(MessageBody), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('a link shows where it goes', (tester) async {
@@ -936,6 +1014,45 @@ void main() {
   /// branch `_conversation` takes and no other test in this file reaches.
   /// Words are replaced by x's of the same length and URLs reduced to their
   /// host -- the shape is real and none of anybody's mail is in the repository.
+  /// Nick Frias 11-23: "once scrolled down, will not allow me to scroll back
+  /// up". Each part of a thread was an HTML page in a scrolled list; over a
+  /// page the wheel goes to the page and never back to the list. Now one part
+  /// is open at full height and the rest fold to their header line.
+  testWidgets('an HTML thread opens one part at full height, never a page '
+      'inside a scrolled list', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final thread = jsonDecode(
+      File('test/fixtures/real_thread_message.json').readAsStringSync(),
+    ) as Map<String, dynamic>;
+    final parts = (thread['thread'] as List).cast<Map<String, dynamic>>();
+    for (var i = 0; i < parts.length; i++) {
+      parts[i]['html'] = '<p>part $i</p>';
+    }
+
+    await _pump(tester, _handler(detail: thread), size: const Size(1400, 900));
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
+
+    final pages = find.byType(MessageHtmlView);
+    expect(pages, findsOneWidget);
+    expect(
+      find.ancestor(of: pages, matching: find.byType(Scrollable)),
+      findsNothing,
+      reason: 'A page inside a scrolled list takes the wheel and the list '
+          'can no longer be scrolled back up.',
+    );
+    expect(
+      tester.widget<MessageHtmlView>(pages).html,
+      '<p>part ${parts.length - 1}</p>',
+      reason: 'The newest message opens first.',
+    );
+
+    await _tap(tester, find.byKey(const ValueKey('email-thread-part-0')));
+    expect(tester.widget<MessageHtmlView>(pages).html, '<p>part 0</p>');
+    expect(tester.takeException(), isNull);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('a real 73-part conversation draws', (tester) async {
     final thread = jsonDecode(
       File('test/fixtures/real_thread_message.json').readAsStringSync(),

@@ -1021,6 +1021,40 @@ class MailboxWatchTest extends TestCase
         $this->assertCount($calls, WatchedInbox::$calls);
     }
 
+    /**
+     * Reconnecting is checked within the minute (Jose 11-12: "doing a
+     * connection should take care of the whole process"). The backoff a broken
+     * inbox built up -- up to six hours -- does not outlive the fix.
+     */
+    public function test_reconnecting_a_broken_inbox_polls_it_on_the_next_sweep(): void
+    {
+        $t = $this->watchedTenant();
+
+        WatchedInbox::fill(1);
+        $this->sweep();
+        WatchedInbox::$failWith = CannotReadMailbox::tooManyRequests($t['mailbox']);
+        for ($i = 0; $i < 4; $i++) {
+            $this->travelTo(now()->addHours(2));
+            $this->sweep();
+        }
+        $this->assertTrue($this->reload($t['org'], $t['mailbox'])->watch_next_poll_at->gt(now()->addMinutes(30)),
+            'The setup did not build a backoff, so the test proves nothing.');
+
+        WatchedInbox::$failWith = null;
+        $this->inTenant($t['org'], function () use ($t) {
+            $mailbox = $this->reload($t['org'], $t['mailbox']);
+            $mailbox->connect('new-token');
+            $mailbox->save();
+        });
+
+        $calls = count(WatchedInbox::$calls);
+        $this->travelTo(now()->addMinute());
+        $this->sweep();
+
+        $this->assertGreaterThan($calls, count(WatchedInbox::$calls));
+        $this->assertSame(0, $this->reload($t['org'], $t['mailbox'])->watch_failures);
+    }
+
     /** An organization that has stopped paying is not polled (§13). */
     public function test_a_lapsed_organization_is_not_polled(): void
     {
