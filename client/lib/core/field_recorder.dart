@@ -147,7 +147,34 @@ class FieldRecorder with WidgetsBindingObserver {
   final List<Map<String, String>> _events = [];
   Timer? _rotate;
   Timer? _ceiling;
-  bool _sending = false;
+  Future<void>? _pass;
+  bool _disposed = false;
+  bool _again = false;
+
+  /// Stop, rotation, pause and resume run one at a time: a stop landing in
+  /// the middle of a rotation left the microphone on (audit 11-27).
+  Future<void> _lock = Future.value();
+
+  Future<void> _serial(Future<void> Function() act) {
+    final run = _lock.then((_) => _disposed ? null : act());
+    _lock = run.catchError((_) {});
+    return run;
+  }
+
+  /// Written whole or not at all: a sidecar cut short by a crash stopped
+  /// every later recording from sending (audit 11-27).
+  static Future<void> _write(File file, String text) async {
+    final tmp = File('${file.path}.tmp');
+    await tmp.writeAsString(text, flush: true);
+    try {
+      await tmp.rename(file.path);
+    } on FileSystemException {
+      // ponytail: Windows refuses a rename over a file being read (tests);
+      // phones replace atomically. Fall back to a plain write.
+      await file.writeAsString(text, flush: true);
+      await tmp.delete();
+    }
+  }
 
   bool get active => state.value.status != FieldRecorderStatus.idle;
 
@@ -163,7 +190,7 @@ class FieldRecorder with WidgetsBindingObserver {
       if (m['ended_at'] == null) {
         m['ended_at'] = _now().toUtc().toIso8601String();
         m['stop_reason'] = 'recovered';
-        await meta.writeAsString(jsonEncode(m));
+        await _write(meta, jsonEncode(m));
       }
     }
     await send();
@@ -211,25 +238,26 @@ class FieldRecorder with WidgetsBindingObserver {
     return true;
   }
 
-  Future<void> pause() async {
+  Future<void> pause() => _serial(() async {
     if (state.value.status != FieldRecorderStatus.recording) return;
     await _mic.pause();
     _pausedAt = _now();
     _event('pause');
     state.value = state.value.copyWith(status: FieldRecorderStatus.paused);
-  }
+  });
 
-  Future<void> resume() async {
+  Future<void> resume() => _serial(() async {
     if (state.value.status != FieldRecorderStatus.paused) return;
     await _mic.resume();
     if (_pausedAt != null) _pausedInChunk += _now().difference(_pausedAt!);
     _pausedAt = null;
     _event('resume');
     state.value = state.value.copyWith(status: FieldRecorderStatus.recording);
-  }
+  });
 
   /// Drops the timers without closing anything, as a killed app would.
   void dispose() {
+    _disposed = true;
     _rotate?.cancel();
     _ceiling?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -237,16 +265,18 @@ class FieldRecorder with WidgetsBindingObserver {
 
   /// [reason] is one of the server's STOP_REASONS.
   Future<void> stop(String reason) async {
-    if (!active) return;
-    _rotate?.cancel();
-    _ceiling?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
-    await _endChunk();
-    _event('stop');
-    await _writeMeta(endedAt: _now(), reason: reason);
-    _id = null;
-    _dir = null;
-    state.value = FieldRecorderState(unsent: state.value.unsent);
+    await _serial(() async {
+      if (!active) return;
+      _rotate?.cancel();
+      _ceiling?.cancel();
+      WidgetsBinding.instance.removeObserver(this);
+      await _endChunk();
+      _event('stop');
+      await _writeMeta(endedAt: _now(), reason: reason);
+      _id = null;
+      _dir = null;
+      state.value = FieldRecorderState(unsent: state.value.unsent);
+    });
     await send();
   }
 
@@ -279,7 +309,8 @@ class FieldRecorder with WidgetsBindingObserver {
     _pausedAt = null;
     await _mic.stop();
     final length = _now().difference(started) - _pausedInChunk;
-    await File('${_dir!.path}/$_seq.json').writeAsString(
+    await _write(
+      File('${_dir!.path}/$_seq.json'),
       jsonEncode({
         'seq': _seq,
         'started_at': started.toUtc().toIso8601String(),
@@ -291,48 +322,70 @@ class FieldRecorder with WidgetsBindingObserver {
   }
 
   Future<void> _nextChunk() async {
-    if (!active) return;
-    final paused = state.value.status == FieldRecorderStatus.paused;
-    await _endChunk();
-    await _startChunk();
-    if (paused) {
-      await _mic.pause();
-      _pausedAt = _now();
-    }
-    await _writeMeta();
+    await _serial(() async {
+      if (!active) return;
+      final paused = state.value.status == FieldRecorderStatus.paused;
+      await _endChunk();
+      await _startChunk();
+      if (paused) {
+        await _mic.pause();
+        _pausedAt = _now();
+      }
+      await _writeMeta();
+    });
     unawaited(send());
   }
 
   void _event(String type) =>
       _events.add({'at': _now().toUtc().toIso8601String(), 'type': type});
 
-  Future<void> _writeMeta({DateTime? endedAt, String? reason}) =>
-      File('${_dir!.path}/meta.json').writeAsString(
-        jsonEncode({
-          'id': _id,
-          'events': _events,
-          'ended_at': ?endedAt?.toUtc().toIso8601String(),
-          'stop_reason': ?reason,
-        }),
-      );
+  Future<void> _writeMeta({DateTime? endedAt, String? reason}) => _write(
+    File('${_dir!.path}/meta.json'),
+    jsonEncode({
+      'id': _id,
+      'events': _events,
+      'ended_at': ?endedAt?.toUtc().toIso8601String(),
+      'stop_reason': ?reason,
+    }),
+  );
 
   /// Send every finished minute, then close recordings with nothing left.
   /// Safe to call any time; one pass runs at once.
-  Future<void> send() async {
-    if (_sending) return;
-    _sending = true;
-    try {
-      final root = await _root();
-      if (!await root.exists()) return;
-      var unsent = 0;
-      await for (final entity in root.list()) {
-        if (entity is! Directory) continue;
-        unsent += await _sendRecording(entity);
-      }
-      state.value = state.value.copyWith(unsent: unsent);
-    } finally {
-      _sending = false;
+  Future<void> send() {
+    if (_disposed) return Future.value();
+    // A call during a pass waits for it and makes it go round once more:
+    // stop's send used to return at once while a rotation's pass ran, and
+    // the finished recording waited for the next launch.
+    if (_pass != null) {
+      _again = true;
+      return _pass!;
     }
+    return _pass = () async {
+      try {
+        do {
+          _again = false;
+          await _sendOnce();
+        } while (_again);
+      } finally {
+        _pass = null;
+      }
+    }();
+  }
+
+  Future<void> _sendOnce() async {
+    final root = await _root();
+    if (!await root.exists()) return;
+    var unsent = 0;
+    for (final entity in await root.list().toList()) {
+      if (entity is! Directory) continue;
+      // One damaged recording no longer stops the others (audit 11-27).
+      try {
+        unsent += await _sendRecording(entity);
+      } catch (_) {
+        unsent++;
+      }
+    }
+    state.value = state.value.copyWith(unsent: unsent);
   }
 
   /// Sends one recording's finished minutes; answers how many are left.
