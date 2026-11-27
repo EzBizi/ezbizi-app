@@ -14,6 +14,8 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0662', date: '27 Nov 2026', items: [
+      'Task Board on phones: tapping the board title opens a home with your favourite boards, recently visited boards and the workspace tree, like Monday',
+      'Task Board notifications show who did it, with their picture',
       'Notifications on phones look like Monday: an Unread tab, the person who did it as an avatar with a badge for what they did, and a board and item line',
       'Task Board on phones: My work has Past dates, This week, Next week and Later tiles like Monday, and tapping one narrows the list',
       'Task Board: mirror columns only read boards you can open, imports keep commas in titles, and Undo, Duplicate and Move to top say when they fail',
