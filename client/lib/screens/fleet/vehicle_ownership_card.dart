@@ -186,6 +186,26 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
     }
 
     setState(() => _starting = false);
+    // Emptied once saved, so the next entry does not start as a copy of
+    // this one and get saved twice (audit 2026-11-27).
+    for (final c in [
+      _counterparty,
+      _registeredOwner,
+      _rentalAgreementNumber,
+      _mileageAllowance,
+      _startedOn,
+      _purchasePrice,
+      _lienholder,
+      _loanAccount,
+      _loanPayment,
+      _loanPayoff,
+      _transport,
+      _rentalRate,
+      _rentalDeposit,
+      _rentalAccount,
+    ]) {
+      c.clear();
+    }
     await widget.onReload();
   }
 

@@ -122,6 +122,11 @@ class _VehicleServiceCardState extends State<VehicleServiceCard> {
     }
 
     setState(() => _logging = false);
+    // Emptied once saved, so the next entry does not start as a copy of
+    // this one and get saved twice (audit 2026-11-27).
+    for (final c in [_odometer, _performedBy, _notes, _nextOn, _nextMiles]) {
+      c.clear();
+    }
     await widget.onReload();
   }
 
