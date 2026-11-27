@@ -166,6 +166,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
 String _score(Object? score) => score is num ? score.toStringAsFixed(1) : '—';
 
+String _pct(Object? rate) => rate is num ? '${rate.round()}%' : '—';
+
 /// A card with a small capitals heading, as in design 212.
 class _Section extends StatelessWidget {
   const _Section(this.title, this.child, {super.key, this.tint});
@@ -325,23 +327,26 @@ class _BoardState extends State<_Board> with _Loads {
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.titleSmall,
                 ),
+                // Shown, not ranked by (Trey, 2026-11-27).
                 Text(
-                  '${p['calls_scored'] ?? 0} calls scored',
+                  'Answer rate ${_pct(p['answer_rate'])} · '
+                  'Score ${_score(p['score'])} / 10',
+                  key: ValueKey('leaderboard-top-${p['rank']}-also'),
                   style: theme.textTheme.bodySmall,
                 ),
               ],
             ),
           ),
-          Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(
-                  text: _score(p['score']),
-                  style: theme.textTheme.titleLarge,
-                ),
-                TextSpan(text: ' / 10', style: theme.textTheme.bodySmall),
-              ],
-            ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(_pct(p['booking_rate']), style: theme.textTheme.titleLarge),
+              Text(
+                '${p['booked'] ?? 0} of ${p['decided'] ?? 0} booked',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
           ),
         ],
       ),
@@ -354,7 +359,7 @@ class _BoardState extends State<_Board> with _Loads {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final on = scheme.onPrimaryContainer;
-    final calls = me['calls_scored'] as int? ?? 0;
+    final calls = me['decided'] as int? ?? 0;
     final need = min is int ? (min - calls).clamp(1, min) : 1;
     final (String head, String? body) = switch (me['why']) {
       null when me['rank'] != null => ('#${me['rank']}', null),
@@ -364,9 +369,9 @@ class _BoardState extends State<_Board> with _Loads {
             'Your manager marks that in Reports › Performance › People.',
       ),
       'too_few_calls' => (
-        '$calls of ${min ?? '?'} scored calls',
-        '$need more scored call${need == 1 ? '' : 's'} this week and you '
-            'are on the board.',
+        '$calls of ${min ?? '?'} new-client calls',
+        'Answer $need more new-client call${need == 1 ? '' : 's'} this week '
+            'and you are on the board.',
       ),
       'not_matched' => (
         'Your calls are not linked yet',
@@ -402,7 +407,8 @@ class _BoardState extends State<_Board> with _Loads {
                   style: theme.textTheme.bodySmall?.copyWith(color: on),
                 ),
                 Text(
-                  '${_score(me['score'])} / 10 · $calls calls scored',
+                  '${_pct(me['booking_rate'])} booked · answer rate '
+                  '${_pct(me['answer_rate'])} · ${_score(me['score'])} / 10',
                   style: theme.textTheme.titleSmall?.copyWith(color: on),
                 ),
               ],
@@ -459,7 +465,7 @@ class _BoardState extends State<_Board> with _Loads {
                           children: [
                             Text(
                               '${(w['top'] as List).first['person']}  '
-                              '${_score((w['top'] as List).first['score'])}',
+                              '${_pct((w['top'] as List).first['booking_rate'])}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleSmall,
@@ -510,11 +516,12 @@ class _BoardState extends State<_Board> with _Loads {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _Section(
-                  'Top 3 · New Client Calls',
+                  'Top 3 by booking rate · New Client Calls',
                   top.isEmpty
                       ? Text(
-                          'Nobody is ranked yet. No one has ${min ?? 3} '
-                          'scored calls in this week; try the week before.',
+                          'Nobody is ranked yet. No one has answered '
+                          '${min ?? 3} new-client calls in this week; try the '
+                          'week before.',
                           key: const ValueKey('leaderboard-nobody'),
                           style: theme.textTheme.bodyMedium,
                         )

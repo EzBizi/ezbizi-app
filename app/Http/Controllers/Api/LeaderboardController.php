@@ -37,7 +37,6 @@ final class LeaderboardController extends Controller
 
         $me = self::person($request->user());
         $at = $me === null ? false : $ranked->search(fn (array $p) => $p['person'] === $me);
-        $mine = $me === null ? null : $people->firstWhere('person', $me);
 
         return response()->json(['data' => [
             'week' => self::week($sunday),
@@ -47,8 +46,7 @@ final class LeaderboardController extends Controller
                 'person' => $me,
                 'rank' => $at === false ? null : $at + 1,
                 'of' => $ranked->count(),
-                'score' => $mine['score'] ?? null,
-                'calls_scored' => $mine['calls_scored'] ?? 0,
+                ...self::numbers($me === null ? null : $people->get($me)),
                 'why' => match (true) {
                     $at !== false => null,
                     $me === null => 'not_matched',
@@ -64,7 +62,7 @@ final class LeaderboardController extends Controller
     {
         $limit = (int) ($request->validate(['limit' => ['nullable', 'integer', 'between:1,12']])['limit'] ?? 8);
         $since = LabelReportCalls::aiSince();
-        $key = implode(':', ['leaderboard', app(TenantContext::class)->idOrFail(), $request->user()->id, md5(json_encode(ReportView::franchiseIds()))]); // a company's branch list runs past the 255 of cache.key
+        $key = implode(':', ['leaderboard.booking', app(TenantContext::class)->idOrFail(), $request->user()->id, md5(json_encode(ReportView::franchiseIds()))]); // a company's branch list runs past the 255 of cache.key
 
         $weeks = [];
         for ($sunday = self::sunday(null)->subWeek(); count($weeks) < $limit && $sunday->addDays(5)->endOfDay() >= $since; $sunday = $sunday->subWeek()) {
@@ -125,19 +123,54 @@ final class LeaderboardController extends Controller
     }
 
     /**
-     * Scoring's people for the dates, and those ranked here: marked New, with
-     * enough scored calls, in Scoring's order.
+     * Performance's people for the dates, with Scoring's score beside them, and
+     * those ranked here: marked New, by booking rate (Trey, 2026-11-27: "ranked
+     * by their booking rate % but also on same screen show their answer rate
+     * just not ranking them by it"). A rate needs Scoring's minimum of decided
+     * new-client calls; a tie goes to more bookings, then the better score.
      *
-     * @return array{0: Collection<int, array<string, mixed>>, 1: Collection<int, array<string, mixed>>, 2: int}
+     * @return array{0: Collection<string, array<string, mixed>>, 1: Collection<int, array<string, mixed>>, 2: int}
      */
     private function standings(Request $request, PerformancePeople $performance, CarbonImmutable $from, CarbonImmutable $to): array
     {
         $scoring = $this->scoring($request, $performance, $from, $to);
-        $people = collect($scoring['people']);
-        $new = self::markedNew();
+        $scores = array_column($scoring['people'], null, 'person');
         $min = $scoring['min_calls_to_rank'];
+        $new = self::markedNew();
 
-        return [$people, $people->filter(fn (array $p) => isset($new[$p['person']]) && $p['calls_scored'] >= $min)->values(), $min];
+        $people = collect($performance->for($request->user(), $from->startOfDay(), $to->endOfDay()))->map(function (array $p) use ($scores, $min) {
+            // Booked out of the new-client calls they answered, less those Needs
+            // Attention or Awaiting review: Performance's and Scoring's booking rate.
+            $decided = ($p['new_client'] ?? 0) - ($p['needs_attention'] ?? 0) - ($p['awaiting_review'] ?? 0);
+
+            return [
+                'person' => $p['person'],
+                'booking_rate' => $decided >= $min ? ($p['booked_new'] ?? 0) / $decided * 100 : null,
+                'booked' => $p['booked_new'] ?? 0,
+                'decided' => $decided,
+                'answer_rate' => ($p['rang'] ?? 0) > 0 ? ($p['answered'] ?? 0) / $p['rang'] * 100 : null,
+                'score' => $scores[$p['person']]['score'] ?? null,
+                'calls_scored' => $scores[$p['person']]['calls_scored'] ?? 0,
+            ];
+        });
+
+        $ranked = $people->filter(fn (array $p) => isset($new[$p['person']]) && $p['booking_rate'] !== null)
+            ->sortByDesc(fn (array $p) => [$p['booking_rate'], $p['booked'], $p['score'] ?? -1])->values();
+
+        return [$people, $ranked, $min];
+    }
+
+    /** @return array{booking_rate: ?int, booked: int, decided: int, answer_rate: ?int, score: ?float, calls_scored: int} */
+    private static function numbers(?array $p): array
+    {
+        return [
+            'booking_rate' => isset($p['booking_rate']) ? (int) round($p['booking_rate']) : null,
+            'booked' => $p['booked'] ?? 0,
+            'decided' => max(0, $p['decided'] ?? 0),
+            'answer_rate' => isset($p['answer_rate']) ? (int) round($p['answer_rate']) : null,
+            'score' => $p['score'] ?? null,
+            'calls_scored' => $p['calls_scored'] ?? 0,
+        ];
     }
 
     /** @return array{from: ?string, to: ?string, min_calls_to_rank: int, weights: array<string, int>, people: list<array<string, mixed>>} */
@@ -152,12 +185,16 @@ final class LeaderboardController extends Controller
     /** @param  Collection<int, array<string, mixed>>  $ranked */
     private static function top(Collection $ranked): array
     {
-        return $ranked->take(3)->map(fn (array $p, int $i) => [
+        $top = $ranked->take(3);
+        // Their photo when exactly one active person has the name, as Scoring.
+        $ids = User::query()->where('is_active', true)->whereIn('name', $top->pluck('person'))->get(['id', 'name'])
+            ->groupBy('name')->filter(fn ($same) => $same->count() === 1)->map(fn ($same) => $same->first()->id);
+
+        return $top->map(fn (array $p, int $i) => [
             'rank' => $i + 1,
             'person' => $p['person'],
-            'user_id' => $p['user_id'] ?? null,
-            'score' => $p['score'],
-            'calls_scored' => $p['calls_scored'],
+            'user_id' => $ids[$p['person']] ?? null,
+            ...self::numbers($p),
         ])->values()->all();
     }
 
