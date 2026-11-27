@@ -531,7 +531,8 @@ fi
     if ssh "$MAC_REMOTE" "security find-identity -v -p codesigning 2>/dev/null | grep -q 'Apple Distribution.*${IOS_TEAM}'"; then
       echo "→ building ios (${IOS_NAME}) — signed for team ${IOS_TEAM}"
       if [ "${EZCHAT:-0}" -eq 1 ]; then
-        ssh "$MAC_REMOTE" "rm -rf ~/ezchat-AppIcon.appiconset"
+        ssh "$MAC_REMOTE" "rm -rf ~/ezchat-AppIcon.appiconset ~/ezchat-LaunchImage.imageset"
+        scp -rq assets/logo/ezchat/ios/LaunchImage.imageset "${MAC_REMOTE}:ezchat-LaunchImage.imageset"
         scp -rq assets/logo/ezchat/ios/AppIcon.appiconset "${MAC_REMOTE}:ezchat-AppIcon.appiconset"
       fi
       ssh "$MAC_REMOTE" "
@@ -555,9 +556,12 @@ fi
           sed -i '' 's/com.ezbizi.app</com.ezbizi.ezchat</; s/EzBizi App Store/EzChat App Store/' ios/ExportOptions.plist
           rm -rf ios/Runner/Assets.xcassets/AppIcon.appiconset
           cp -R ~/ezchat-AppIcon.appiconset ios/Runner/Assets.xcassets/AppIcon.appiconset
+          rm -rf ios/Runner/Assets.xcassets/LaunchImage.imageset
+          cp -R ~/ezchat-LaunchImage.imageset ios/Runner/Assets.xcassets/LaunchImage.imageset
           grep -q 'com.ezbizi.ezchat;' ios/Runner.xcodeproj/project.pbxproj
         fi
         ${MAC_FLUTTER} pub get
+        rm -rf build/ios/ipa  # a stale EzBizi.ipa from the previous flavour was picked for EzChat
         ${MAC_FLUTTER} build ipa --release ${MAC_DEFINES} --export-options-plist=ios/ExportOptions.plist
       "
 
