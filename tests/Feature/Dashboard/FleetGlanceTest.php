@@ -301,6 +301,42 @@ class FleetGlanceTest extends TestCase
         $this->assertSame(2, $figures['insurance_due']['value']);
     }
 
+    public function test_overdue_and_expired_use_the_readers_date_not_utc(): void
+    {
+        // 19:00 on the 26th in Honolulu is already the 27th in UTC. Due on the
+        // 26th is due today there, not overdue.
+        $tz = 'Pacific/Honolulu';
+        $this->inTenant(function () use ($tz) {
+            $this->alpha['franchise']->forceFill(['timezone' => $tz])->save();
+            app(\App\Support\Settings\SettingsResolver::class)->set('timezone', $this->alpha['org'], $tz);
+        });
+        \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-11-27 05:00:00', 'UTC'));
+
+        try {
+            $this->inTenant(function () {
+                $van = Vehicle::factory()->create([
+                    'company_id' => $this->alpha['company']->id,
+                    'franchise_id' => $this->alpha['franchise']->id,
+                    'status' => VehicleStatus::Active,
+                    'next_service_on' => '2026-11-26',
+                ]);
+                VehicleInsurancePolicy::factory()->create([
+                    'vehicle_id' => $van->id,
+                    'expires_on' => '2026-11-26',
+                ]);
+            });
+
+            $data = app(FleetGlance::class)->resolve(
+                $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+            )->toArray()['data'];
+
+            $bad = array_values(array_filter($data['attention'] ?? [], fn ($row) => $row['tone'] === 'bad'));
+            $this->assertSame([], $bad);
+        } finally {
+            \Illuminate\Support\Carbon::setTestNow();
+        }
+    }
+
     public function test_no_attention_when_nothing_is_due(): void
     {
         // Control: a vehicle exists, so this is the non-empty branch.

@@ -28,8 +28,16 @@ class EkomiAccount
     public static function snapshot(SocialConnection $c): array
     {
         [$shop, $password] = self::credentials($c);
-        $json = Http::timeout(20)->acceptJson()->get(self::SNAPSHOT, ['auth' => $shop.'|'.$password, 'version' => 'cms-v3', 'type' => 'json'])
-            ->throw()->json();
+        // The password rides in the query string: a connection error's message carries the URL, so it is
+        // replaced before it can reach a log (audit 2026-11-27).
+        try {
+            $json = Http::timeout(20)->acceptJson()->get(self::SNAPSHOT, ['auth' => $shop.'|'.$password, 'version' => 'cms-v3', 'type' => 'json'])
+                ->throw()->json();
+        } catch (\Illuminate\Http\Client\ConnectionException) {
+            throw new \RuntimeException('Could not reach eKomi.');
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            throw new \RuntimeException('eKomi refused the request (HTTP '.$e->response->status().').');
+        }
         if (empty($json['done'])) {
             throw new RuntimeException('eKomi did not accept the shop id and password.');
         }

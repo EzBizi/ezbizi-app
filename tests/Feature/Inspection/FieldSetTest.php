@@ -180,11 +180,11 @@ class FieldSetTest extends TestCase
         $set = FieldSet::fromInput([
             ['fields' => [
                 ['key' => 'system_type', 'label' => 'System', 'type' => 'choice',
-                 'options' => ['masonry', 'wood']],
+                    'options' => ['masonry', 'wood']],
             ]],
             ['fields' => [
                 ['key' => 'stove', 'label' => 'Stove', 'type' => 'text',
-                 'visible_if' => ['field' => 'system_type', 'op' => 'eq', 'value' => 'wood']],
+                    'visible_if' => ['field' => 'system_type', 'op' => 'eq', 'value' => 'wood']],
             ]],
         ]);
 
@@ -215,7 +215,7 @@ class FieldSetTest extends TestCase
             FieldSet::fromInput([
                 ['fields' => [
                     ['key' => 'crown', 'label' => 'Crown', 'type' => 'text',
-                     'visible_if' => ['field' => 'not_a_field', 'op' => 'eq', 'value' => 'x']],
+                        'visible_if' => ['field' => 'not_a_field', 'op' => 'eq', 'value' => 'x']],
                 ]],
             ]);
             $this->fail('a condition naming no field should be refused');
@@ -251,7 +251,7 @@ class FieldSetTest extends TestCase
                 ...$duplicated,
                 ['fields' => [
                     ['key' => 'crown', 'label' => 'Crown', 'type' => 'text',
-                     'visible_if' => ['field' => 'note', 'op' => 'eq', 'value' => 'x']],
+                        'visible_if' => ['field' => 'note', 'op' => 'eq', 'value' => 'x']],
                 ]],
             ]);
             $this->fail('an ambiguous condition should be refused');
@@ -269,7 +269,7 @@ class FieldSetTest extends TestCase
                 ['fields' => [
                     ['key' => 'a', 'label' => 'A', 'type' => 'text'],
                     ['key' => 'b', 'label' => 'B', 'type' => 'text',
-                     'visible_if' => ['field' => 'a', 'op' => 'matches', 'value' => 'x']],
+                        'visible_if' => ['field' => 'a', 'op' => 'matches', 'value' => 'x']],
                 ]],
             ]);
             $this->fail('an unknown operator should be refused');
@@ -279,5 +279,23 @@ class FieldSetTest extends TestCase
                 implode(' ', $e->errors()['screens.0.fields.1.visible_if'] ?? []),
             );
         }
+    }
+
+    /** Audit 11-27: the Builder offers a follow-up question as a condition target; the server must take it. */
+    public function test_a_condition_may_name_a_follow_up_question(): void
+    {
+        $set = FieldSet::fromInput([[
+            'fields' => [
+                ['key' => 'crown', 'label' => 'Crown', 'type' => 'choice', 'options' => [
+                    ['value' => 'ok', 'label' => 'OK'],
+                    ['value' => 'bad', 'label' => 'Bad', 'fields' => [
+                        ['key' => 'crack', 'label' => 'Cracked?', 'type' => 'choice', 'options' => [['value' => 'yes', 'label' => 'Yes']]],
+                    ]],
+                ]],
+                ['key' => 'seal', 'label' => 'Seal it', 'type' => 'text', 'visible_if' => ['op' => 'eq', 'field' => 'crack', 'value' => 'yes']],
+            ],
+        ]]);
+
+        $this->assertSame('crack', $set->toArray()[0]['fields'][1]['visible_if']['field']);
     }
 }

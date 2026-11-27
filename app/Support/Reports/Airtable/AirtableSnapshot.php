@@ -7,6 +7,7 @@ use App\Models\AirtableRecordVersion;
 use App\Models\FinancialSource;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use Throwable;
 
 /**
  * Copies the Airtable tables an organization mapped into its reports
@@ -45,9 +46,10 @@ class AirtableSnapshot
             foreach ($tables as $tableId) {
                 try {
                     $rows = $this->rows($token, $baseId, $tableId);
-                } catch (RuntimeException $e) {
-                    // One table failing keeps the others' copies fresh; the
-                    // failed one keeps its last copy, never a partial one.
+                } catch (Throwable $e) {
+                    // One table failing (a refusal, or the network) keeps the
+                    // others' copies fresh; the failed one keeps its last copy,
+                    // never a partial one.
                     $done['failed'][] = "$baseId/$tableId: ".$e->getMessage();
 
                     continue;
@@ -109,7 +111,11 @@ class AirtableSnapshot
     /** @return array<string, string> table id => name */
     private function tableNames(string $token, string $baseId): array
     {
-        $response = Http::withToken($token)->acceptJson()->get(self::API.'/meta/bases/'.$baseId.'/tables');
+        try {
+            $response = Http::withToken($token)->acceptJson()->get(self::API.'/meta/bases/'.$baseId.'/tables');
+        } catch (Throwable) {
+            return [];   // the names are a label; the table ids stand in
+        }
 
         return $response->successful()
             ? collect((array) $response->json('tables'))->mapWithKeys(fn ($t) => [(string) $t['id'] => (string) $t['name']])->all()

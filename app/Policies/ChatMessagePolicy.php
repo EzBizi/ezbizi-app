@@ -15,11 +15,21 @@ class ChatMessagePolicy
 {
     public function view(User $user, ChatMessage $message): bool
     {
-        return $user->hasPermission('phone.chat.view')
-            && ChatMember::query()
-                ->where('chat_id', $message->chat_id)
-                ->where('user_id', $user->getKey())
-                ->exists();
+        if (! $user->hasPermission('phone.chat.view')) {
+            return false;
+        }
+        // The same reach as reading the chat: a current member (not one who
+        // left or was removed), and not a message cleared or deleted for me.
+        $member = ChatMember::query()
+            ->where('chat_id', $message->chat_id)
+            ->where('user_id', $user->getKey())
+            ->whereNull('left_at')
+            ->first();
+        if ($member === null || in_array($user->getKey(), (array) ($message->hidden_for ?? []), true)) {
+            return false;
+        }
+
+        return $member->cleared_at === null || $message->created_at->gt($member->cleared_at);
     }
 
     public function update(User $user, ChatMessage $message): bool

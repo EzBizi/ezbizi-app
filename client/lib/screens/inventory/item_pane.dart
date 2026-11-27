@@ -22,6 +22,28 @@ List<Map<String, dynamic>> inventoryMaps(dynamic value) {
 
 List<Map<String, dynamic>> inventoryRows(dynamic data) => inventoryMaps(data);
 
+/// Every page of a list read as one response (audit 11-27: pickers and the
+/// Orders tab stopped at the first page). ponytail: 25 pages of 200; a
+/// server-searched picker when a catalogue outgrows that.
+Future<ApiResponse> inventoryAllPages(
+  ApiClient api,
+  String path, [
+  Map<String, String> query = const {},
+]) async {
+  final rows = <dynamic>[];
+  late ApiResponse last;
+  for (var page = 1; page <= 25; page++) {
+    last = await api.get(path, {...query, 'page': '$page', 'per_page': '200'});
+    if (!last.ok) return last;
+    rows.addAll(last.body['data'] as List? ?? const []);
+    if (page >= inventoryLastPage(last.body)) break;
+  }
+  return ApiResponse(
+    statusCode: last.statusCode,
+    body: {...last.body, 'data': rows},
+  );
+}
+
 int inventoryLastPage(Map<String, dynamic> body) {
   final meta = body['meta'];
   if (meta is Map && meta['last_page'] is int) {
@@ -248,6 +270,8 @@ class _ItemPaneState extends State<ItemPane> {
   }
 
   Future<void> _load() async {
+    // An answer for an item this pane no longer shows is dropped (audit 11-27).
+    final forItem = widget.itemId;
     setState(() {
       _loading = _item == null;
       _error = null;
@@ -272,9 +296,9 @@ class _ItemPaneState extends State<ItemPane> {
         ? await widget.api.get('/inventory/stock', {'item_id': widget.itemId})
         : null;
 
-    final locRes = await widget.api.get('/inventory/locations');
+    final locRes = await inventoryAllPages(widget.api, '/inventory/locations');
 
-    if (!mounted) return;
+    if (!mounted || forItem != widget.itemId) return;
 
     if (!itemRes.ok) {
       setState(() {
@@ -319,6 +343,7 @@ class _ItemPaneState extends State<ItemPane> {
   }
 
   Future<void> _moreHistory() async {
+    final forItem = widget.itemId;
     if (_historyBusy || _historyPage >= _historyLast) return;
     setState(() {
       _historyBusy = true;
@@ -328,7 +353,7 @@ class _ItemPaneState extends State<ItemPane> {
       '/inventory/items/${widget.itemId}/movements',
       {'page': '${_historyPage + 1}', 'per_page': '20'},
     );
-    if (!mounted) return;
+    if (!mounted || forItem != widget.itemId) return;
     setState(() {
       _historyBusy = false;
       if (!response.ok) {
@@ -386,6 +411,7 @@ class _ItemPaneState extends State<ItemPane> {
   }
 
   Future<void> _adjust() async {
+    final forItem = widget.itemId;
     final locationId = _adjustLocationId;
     final counted = _countedAs.text.trim();
     final reason = _reason.text.trim();
@@ -403,7 +429,7 @@ class _ItemPaneState extends State<ItemPane> {
       'reason': reason,
     });
 
-    if (!mounted) return;
+    if (!mounted || forItem != widget.itemId) return;
 
     if (!response.ok) {
       setState(() {

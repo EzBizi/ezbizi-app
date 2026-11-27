@@ -76,6 +76,7 @@ class AlertsController extends Controller
             ->latest('created_at')
             ->limit(100)
             ->with('deliveries.user:id,name')
+            ->withCount('replies')
             ->get();
 
         return response()->json([
@@ -83,7 +84,7 @@ class AlertsController extends Controller
                 'id' => $alert->id,
                 'kind' => $alert->kind,
                 'message' => $alert->message,
-                'answered' => $alert->isQuestion() ? $alert->replies()->count() : null,
+                'answered' => $alert->isQuestion() ? $alert->replies_count : null,
                 'created_at' => $alert->created_at?->toIso8601String(),
                 'recipients' => $alert->deliveries->map(fn ($row) => [
                     'id' => $row->user_id,

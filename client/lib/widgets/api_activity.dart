@@ -83,8 +83,14 @@ class _ApiActivityState extends State<ApiActivity> {
   int? _open;
 
   /// The row being put back, and what the server said about each one tried.
-  int? _reverting;
-  final _said = <int, (String, Tone)>{};
+  /// Keyed by event id, not list position: a reload reorders the list, and a
+  /// position would hang the answer on a different row (audit 11-27).
+  String? _reverting;
+  final _said = <String, (String, Tone)>{};
+
+  /// Bumped by every load; a reply that comes back after a newer load started
+  /// is dropped, so a slow older page cannot mix into a new filter.
+  int _generation = 0;
 
   /// The search box, sent as `q`, debounced. A new search starts again from
   /// the newest row (no `before` cursor).
@@ -133,6 +139,7 @@ class _ApiActivityState extends State<ApiActivity> {
   /// [quiet] keeps the list (and the search box) on screen while a search
   /// reloads, so typing is not interrupted by the spinner.
   Future<void> _load({bool older = false, bool quiet = false}) async {
+    final generation = ++_generation;
     setState(() {
       _loading = !older && !quiet;
       _error = null;
@@ -142,9 +149,14 @@ class _ApiActivityState extends State<ApiActivity> {
       'key_id': ?(widget.keyId ?? _key),
       'user_id': ?_person,
       if (_q.isNotEmpty) 'q': _q,
-      if (older && _rows.isNotEmpty) 'before': '${_rows.last['at']}',
+      if (_changesOnly) 'changes_only': '1',
+      // Time AND id: rows sharing the boundary second are not skipped.
+      if (older && _rows.isNotEmpty) ...{
+        'before': '${_rows.last['at']}',
+        'before_id': '${_rows.last['id']}',
+      },
     });
-    if (!mounted) return;
+    if (!mounted || generation != _generation) return;
     setState(() {
       _loading = false;
       if (!response.ok) {
@@ -297,10 +309,13 @@ class _ApiActivityState extends State<ApiActivity> {
           key: const Key('api-activity-changes'),
           label: const Text('Changes only'),
           selected: _changesOnly,
-          onSelected: (on) => setState(() {
-            _changesOnly = on;
-            _open = null;
-          }),
+          onSelected: (on) {
+            setState(() {
+              _changesOnly = on;
+              _open = null;
+            });
+            _load(quiet: true);
+          },
         ),
       ],
     );
@@ -349,11 +364,15 @@ class _ApiActivityState extends State<ApiActivity> {
       );
     }
 
-    void show({required bool changes, required bool refused}) => setState(() {
-      _changesOnly = changes;
-      _refusedOnly = refused;
-      _open = null;
-    });
+    void show({required bool changes, required bool refused}) {
+      final reload = changes != _changesOnly;
+      setState(() {
+        _changesOnly = changes;
+        _refusedOnly = refused;
+        _open = null;
+      });
+      if (reload) _load(quiet: true);
+    }
 
     return Row(
       children: [
@@ -712,7 +731,7 @@ class _ApiActivityState extends State<ApiActivity> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           body,
-          if (_said[i] case (final text, final tone)) ...[
+          if (_said['${row['id']}'] case (final text, final tone)) ...[
             const SizedBox(height: 8),
             Text(
               text,
@@ -748,10 +767,14 @@ class _ApiActivityState extends State<ApiActivity> {
                 else if (row['revertable'] == true)
                   FilledButton.icon(
                     key: const Key('api-activity-revert'),
-                    onPressed: _reverting == null ? () => _revert(i) : null,
+                    onPressed: _reverting == null
+                        ? () => _revert('${row['id']}')
+                        : null,
                     icon: const Icon(Icons.undo, size: 18),
                     label: Text(
-                      _reverting == i ? 'Putting it back…' : 'Put it back',
+                      _reverting == '${row['id']}'
+                          ? 'Putting it back…'
+                          : 'Put it back',
                     ),
                   ),
               ],
@@ -765,32 +788,33 @@ class _ApiActivityState extends State<ApiActivity> {
   /// One click, the server's answer in place. Done, or refused for good (put
   /// back already, changed since, not revertable), the button goes; any other
   /// refusal leaves it to try again.
-  Future<void> _revert(int i) async {
+  Future<void> _revert(String id) async {
     setState(() {
-      _reverting = i;
-      _said.remove(i);
+      _reverting = id;
+      _said.remove(id);
     });
-    final response = await widget.api.post(
-      '$_path/${_rows[i]['id']}/revert',
-      {},
-    );
+    final response = await widget.api.post('$_path/$id/revert', {});
     if (!mounted) return;
     setState(() {
       _reverting = null;
+      final i = _rows.indexWhere((row) => '${row['id']}' == id);
       final message = '${response.body['message'] ?? ''}';
       if (response.ok) {
         final exact = response.body['reverted'] == true;
-        _said[i] = (
+        _said[id] = (
           message.isEmpty ? 'Put back.' : message,
           exact ? Tone.ok : Tone.caution,
         );
-        _rows[i] = {
-          ..._rows[i],
-          'reverted_at': DateTime.now().toUtc().toIso8601String(),
-        };
+        if (i >= 0) {
+          _rows[i] = {
+            ..._rows[i],
+            'reverted_at': DateTime.now().toUtc().toIso8601String(),
+          };
+        }
       } else {
-        _said[i] = (response.reason, Tone.bad);
-        if (response.statusCode == 409 || response.statusCode == 422) {
+        _said[id] = (response.reason, Tone.bad);
+        if (i >= 0 &&
+            (response.statusCode == 409 || response.statusCode == 422)) {
           _rows[i] = {..._rows[i], 'revertable': false};
         }
       }

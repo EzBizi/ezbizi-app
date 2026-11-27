@@ -43,7 +43,9 @@ class InventoryTransferPolicy
      */
     private function isSiblingCompany(InventoryLocation $from, InventoryLocation $to): bool
     {
-        if ($to->company_id === null) {
+        // An organization-level source is no sibling of anything: refusing it
+        // meant org stock could never reach a company (audit 11-27).
+        if ($to->company_id === null || $from->company_id === null) {
             return false;
         }
 

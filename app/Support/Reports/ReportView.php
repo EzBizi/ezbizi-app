@@ -64,6 +64,19 @@ final class ReportView
     }
 
     /**
+     * Narrows a query to the branches in view, and to none when the view holds
+     * none: `->when(franchiseIds(), ...)` skipped an empty list and read every
+     * branch (audit 2026-11-27). Inside `->where(fn ...)`, which drops it when
+     * nothing was added.
+     */
+    public static function whereInView($query, string $column)
+    {
+        $ids = self::franchiseIds();
+
+        return $ids === null ? $query : $query->whereIn($column, $ids);
+    }
+
+    /**
      * Does the view cover this company: the company itself, or a branch of
      * it? Null (the organization's own) only the organization view covers.
      */

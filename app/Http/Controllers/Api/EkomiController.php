@@ -8,6 +8,7 @@ use App\Models\SocialConnection;
 use App\Services\Reviews\EkomiAccount;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
+use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -30,6 +31,7 @@ class EkomiController extends Controller
         $this->authorize('viewAny', Review::class);
 
         return response()->json(['data' => SocialConnection::query()->where('provider', SocialProvider::Ekomi->value)->orderBy('display_name')->get()
+            ->filter(fn (SocialConnection $c) => app(SocialConnectionAccess::class)->inView(request()->user(), $c))
             ->map(fn (SocialConnection $c) => ['id' => $c->id, 'name' => $c->display_name, 'shop_id' => $c->remote_id, 'status' => $c->status,
                 'last_sync' => $c->last_reached_at?->toIso8601String(), 'settings' => self::settings($c),
                 'reviews' => Review::query()->where('connection_id', $c->id)->count()])->values()->all()]);
@@ -93,7 +95,10 @@ class EkomiController extends Controller
         $in = $request->validate(['shop_id' => ['nullable', 'string', 'max:40'], 'password' => ['nullable', 'string', 'max:200'],
             'auto_request' => ['sometimes', 'boolean'], 'delay_hours' => ['sometimes', 'integer', 'min:0', 'max:720'],
             'start_date' => ['sometimes', 'nullable', 'date_format:Y-m-d']]);
-        $creds = (array) ($this->ekomi($connection)->credentials ?? []);
+        $this->ekomi($connection);
+        abort_unless(app(SocialConnectionAccess::class)->reaches($request->user(), $connection), 403,
+            'This eKomi account belongs to a company outside your reach.');
+        $creds = (array) ($connection->credentials ?? []);
         foreach (['shop_id', 'password'] as $k) {
             if (($in[$k] ?? '') !== '') {
                 $creds[$k] = trim($in[$k]);
@@ -138,6 +143,8 @@ class EkomiController extends Controller
     private function ekomi(SocialConnection $connection): SocialConnection
     {
         abort_unless($connection->provider === SocialProvider::Ekomi->value, 404);
+        // Another company's account is not there for this person (audit 2026-11-27); changing it needs reach, not just view.
+        abort_unless(app(SocialConnectionAccess::class)->inView(request()->user(), $connection), 404);
 
         return $connection;
     }

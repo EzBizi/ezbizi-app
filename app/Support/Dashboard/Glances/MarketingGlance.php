@@ -270,9 +270,15 @@ final class MarketingGlance extends DescribedGlance
      */
     private function countIn(array $visible, string $status, DashboardPeriod $period): int
     {
+        // A failed target never gets sent_at (SocialPostTarget::markFailed
+        // stamps status and failure only), so failures are dated by when
+        // they were marked: updated_at. Counting them by sent_at made the
+        // box say zero failures forever (audit 2026-11-27).
+        $column = $status === SocialPostTarget::STATUS_FAILED ? 'updated_at' : 'sent_at';
+
         return (int) $this->inReach($visible)
             ->where('status', $status)
-            ->whereBetween('sent_at', [$period->startsOn->copy()->utc(), $period->endsOn->copy()->utc()])
+            ->whereBetween($column, [$period->startsOn->copy()->utc(), $period->endsOn->copy()->utc()])
             ->count();
     }
 

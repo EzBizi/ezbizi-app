@@ -128,6 +128,8 @@ class AirtableSectionsTest extends TestCase
         $this->assertStringContainsString('#DC2626;font-weight:700">50.0%', $html());
 
         $admin->putJson('/api/v1/reports/goals', ['goals' => [['franchise_id' => $this->branch, 'key' => 'invented', 'value' => 1]]])->assertUnprocessable();
+        // No value at all clears it, as a null does; it 500'd (audit 2026-11-27).
+        $admin->putJson('/api/v1/reports/goals', ['goals' => [['franchise_id' => $this->branch, 'key' => 'avg_sale']]])->assertOk();
         $viewer = $this->userWithRole($this->t, 'Viewer', ['reports.view']);
         $this->signedInAs($viewer)->getJson('/api/v1/reports/goals')->assertOk();
         $this->signedInAs($viewer)->putJson('/api/v1/reports/goals', ['goals' => [['franchise_id' => null, 'key' => 'avg_sale', 'value' => 1]]])->assertForbidden();

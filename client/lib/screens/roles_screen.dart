@@ -191,7 +191,9 @@ class _RolesScreenState extends State<RolesScreen> {
   /// hold and what to call it. An editor opened with one and not the other
   /// either shows keys where labels belong or ticks nothing it should — so
   /// neither is rendered until both have arrived.
-  Future<void> _load() async {
+  /// [remount] false refreshes the roles under an open page without a fresh
+  /// page, so edits not yet saved there survive (a Rename, a Mobile bar save).
+  Future<void> _load({bool remount = true}) async {
     final request = ++_request;
 
     setState(() {
@@ -228,7 +230,7 @@ class _RolesScreenState extends State<RolesScreen> {
       _roles = RoleSummary.listFrom(roles.data);
       // A fresh page for what the server now holds, so a saved edit is shown
       // as saved rather than kept as a local copy of it.
-      _generation++;
+      if (remount) _generation++;
       _held = inboxHoldingsFrom(roles.data);
       // The whole body, not `data`: this endpoint answers with `modules` at the
       // top level. PermissionCatalogue.fromResponse reads either.
@@ -316,6 +318,16 @@ class _RolesScreenState extends State<RolesScreen> {
 
     if (mounted) _snack('Saved ${role.name}');
 
+    return null;
+  }
+
+  /// Rename sends the name alone: pending permission edits stay pending.
+  Future<String?> _rename(RoleSummary role, String name) async {
+    final response = await widget.api.patch('/roles/${role.id}', {
+      'name': name,
+    });
+    if (!response.ok) return response.reason;
+    if (mounted) _snack('Renamed to $name');
     return null;
   }
 
@@ -551,6 +563,8 @@ class _RolesScreenState extends State<RolesScreen> {
     onSave: (name, permissions, nested, invitable, hiddenOnLeads) =>
         _save(role, name, permissions, nested, invitable, hiddenOnLeads),
     onSaved: _load,
+    onRefreshed: () => _load(remount: false),
+    onRename: (name) => _rename(role, name),
     onDiscard: () => setState(() => _generation++),
     onDelete: role.mayDelete ? () => _delete(role) : null,
     // The server's sentence for the built-in administrator when it sends one,
@@ -675,6 +689,8 @@ class _RolePage extends StatefulWidget {
     required this.heldInboxes,
     required this.onSave,
     required this.onSaved,
+    required this.onRefreshed,
+    required this.onRename,
     required this.onDiscard,
     required this.onCompare,
     required this.askForName,
@@ -736,6 +752,12 @@ class _RolePage extends StatefulWidget {
   /// After a save the server accepted: reload, which rebuilds this page from
   /// what the server now holds.
   final VoidCallback onSaved;
+
+  /// Re-reads the role without a fresh page, keeping unsaved edits.
+  final VoidCallback onRefreshed;
+
+  /// Saves the name alone; the failure's sentence, or null.
+  final Future<String?> Function(String name) onRename;
 
   /// Throw the edits away, by rebuilding the page from the role as loaded.
   final VoidCallback onDiscard;
@@ -1380,11 +1402,24 @@ class _RolePageState extends State<_RolePage> {
   }
 
   Future<void> _rename() async {
-    final name = await widget.askForName(_name);
-    if (name == null || !mounted) return;
-    setState(() => _name = name);
-    await _save();
+    final name = (await widget.askForName(_name))?.trim();
+    if (name == null || name.isEmpty || !mounted) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final failure = await widget.onRename(name);
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _error = failure;
+      if (failure == null) _name = name;
+    });
+    if (failure == null) widget.onRefreshed();
   }
+
+  /// Unsaved Mobile bar slots: the permission Save would remount and drop them.
+  bool _barDirty = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1476,7 +1511,13 @@ class _RolePageState extends State<_RolePage> {
               api: widget.api!,
               role: widget.role,
               writable: _writable,
-              onSaved: widget.onSaved,
+              blockedReason: _dirty
+                  ? 'Save or discard the permission changes above first.'
+                  : null,
+              onDirty: (dirty) {
+                if (dirty != _barDirty) setState(() => _barDirty = dirty);
+              },
+              onSaved: widget.onRefreshed,
             ),
           ],
           const SizedBox(height: 16),
@@ -1614,7 +1655,11 @@ class _RolePageState extends State<_RolePage> {
     children: [
       Expanded(
         child: Text(
-          _dirty ? 'Unsaved changes.' : 'No changes yet.',
+          _barDirty
+              ? 'Save the Mobile bar below first.'
+              : _dirty
+              ? 'Unsaved changes.'
+              : 'No changes yet.',
           style: theme.textTheme.bodySmall,
         ),
       ),
@@ -1625,7 +1670,7 @@ class _RolePageState extends State<_RolePage> {
         ),
       const SizedBox(width: 8),
       FilledButton(
-        onPressed: _saving ? null : _save,
+        onPressed: _saving || _barDirty ? null : _save,
         child: Text(_saving ? 'Saving…' : 'Save'),
       ),
     ],

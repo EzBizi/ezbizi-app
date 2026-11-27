@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\FieldGeocode;
 use App\Models\FieldPresence;
 use App\Models\FieldRecording;
 use App\Models\FieldRecordingChunk;
@@ -65,12 +66,24 @@ class FieldSweep extends Command
                 $tenant->run($organization, function () use ($upcoming, $organizationId, $jobs, &$budget, &$geocoded) {
                     $ids = $upcoming->filter(fn ($org) => $org === $organizationId)->keys();
 
-                    foreach (Job::query()->with('customer')->whereIn('id', $ids)->get() as $job) {
+                    // Which addresses are already known: one query, not one per job (audit 11-27).
+                    $all = Job::query()->with('customer')->whereIn('id', $ids)->get();
+                    $hashes = $all->mapWithKeys(function (Job $job) {
+                        $address = $job->customer ? FieldGeocode::addressOf($job->customer) : null;
+
+                        return [$job->getKey() => $address === null ? null : FieldGeocode::hash($address)];
+                    });
+                    $known = FieldGeocode::query()->whereIn('address_hash', $hashes->filter()->unique()->values())
+                        ->pluck('address_hash')->flip();
+
+                    foreach ($all as $job) {
                         if ($budget <= 0) {
                             return;
                         }
 
-                        if ($jobs->needsGeocode($job)) {
+                        $hash = $hashes[$job->getKey()];
+                        if ($hash !== null && ! $known->has($hash)) {
+                            $known[$hash] = true;
                             $jobs->pointFor($job, ask: true);
                             $budget--;
                             $geocoded++;

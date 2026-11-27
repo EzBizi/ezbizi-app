@@ -614,7 +614,7 @@ class _BoardTreeState extends State<BoardTree> {
                 leadingIcon: const Icon(Icons.delete_outline, size: 18),
                 onPressed: () =>
                     _call((api) => api.delete('/task-board-folders/$id')),
-                child: const Text('Delete folder (boards stay)'),
+                child: const Text('Delete folder (boards and subfolders stay)'),
               ),
             ], head),
           ),

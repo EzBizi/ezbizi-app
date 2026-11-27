@@ -142,7 +142,7 @@ class SeoHelperController extends Controller
 
         $sharing = SiteOverview::sharingPages($row, $others);
 
-        $analysis = PageAnalysis::run($page, $this->html($page['url']), array_map('count', $sharing));
+        $analysis = PageAnalysis::run($page, $this->html($site, (string) $page['url']), array_map('count', $sharing));
 
         return $row + [
             'analysis' => $analysis + [
@@ -172,15 +172,20 @@ class SeoHelperController extends Controller
      * Kept a few minutes: a draft is re-checked on every pause in typing, and
      * the page itself does not change while somebody types a title.
      */
-    private function html(string $url): ?string
+    private function html(WebSite $site, string $url): ?string
     {
-        if (preg_match('~^https?://~i', $url) !== 1) {
+        // Only this site's own pages, and no redirects (audit 2026-11-27, SSRF):
+        // the URL comes from the customer's WordPress, so it could name any host.
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $own = strtolower(preg_replace('/^www\./', '', (string) $site->host));
+
+        if (preg_match('~^https?://~i', $url) !== 1 || preg_replace('/^www\./', '', $host) !== $own) {
             return null;
         }
 
         return Cache::remember('seo-helper:html:'.sha1($url), 300, function () use ($url) {
             try {
-                $response = Http::timeout(15)->withHeaders(['User-Agent' => 'EzBizi SEO Helper'])->get($url);
+                $response = Http::timeout(15)->withoutRedirecting()->withHeaders(['User-Agent' => 'EzBizi SEO Helper'])->get($url);
 
                 return $response->successful() ? $response->body() : null;
             } catch (Throwable) {

@@ -19,19 +19,25 @@ class WakeSnoozedMail extends Command
 
     public function handle(TenantContext $tenant, InboxController $inbox): int
     {
-        $due = $tenant->runWithoutTenant(fn () => EmailSnooze::query()->where('until', '<=', now())->limit(200)->get());
+        $due = $tenant->runWithoutTenant(fn () => EmailSnooze::query()->where('until', '<=', now())->orderBy('until')->limit(200)->get());
 
         foreach ($due as $snooze) {
             $mailbox = $tenant->runWithoutTenant(fn () => Mailbox::query()->find($snooze->mailbox_id));
 
+            // A snooze that can never wake is dropped, not retried every
+            // minute ahead of live ones (audit 11-27).
             if ($mailbox === null) {
+                $tenant->runWithoutTenant(fn () => $snooze->delete());
+
                 continue;
             }
 
             $tenant->run($mailbox->organization, function () use ($inbox, $mailbox, $snooze) {
                 try {
                     $inbox->wake($mailbox, $snooze->message_id);
-                } catch (CannotChangeMail|CannotReadMailbox $e) {
+                } catch (CannotChangeMail $e) {
+                    $snooze->delete();   // refused for good: the message is gone
+                } catch (CannotReadMailbox $e) {
                     report($e);   // tried again next minute
                 }
             });

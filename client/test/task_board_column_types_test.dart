@@ -83,7 +83,7 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(added, ['Refund']);
-    expect(changes.last, ['a', 'new']);
+    expect(changes.last, ['a', 'b', 'new'], reason: 'the tick of b in the open menu is kept (audit 11-27)');
     expect(find.text('Edit tags…'), findsOneWidget);
   });
 

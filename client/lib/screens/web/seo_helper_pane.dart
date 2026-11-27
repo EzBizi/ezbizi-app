@@ -696,6 +696,14 @@ class _SeoPageEditorState extends State<_SeoPageEditor> {
         e.key: e.value,
   };
 
+  /// Leaving with unsaved edits asks first, inline (audit 2026-11-27).
+  VoidCallback? _pendingLeave;
+
+  void _leave(VoidCallback go) {
+    if (_changes.isEmpty) return go();
+    setState(() => _pendingLeave = go);
+  }
+
   /// Re-checked as somebody types, after a pause: nothing is saved.
   void _edited() {
     setState(() => _saved = null);
@@ -766,7 +774,45 @@ class _SeoPageEditorState extends State<_SeoPageEditor> {
     final theme = Theme.of(context);
     final page = _page;
 
-    final head = Padding(
+    final head = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _headRow(theme, page),
+        if (_pendingLeave != null) _leaveBar(theme),
+      ],
+    );
+    return _body(context, theme, page, head);
+  }
+
+  Widget _leaveBar(ThemeData theme) => Padding(
+    key: const Key('seo-unsaved-confirm'),
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            'This page has unsaved changes.',
+            style: theme.textTheme.bodyMedium,
+          ),
+        ),
+        TextButton(
+          onPressed: () => setState(() => _pendingLeave = null),
+          child: const Text('Stay'),
+        ),
+        TextButton(
+          onPressed: () {
+            final go = _pendingLeave;
+            setState(() => _pendingLeave = null);
+            go?.call();
+          },
+          child: const Text('Leave without saving'),
+        ),
+      ],
+    ),
+  );
+
+  Widget _headRow(ThemeData theme, Map<String, dynamic>? page) {
+    return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
       child: Row(
         children: [
@@ -774,7 +820,7 @@ class _SeoPageEditorState extends State<_SeoPageEditor> {
           IconButton(
             tooltip: 'Back to the pages',
             icon: const Icon(Icons.arrow_back),
-            onPressed: widget.onClose,
+            onPressed: () => _leave(widget.onClose),
           ),
           const SizedBox(width: 4),
           Expanded(
@@ -801,7 +847,14 @@ class _SeoPageEditorState extends State<_SeoPageEditor> {
         ],
       ),
     );
+  }
 
+  Widget _body(
+    BuildContext context,
+    ThemeData theme,
+    Map<String, dynamic>? page,
+    Widget head,
+  ) {
     if (_loading) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1358,8 +1411,9 @@ class _SeoPageEditorState extends State<_SeoPageEditor> {
                               visualDensity: VisualDensity.compact,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
-                            onPressed: () =>
-                                widget.onOpen((other['id'] as num).toInt()),
+                            onPressed: () => _leave(
+                              () => widget.onOpen((other['id'] as num).toInt()),
+                            ),
                             child: Text('${other['name'] ?? 'Another page'} ›'),
                           ),
                       ],

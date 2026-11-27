@@ -69,11 +69,18 @@ class TaskBoardArchivedTest extends TestCase
         $api->postJson("/api/v1/task-boards/{$custom}/restore")->assertOk();
         $this->assertContains($custom, $listed());
 
-        // After 30 days the purge takes it for good.
+        // After 30 days the purge takes it for good, with its update files (audit 11-27).
+        $task = $api->postJson('/api/v1/tasks', ['board_id' => $custom, 'title' => 'Liner'])->assertCreated()->json('data.id');
+        $api->post("/api/v1/tasks/{$task}/updates", ['files' => [\Illuminate\Http\UploadedFile::fake()->createWithContent('quote.pdf', 'QUOTE-BYTES')]],
+            ['Accept' => 'application/json'])->assertCreated();
+        $file = $this->inTenant($t['org'], fn () => \App\Models\Attachment::query()->where('attachable_type', 'task_updates')->latest()->first());
+        $this->assertTrue(\Illuminate\Support\Facades\Storage::disk($file->disk)->exists($file->path));
         $code = $this->authenticatorCode($t['admin']);
         $this->signedInAs($t['admin'])->deleteJson("/api/v1/task-boards/{$custom}", ['confirm' => 'Spring jobs'] + $code)->assertNoContent();
         DB::table('task_boards')->where('id', $custom)->update(['deleted_at' => now()->subDays(31)]);
         $this->artisan('ezbizi:purge-deleted-task-boards')->assertSuccessful();
         $this->assertNull($this->inTenant($t['org'], fn () => TaskBoard::query()->withTrashed()->find($custom)));
+        $this->assertNull($this->inTenant($t['org'], fn () => \App\Models\Attachment::query()->find($file->id)));
+        $this->assertFalse(\Illuminate\Support\Facades\Storage::disk($file->disk)->exists($file->path));
     }
 }

@@ -21,9 +21,17 @@ class EkomiReviews
     /** @return list<array<string, mixed>> eKomi's own rows. */
     public static function fetch(string $shopId, string $password): array
     {
-        $json = Http::timeout(30)->acceptJson()->get(self::FEEDBACK, [
-            'auth' => $shopId.'|'.$password, 'version' => 'cms-v3', 'type' => 'json', 'range' => 'all',
-        ])->throw()->json();
+        // The password rides in the query string: a connection error's message carries the URL, so it is
+        // replaced before it can reach a log (audit 2026-11-27).
+        try {
+            $json = Http::timeout(30)->acceptJson()->get(self::FEEDBACK, [
+                'auth' => $shopId.'|'.$password, 'version' => 'cms-v3', 'type' => 'json', 'range' => 'all',
+            ])->throw()->json();
+        } catch (\Illuminate\Http\Client\ConnectionException) {
+            throw new \RuntimeException('Could not reach eKomi.');
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            throw new \RuntimeException('eKomi refused the request (HTTP '.$e->response->status().').');
+        }
 
         // A bare list, or {feedback: [...]}, depending on the account.
         $rows = is_array($json) ? ($json['feedback'] ?? $json['feedbacks'] ?? (array_is_list($json) ? $json : null)) : null;

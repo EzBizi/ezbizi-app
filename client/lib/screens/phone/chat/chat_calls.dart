@@ -409,7 +409,9 @@ class _ChatCallLayerState extends State<ChatCallLayer> {
                               '${call['video'] == true ? ' and camera' : ''} for calls.'
                         : 'The call could not connect.',
                   );
-                  unawaited(_calls.ended(const {'alone': true}));
+                  // My own failure is not the room emptying: a group call
+                  // goes on for the others (a 1:1 call ends either way).
+                  unawaited(_calls.ended(const {'alone': false}));
                 }
               },
             ),

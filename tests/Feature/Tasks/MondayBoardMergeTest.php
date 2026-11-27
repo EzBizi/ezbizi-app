@@ -64,6 +64,10 @@ class MondayBoardMergeTest extends TestCase
                 'scope_type' => 'franchise', 'scope_id' => $monday->franchise_id]);
             $rule->addVersion(['all' => [['field' => 'board_id', 'op' => 'eq', 'value' => $monday->id], ['field' => 'column_id', 'op' => 'eq', 'value' => $reason->id]]],
                 [['type' => 'task.move_group', 'group_id' => $doneGroup->id]], $jose);
+            // Audit 11-27: a rule naming the board only in an action is re-pointed too.
+            $maker = Automation::create(['name' => 'CT: make a task', 'trigger_key' => 'lead.created', 'is_active' => true, 'created_by' => $jose->id,
+                'scope_type' => 'franchise', 'scope_id' => $monday->franchise_id]);
+            $maker->addVersion(['all' => []], [['type' => 'task.create', 'board_id' => $monday->id, 'title' => 'Call']], $jose);
 
             return [$task, $area, $reason, $doneGroup];
         });
@@ -102,7 +106,9 @@ class MondayBoardMergeTest extends TestCase
             $this->assertNotNull(TaskBoard::query()->withTrashed()->find($monday->id)->deleted_at);
             $this->assertNull(TaskBoardFolder::query()->find($folder->id), 'the emptied folder goes');
 
-            $rule = Automation::query()->with('activeVersion')->sole();
+            $maker = Automation::query()->with('activeVersion')->where('name', 'CT: make a task')->sole();
+            $this->assertSame($branch->id, $maker->activeVersion->actions[0]['board_id']);
+            $rule = Automation::query()->with('activeVersion')->where('name', 'CT: Done')->sole();
             $this->assertSame($branch->id, collect($rule->activeVersion->conditions['all'])->firstWhere('field', 'board_id')['value']);
             $this->assertSame($cols['Reason']->id, collect($rule->activeVersion->conditions['all'])->firstWhere('field', 'column_id')['value']);
             $this->assertSame($moved->group_id, $rule->activeVersion->actions[0]['group_id']);

@@ -59,7 +59,7 @@ class InventoryVendorsController extends Controller
 
         $vendors = $query
             ->orderBy('name')
-            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+            ->paginate(perPage: max(1, min((int) $request->query('per_page', 50), 200)));
 
         return response()->json([
             'data' => collect($vendors->items())->map(

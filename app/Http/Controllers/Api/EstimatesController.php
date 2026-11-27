@@ -182,6 +182,11 @@ class EstimatesController extends Controller
             throw ValidationException::withMessages(['lines' => "A decided estimate's lines are fixed."]);
         }
 
+        // An imported total with no lines is not wiped by an empty list (audit 2026-11-27).
+        if (($input['lines'] ?? null) === [] && (int) $estimate->total_minor !== 0 && ! $estimate->lines()->exists()) {
+            throw ValidationException::withMessages(['lines' => 'This estimate has a total but no lines; add its lines instead of clearing them.']);
+        }
+
         DB::transaction(function () use ($estimate, $input, $before, $after) {
             $estimate->fill(array_intersect_key($input, array_flip(['title', 'note', 'issued_on'])));
             $estimate->status = $after;

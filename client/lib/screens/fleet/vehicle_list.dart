@@ -113,7 +113,7 @@ class VehicleList extends StatelessWidget {
       LayoutBuilder(builder: (context, box) => _build(context, box.maxWidth));
 
   Widget _build(BuildContext context, double width) {
-    final total = places.fold<int>(
+    final stateTotal = places.fold<int>(
       0,
       (sum, p) => sum + ((p['count'] as num?)?.toInt() ?? 0),
     );
@@ -134,7 +134,7 @@ class VehicleList extends StatelessWidget {
                   onSelected: (_) => onPlace!(p['id'] as String?),
                 ),
               ChoiceChip(
-                label: Text('All states  $total'),
+                label: Text('All states  $stateTotal'),
                 selected: place == null,
                 onSelected: (_) => onPlace!(null),
               ),

@@ -256,6 +256,8 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
       _posts = posts == null || !posts.ok ? const [] : _readPosts(posts);
     });
 
+    await _followProvisional();
+    if (!mounted) return;
     _watchPending();
     unawaited(_countComments());
   }
@@ -271,6 +273,24 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     setState(() {
       _posts = _readPosts(posts);
     });
+    await _followProvisional();
+  }
+
+  /// The search can hide the post just sent: it is still followed by id, or
+  /// it would stay "queued" and the poll would announce an outage.
+  Future<void> _followProvisional() async {
+    final early = _provisional;
+    if (early == null || _q.isEmpty || _posts.any((p) => p.id == early.id)) {
+      return;
+    }
+    final all = await widget.api.get('/social/posts');
+    if (!mounted || !all.ok) return;
+    for (final p in _readPosts(all)) {
+      if (p.id == early.id) {
+        setState(() => _provisional = p);
+        return;
+      }
+    }
   }
 
   static List<_SentPost> _readPosts(ApiResponse response) =>
@@ -452,20 +472,25 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
             final path = approve
                 ? '/business-profile/post-queue/${target.id}/approve'
                 : '/business-profile/post-queue/${target.id}/disapprove';
-            final response = await widget.api.post(path, {
-              if (publishNow) 'publish_now': true,
-            });
+            final response = await widget.api.post(
+              path,
+              socialApproveBody(publishNow: publishNow),
+            );
             if (!mounted) return;
             // The server's own check (Marketing stage C): no time on its side,
             // whatever this copy of the post said. Asked the same way.
             if (approve &&
                 !publishNow &&
-                response.statusCode == 422 &&
-                response.body['code'] == 'needs_publish_now_confirm') {
+                socialNeedsPublishNowConfirm(
+                  response.statusCode,
+                  response.body,
+                )) {
               final again = await _confirmPostNow(post);
               if (!mounted) return;
               if (again == 'now') {
-                await _act(widget.api.post(path, {'publish_now': true}));
+                await _act(
+                  widget.api.post(path, socialApproveBody(publishNow: true)),
+                );
               } else if (again == 'time') {
                 await _editPost(post);
               }
@@ -1366,7 +1391,8 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   @override
   void didUpdateWidget(_ComposeColumn old) {
     super.didUpdateWidget(old);
-    if (widget.composeAt != old.composeAt) _takeComposeAt();
+    // Identity, not value: tapping the same day again is a new request.
+    if (!identical(widget.composeAt, old.composeAt)) _takeComposeAt();
   }
 
   void _takeComposeAt() {
@@ -1623,6 +1649,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
 
     setState(() {
       _media = picked;
+      _libraryItem = null;
       _dropRefused = null;
     });
 
@@ -2998,6 +3025,11 @@ class _AccountsPane extends StatelessWidget {
   Widget build(BuildContext context) {
     final connected = {for (final c in connections) c.provider: c};
     final phone = MediaQuery.sizeOf(context).width < 600;
+    // The server refuses connect/disconnect without marketing.edit.
+    final refused = canChange
+        ? null
+        : 'Your role cannot connect or disconnect accounts. '
+              'Ask an admin for Marketing edit.';
     String subtitleOf(_SocialConnection page) => page.handle != null
         ? '${page.providerLabel} · @${page.handle}'
         : page.providerLabel;
@@ -3025,10 +3057,13 @@ class _AccountsPane extends StatelessWidget {
     );
     List<Widget> actionsOf(BuildContext context, _SocialConnection page) => [
       if (page.broken)
-        TextButton(
-          key: ValueKey('social-reconnect-${page.id}'),
-          onPressed: onConnect,
-          child: const Text('Reconnect'),
+        Refused(
+          reason: refused,
+          child: TextButton(
+            key: ValueKey('social-reconnect-${page.id}'),
+            onPressed: canChange ? onConnect : null,
+            child: const Text('Reconnect'),
+          ),
         ),
       // Instagram comments are moderated through the Page
       // the Instagram account is linked to.
@@ -3039,12 +3074,15 @@ class _AccountsPane extends StatelessWidget {
         ),
       // Muted, not the accent: a destructive link styled as
       // the main action (deep dive 2026-11-02 #11).
-      TextButton(
-        style: TextButton.styleFrom(
-          foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+      Refused(
+        reason: refused,
+        child: TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          onPressed: canChange ? () => onDisconnect(page) : null,
+          child: const Text('Disconnect'),
         ),
-        onPressed: () => onDisconnect(page),
-        child: const Text('Disconnect'),
       ),
     ];
 
@@ -3105,10 +3143,13 @@ class _AccountsPane extends StatelessWidget {
               const SizedBox(height: 12),
               Align(
                 alignment: Alignment.centerLeft,
-                child: FilledButton(
-                  key: const ValueKey('tour-marketing-accounts-connect'),
-                  onPressed: onConnect,
-                  child: Text('Connect a page to $viewName'),
+                child: Refused(
+                  reason: refused,
+                  child: FilledButton(
+                    key: const ValueKey('tour-marketing-accounts-connect'),
+                    onPressed: canChange ? onConnect : null,
+                    child: Text('Connect a page to $viewName'),
+                  ),
                 ),
               ),
             ],
@@ -4991,6 +5032,8 @@ class _PlannerState extends State<_Planner> {
   late DateTime _anchor = _day(widget.focusDay ?? DateTime.now());
   late DateTime _phoneDay = _anchor;
   List<_SentPost> _range = const [];
+  int _loadGen = 0;
+  String? _rangeError;
   String? _selected;
   String? _network;
   String? _state;
@@ -5046,14 +5089,21 @@ class _PlannerState extends State<_Planner> {
     if (monday.isBefore(from)) from = monday;
     final sunday = _plus(monday, 6);
     if (sunday.isAfter(to)) to = sunday;
-    final asked = (from, to);
+    final gen = ++_loadGen;
     final response = await widget.api.get('/social/posts', {
       'from': formatCalendarDay(from),
       'to': formatCalendarDay(to),
     });
-    if (!mounted || !response.ok) return;
-    if (asked != (from, to)) return;
-    setState(() => _range = _SocialMediaTabState._readPosts(response));
+    // A later read was asked for: this one is for a range no longer shown.
+    if (!mounted || gen != _loadGen) return;
+    if (!response.ok) {
+      setState(() => _rangeError = response.message);
+      return;
+    }
+    setState(() {
+      _rangeError = null;
+      _range = _SocialMediaTabState._readPosts(response);
+    });
   }
 
   void _shift(int step) {
@@ -5187,7 +5237,23 @@ class _PlannerState extends State<_Planner> {
           for (final e in byDay.entries)
             if (!e.key.isBefore(from) && !e.key.isAfter(to)) ...e.value,
         ];
-        final calendar = _calendarCard(context, byDay, shown, attention);
+        final card = _calendarCard(context, byDay, shown, attention);
+        final error = _rangeError;
+        final calendar = error == null
+            ? card
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    key: const Key('plan-range-error'),
+                    children: [
+                      Expanded(child: DashboardNote(error)),
+                      TextButton(onPressed: _load, child: const Text('Retry')),
+                    ],
+                  ),
+                  Expanded(child: card),
+                ],
+              );
         if (selected == null) return calendar;
         final inspector = SizedBox(
           key: const Key('plan-inspector'),
@@ -5877,7 +5943,13 @@ class _MonthGrid extends StatelessWidget {
     final edge = EzBiziTheme.edge(context);
     final first = _mondayOf(month);
     final last = DateTime(month.year, month.month + 1, 0);
-    final weeks = (last.difference(first).inDays ~/ 7) + 1;
+    // UTC days: a local difference loses an hour across a DST change.
+    final weeks =
+        (DateTime.utc(last.year, last.month, last.day)
+                .difference(DateTime.utc(first.year, first.month, first.day))
+                .inDays ~/
+            7) +
+        1;
     final today = _day(DateTime.now());
 
     Widget cell(DateTime day) {

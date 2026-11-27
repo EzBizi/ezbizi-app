@@ -269,7 +269,7 @@ final class MondayBoardMerge
         };
         foreach (Automation::query()->with('activeVersion')->get() as $rule) {
             $version = $rule->activeVersion;
-            if ($version === null || ! str_contains(json_encode($version->conditions), $from->id)) {
+            if ($version === null || ! str_contains(json_encode([$version->conditions, $version->actions]), $from->id)) { // actions too (audit 11-27)
                 continue;
             }
             $creator = User::query()->find($rule->created_by) ?? $by;

@@ -108,6 +108,62 @@ void main() {
         reason: 'the hero moved off the newest capture');
   });
 
+  testWidgets('paging still works after a load it was racing took over', (
+    tester,
+  ) async {
+    // Audit 11-27: a page in flight when a newer load started kept
+    // _loadingMore true for good, so the strip never paged again.
+    final now = DateTime.now().toUtc();
+    Map<String, dynamic> shot(String id, int i) => {
+      'id': id,
+      'device_id': _capableDevice['id'],
+      'captured_at': now.subtract(Duration(seconds: i * 30)).toIso8601String(),
+      'bytes': 1, 'width': 1, 'height': 1,
+    };
+    final stalled = Completer<List<Map<String, dynamic>>>();
+    final befores = <Uri>[];
+    var day = 0;
+    await _pumpTab(
+      tester,
+      devices: [_capableDevice],
+      shots: const [],
+      meta: {'in_range': 200, 'total': 200},
+      page: (u) {
+        if (u.queryParameters['limit'] == '1') return [shot('newest', 0)];
+        if (u.queryParameters.containsKey('before')) {
+          befores.add(u);
+          if (befores.length == 1) return stalled.future;
+          return [shot('d$day-older', 200)];
+        }
+        day++;
+        return [for (var i = 0; i < 100; i++) shot('d$day-$i', i)];
+      },
+    );
+
+    await tester.tap(find.byKey(const Key('desktop-monitoring-hero')));
+    await tester.pump();
+    for (var i = 0; i < 100; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    }
+    await tester.pump();
+    expect(befores, hasLength(1), reason: 'the first page is in flight');
+
+    // A newer load takes over while that page is still loading.
+    await tester.tap(find.byKey(const Key('desktop-monitoring-day-back')));
+    await tester.pumpAndSettle();
+    stalled.complete(const []);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('desktop-monitoring-hero')));
+    await tester.pump();
+    for (var i = 0; i < 100; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    }
+    await tester.pumpAndSettle();
+
+    expect(befores.length, greaterThan(1), reason: 'the new day pages again');
+  });
+
   testWidgets('the day bar says how many captures exist, today and in 30 days', (
     tester,
   ) async {
@@ -998,6 +1054,47 @@ void main() {
   // this exercises `_onKey`'s routing deterministically without depending on
   // the platform's focus/HardwareKeyboard state.
 
+  testWidgets('input batches are posted one at a time, in order', (tester) async {
+    // Audit 11-27: concurrent posts merged out of order on the server and a
+    // lost mouse-up left the remote button held.
+    final hold = Completer<void>();
+    final inFlight = <int>[];
+    var first = true;
+    final harness = _liveHarness(
+      devices: [_raceDeviceA],
+      shotsFor: (_) => _raceShotsA,
+      liveFrame: (_) => _onePixelPng,
+      grantControl: true,
+      inputsInFlight: inFlight,
+      beforeInputReply: () {
+        if (!first) return Future.value();
+        first = false;
+        return hold.future;
+      },
+    );
+    await _pumpLiveTab(tester, harness.api);
+    await tester.tap(find.byKey(const Key('desktop-monitoring-control-toggle')));
+    await _liveTick(tester);
+    await _liveTick(tester);
+
+    final node = FocusNode();
+    addTearDown(node.dispose);
+    _sendKey(tester, node, _keyDown(PhysicalKeyboardKey.keyA, LogicalKeyboardKey.keyA, character: 'a'));
+    await _flushControlInput(tester);
+    // The first post is held; more input arrives meanwhile.
+    _sendKey(tester, node, _keyUp(PhysicalKeyboardKey.keyA, LogicalKeyboardKey.keyA));
+    _sendKey(tester, node, _keyDown(PhysicalKeyboardKey.keyB, LogicalKeyboardKey.keyB, character: 'b'));
+    await _flushControlInput(tester);
+    expect(harness.inputBatches, hasLength(1), reason: 'the second waits for the first');
+
+    hold.complete();
+    await _flushControlInput(tester);
+    await _flushControlInput(tester);
+
+    expect(inFlight.reduce((a, b) => a > b ? a : b), 1);
+    expect(harness.inputBatches.length, greaterThan(1), reason: 'the rest was sent after');
+  });
+
   testWidgets(
     'Ctrl+C drives a modifier chord as key VK events — VK_CONTROL down, C '
     'down, C up, VK_CONTROL up — and posts NO text event for the C',
@@ -1373,7 +1470,7 @@ Future<void> _pumpTab(
   VoidCallback? onDevicesFetch,
   Size size = const Size(1280, 900),
   Map<String, Object?>? meta,
-  List<Map<String, dynamic>> Function(Uri request)? page,
+  FutureOr<List<Map<String, dynamic>>> Function(Uri request)? page,
   List<Uri>? shotRequests,
 }) async {
   tester.view.physicalSize = size;
@@ -1420,7 +1517,7 @@ Future<void> _pumpTab(
       if (path.endsWith('/monitoring/screenshots')) {
         shotRequests?.add(request.url);
         return _json({
-          'data': page?.call(request.url) ?? liveShots,
+          'data': await page?.call(request.url) ?? liveShots,
           'meta': ?meta,
         });
       }
@@ -1524,7 +1621,10 @@ Future<void> _advance(WidgetTester tester, [int steps = 10]) async {
   required List<Map<String, dynamic>> Function(String deviceId) shotsFor,
   required List<int>? Function(String deviceId) liveFrame,
   bool grantControl = false,
+  Future<void> Function()? beforeInputReply,
+  List<int>? inputsInFlight,
 }) {
+  var inFlight = 0;
   final watchCalls = <String>[];
   final frameCalls = <String>[];
   // Remote Control (Part B): which device every `.../control` post named, and
@@ -1583,6 +1683,12 @@ Future<void> _advance(WidgetTester tester, [int steps = 10]) async {
       if (path.contains('/monitoring/devices/') && path.endsWith('/input')) {
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         inputBatches.add((body['events'] as List<dynamic>?) ?? const []);
+        inputsInFlight?.add(++inFlight);
+        try {
+          await beforeInputReply?.call();
+        } finally {
+          inFlight--;
+        }
         return http.Response('', 204);
       }
 

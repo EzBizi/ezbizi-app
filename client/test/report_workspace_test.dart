@@ -41,6 +41,44 @@ void main() {
     },
   );
 
+  // Audit 2026-11-27: a refused approval's message was wiped by the reload
+  // after it, and a second press sent the approval again.
+  testWidgets('a refused approval stays said, and one press sends one', (
+    tester,
+  ) async {
+    final asked = <Uri>[];
+    await _pump(tester, asked: asked);
+    await tester.tap(find.byKey(const ValueKey('workspace-report-period')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('workspace-approve')));
+    await tester.tap(find.byKey(const ValueKey('workspace-approve')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Somebody else approves this one.'), findsOneWidget);
+    expect(asked.where((u) => u.path.endsWith('/approve')), hasLength(1));
+  });
+
+  // The Tuesday after the spring DST change: last week is still Monday to
+  // Sunday, not a Sunday to Saturday a Duration lands on.
+  testWidgets('last week is calendar days across the DST change', (
+    tester,
+  ) async {
+    final asked = <Uri>[];
+    await _pump(tester, now: DateTime(2026, 3, 10), asked: asked);
+    await tester.tap(find.byKey(const ValueKey('workspace-report-period')));
+    await tester.pumpAndSettle();
+
+    expect(
+      asked.lastWhere((u) => u.path.endsWith('/reports/period')).queryParameters,
+      containsPair('from', '2026-03-02'),
+    );
+    expect(
+      asked.lastWhere((u) => u.path.endsWith('/reports/period')).queryParameters,
+      containsPair('to', '2026-03-08'),
+    );
+  });
+
   testWidgets('Excel is hidden without reports.export', (tester) async {
     await _pump(tester, permissions: const ['reports.view']);
     await tester.tap(find.byKey(const ValueKey('workspace-report-period')));
@@ -90,6 +128,8 @@ Future<void> _pump(
     'reports.workspace.view',
   ],
   double width = 1280,
+  DateTime? now,
+  List<Uri>? asked,
 }) async {
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -98,6 +138,10 @@ Future<void> _pump(
   final api = ApiClient(
     client: MockClient((request) async {
       final path = request.url.path;
+      asked?.add(request.url);
+      if (path.endsWith('/reports/batches/b-1/approve')) {
+        return _json({'message': 'Somebody else approves this one.'}, 403);
+      }
       if (path.endsWith('/me')) {
         return _json({
           'data': {..._me, 'permissions': permissions},
@@ -159,7 +203,7 @@ Future<void> _pump(
         body: ReportWorkspace(
           api: api,
           session: session,
-          now: () => DateTime(2026, 10, 29),
+          now: () => now ?? DateTime(2026, 10, 29),
         ),
       ),
     ),

@@ -45,6 +45,8 @@ class FinancialBillsController extends Controller
         $like = '%'.addcslashes($term, '%_\\').'%';
 
         $bills = FinancialBill::query()->with('company:id,name', 'franchise:id,name')
+            // Narrowed to the view in SQL before the cap; inView() below stays the rule.
+            ->tap(fn ($q) => ViewScope::forUser($request->user())->constrainPlaces($q))
             // The place a bill is for, which is the name the row shows.
             ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w
                 ->whereHas('company', fn ($c) => $c->where('name', 'like', $like))

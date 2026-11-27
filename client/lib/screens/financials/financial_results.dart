@@ -16,7 +16,7 @@ import '../../widgets/status_pill.dart';
 import 'invoice_common.dart';
 
 int? _cents(String t) {
-  final v = double.tryParse(t.replaceAll(r'$', '').replaceAll(',', '').trim());
+  final v = double.tryParse(t.replaceAll(RegExp(r'[$,\s]'), ''));
   return v == null ? null : (v * 100).round();
 }
 
@@ -571,15 +571,64 @@ class _Figures {
       jobs = TextEditingController(text: '${row['jobs'] ?? ''}'),
       cost = TextEditingController(text: _dollars(row['cost_cents'])),
       sales = TextEditingController(text: _dollars(row['sales_cents'])),
-      profit = TextEditingController(text: _dollars(row['profit_cents']));
+      profit = TextEditingController(text: _dollars(row['profit_cents'])) {
+    final derived = _derivedProfit();
+    _lastDerived = derived ?? '';
+    cost.addListener(_rederive);
+    sales.addListener(_rederive);
+  }
 
   final TextEditingController date, area, calls, jobs, cost, sales, profit;
+
+  /// The profit last filled in from sales − cost. While the profit box is
+  /// blank or still shows it, editing cost or sales recomputes it; a profit
+  /// typed by hand is left alone.
+  late String _lastDerived;
+
+  String? _derivedProfit() {
+    final c = _cents(cost.text.trim().isEmpty ? '0' : cost.text);
+    final s = _cents(sales.text.trim().isEmpty ? '0' : sales.text);
+    return c == null || s == null ? null : _dollars(s - c);
+  }
+
+  void _rederive() {
+    final now = profit.text.trim();
+    if (now.isNotEmpty && now != _lastDerived) return;
+    final next = _derivedProfit();
+    if (next == null || next == now) return;
+    _lastDerived = next;
+    profit.text = next;
+  }
+
+  /// Why the figures cannot be saved, or null. A figure that does not read
+  /// as a number is refused rather than saved as 0.
+  String? invalid() {
+    for (final (c, label) in [
+      (cost, 'cost'),
+      (sales, 'sales'),
+      (profit, 'profit'),
+    ]) {
+      if (c.text.trim().isNotEmpty && _cents(c.text) == null) {
+        return '"${c.text.trim()}" is not an amount for $label.';
+      }
+    }
+    for (final (c, label) in [(calls, 'calls'), (jobs, 'jobs')]) {
+      final t = c.text.replaceAll(RegExp(r'[,\s]'), '');
+      if (t.isNotEmpty && int.tryParse(t) == null) {
+        return '"${c.text.trim()}" is not a number of $label.';
+      }
+    }
+    return null;
+  }
+
+  static int _count(String t) =>
+      int.tryParse(t.replaceAll(RegExp(r'[,\s]'), '')) ?? 0;
 
   Map<String, Object?> body() => {
     'date': date.text.trim(),
     'area': area.text.trim().isEmpty ? null : area.text.trim(),
-    'calls': int.tryParse(calls.text.trim()) ?? 0,
-    'jobs': int.tryParse(jobs.text.trim()) ?? 0,
+    'calls': _count(calls.text),
+    'jobs': _count(jobs.text),
     'cost_cents': _cents(cost.text) ?? 0,
     'sales_cents': _cents(sales.text) ?? 0,
     if (_cents(profit.text) != null) 'profit_cents': _cents(profit.text),
@@ -704,6 +753,8 @@ class _ResultPanelState extends State<_ResultPanel> {
     if (_source.text.trim().isEmpty) {
       return setState(() => _error = 'Type the lead source.');
     }
+    final invalid = _f.invalid();
+    if (invalid != null) return setState(() => _error = invalid);
     setState(() => _busy = true);
     final body = {'source': _source.text.trim(), ..._f.body()};
     await _done(
@@ -895,6 +946,8 @@ class _ReviewPanelState extends State<_ReviewPanel> {
     if (_source.text.trim().isEmpty) {
       return setState(() => _error = 'Type the lead source.');
     }
+    final invalid = _rows.map((r) => r.invalid()).nonNulls.firstOrNull;
+    if (invalid != null) return setState(() => _error = invalid);
     setState(() {
       _busy = true;
       _error = null;

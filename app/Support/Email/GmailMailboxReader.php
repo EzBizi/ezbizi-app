@@ -1032,7 +1032,8 @@ final class GmailMailboxReader implements LabelsThreads, MailboxReader, RepliesW
         }
 
         try {
-            $info = Http::timeout(self::TIMEOUT)->get('https://oauth2.googleapis.com/tokeninfo', ['access_token' => $token]);
+            // In the body, not the URL, where it would land in logs (audit 11-27).
+            $info = Http::asForm()->timeout(self::TIMEOUT)->post('https://oauth2.googleapis.com/tokeninfo', ['access_token' => $token]);
         } catch (ConnectionException) {
             return 'Google did not answer the sending check. It is tried again later.';
         }
@@ -1197,10 +1198,14 @@ final class GmailMailboxReader implements LabelsThreads, MailboxReader, RepliesW
         $summary = $this->mapper->summary($original);
         $headers = $this->headerMap($original);
         $self    = mb_strtolower($mailbox->address);
-        $list    = fn (string $raw) => array_map('mb_strtolower', array_filter(array_map(
-            fn (string $part) => preg_match('/<([^>]+)>/', $part, $m) ? trim($m[1]) : trim($part),
-            explode(',', $raw),
-        )));
+        // Every address in the header, not every comma-separated piece: a
+        // display name like "Smith, John" split into two bogus recipients
+        // (audit 11-27).
+        $list = function (string $raw): array {
+            preg_match_all('/[^\s<>",;:]+@[^\s<>",;:]+/', $raw, $m);
+
+            return array_map('mb_strtolower', $m[0]);
+        };
 
         $to = [mb_strtolower($summary->fromAddress)];
 

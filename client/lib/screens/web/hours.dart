@@ -260,6 +260,29 @@ class _HoursFieldState extends State<HoursField> {
   void initState() {
     super.initState();
     _read();
+    widget.controller.addListener(_external);
+  }
+
+  @override
+  void didUpdateWidget(HoursField old) {
+    super.didUpdateWidget(old);
+    if (old.controller != widget.controller) {
+      old.controller.removeListener(_external);
+      widget.controller.addListener(_external);
+      _read();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_external);
+    super.dispose();
+  }
+
+  // Text set from outside (a "Convert hours from" save) re-reads the grid,
+  // so the next edit does not write back the old hours (audit 2026-11-27).
+  void _external() {
+    if (widget.controller.text != formatWeek(_week)) setState(_read);
   }
 
   void _read() {

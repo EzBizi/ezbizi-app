@@ -44,6 +44,36 @@ void main() {
     });
   });
 
+  testWidgets('an unticked connected base is named and needs a second press '
+      'before it is disconnected', (tester) async {
+    final sent = <http.Request>[];
+    await _pump(
+      tester,
+      sent,
+      bases: const [
+        {'id': 'app1', 'name': 'Books', 'tables': 3, 'connected': true},
+        {'id': 'app2', 'name': 'Old CRM', 'tables': 1, 'connected': true},
+      ],
+    );
+    await tester.enterText(find.byKey(const ValueKey('airtable-token')), 'p');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('airtable-find')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('airtable-dropping')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('airtable-base-app2')));
+    await tester.pump();
+
+    expect(find.text('Saving disconnects: Old CRM.'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('airtable-save')));
+    await tester.pumpAndSettle();
+    expect(sent.where((r) => r.url.path.endsWith('/connect')), isEmpty);
+    expect(find.text('Disconnect 1 and use 1'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('airtable-save')));
+    await tester.pumpAndSettle();
+    expect(sent.last.url.path, '/api/v1/social/airtable/connect');
+  });
+
   testWidgets('a token that reaches nothing says so', (tester) async {
     await _pump(tester, [], bases: const []);
     await tester.enterText(find.byKey(const ValueKey('airtable-token')), 'p');

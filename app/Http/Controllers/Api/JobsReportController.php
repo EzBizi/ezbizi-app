@@ -59,7 +59,7 @@ class JobsReportController extends Controller
         $jobs = DB::table('workiz_jobs as j')
             ->where('j.organization_id', app(TenantContext::class)->idOrFail())
             ->whereBetween('j.booked_at', [$q['from'].' 00:00:00', $q['to'].' 23:59:59'])
-            ->when(ReportView::franchiseIds(), fn ($w, $ids) => $w->whereIn('j.franchise_id', $ids))
+            ->where(fn ($w) => ReportView::whereInView($w, 'j.franchise_id'))
             ->leftJoin('franchises as f', 'f.id', '=', 'j.franchise_id')
             ->leftJoin('jobs as e', 'e.id', '=', 'j.job_id')
             // The source Workiz's own reports credit: a sub-contracted job's company (ReportJobs::jobs).

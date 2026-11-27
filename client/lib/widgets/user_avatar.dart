@@ -133,8 +133,14 @@ class _UserAvatarState extends State<UserAvatar> {
 
     _path = path;
     final bytes = await _cache.putIfAbsent(path, () async {
-      final raw = await widget.api.getBytes(path);
-      return raw == null ? null : Uint8List.fromList(raw);
+      final r = await widget.api.getBytesResponse(path);
+      final raw = r.bytes;
+      if (r.ok && raw != null) return Uint8List.fromList(raw);
+      // Only a real "no photo" (404) is remembered; a failed download is
+      // forgotten so the next draw asks again (audit 2026-11-27: one network
+      // blip hid that face for the whole session).
+      if (r.statusCode != 404) _cache.remove(path);
+      return null;
     });
 
     if (!mounted) return;

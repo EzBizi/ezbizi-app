@@ -24,6 +24,17 @@ class PurgeDeletedTaskBoards extends Command
                 TaskBoard::query()->onlyTrashed()
                     ->where('deleted_at', '<', now()->subDays(self::DAYS))
                     ->each(function (TaskBoard $b) use (&$gone) {
+                        // Audit 11-27: the SQL cascade skips model events, so update files would be orphaned.
+                        // Their rows and bytes go first, through the model (a refusing file stops this board).
+                        $updates = \App\Models\TaskUpdate::query()->withoutGlobalScopes()
+                            ->whereIn('task_id', \App\Models\Task::withTrashed()->where('board_id', $b->id)->select('id'))->select('id');
+                        \App\Models\Attachment::query()->where('attachable_type', 'task_updates')->whereIn('attachable_id', $updates)
+                            ->each(function (\App\Models\Attachment $a) {
+                                $a->delete();
+                                if ($a->disk && $a->path) {
+                                    \Illuminate\Support\Facades\Storage::disk($a->disk)->delete($a->path);
+                                }
+                            });
                         $b->forceDelete(); // its tasks, columns and groups cascade
                         $gone++;
                     });

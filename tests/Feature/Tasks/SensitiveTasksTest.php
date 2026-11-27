@@ -161,6 +161,14 @@ class SensitiveTasksTest extends TestCase
         $this->assertNull($tile['thumbnail_url']);
         $this->assertNull($tile['url']);
         $this->assertSame([], $this->api()->getJson("/api/v1/task-boards/{$this->board->id}/attachments?type=file")->json('data'));
+
+        // The updates feed (audit 11-27): the notice, no body, no file names or links.
+        $feed = $this->api()->getJson('/api/v1/task-updates')->assertOk();
+        $this->noSecret($feed->getContent());
+        $mine = collect($feed->json('data'))->where('task_id', $this->task);
+        $this->assertNotEmpty($mine);
+        $this->assertSame([[]], $mine->pluck('attachments')->unique()->values()->all());
+        $this->assertSame([SensitiveTasks::NOTICE], $mine->pluck('body')->unique()->values()->all());
         $this->assertSame(0, $this->reveals());
     }
 
