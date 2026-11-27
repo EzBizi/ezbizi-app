@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'core/address.dart';
 import 'core/app_window.dart';
 import 'core/api_client.dart';
+import 'core/push_registration.dart';
 import 'core/contracts.dart';
 import 'core/deep_links.dart';
 import 'core/deployment.dart';
@@ -1078,7 +1079,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     widget.address?.push('/account');
   });
 
-  Future<void> _signOut() => widget.session.logOut();
+  Future<void> _signOut() async {
+    // Before the token goes: a shared phone kept the last person's pushes
+    // (audit 2026-11-27).
+    await PushRegistration.unregister(widget.api);
+    await widget.api.post('/auth/logout', {});
+    widget.session.signOut();
+  }
 
   /// Ask for another confirmation link.
   ///

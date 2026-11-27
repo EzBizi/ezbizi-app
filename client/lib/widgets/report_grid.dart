@@ -417,6 +417,14 @@ class _GridCardsState extends State<_GridCards> {
     Widget card(int? index, List<GridCell> row) {
       final total = index == null;
       final open = index != null && _open.contains(index);
+      final toggle = index == null || rest.isEmpty
+          ? null
+          : () => setState(
+              () => open ? _open.remove(index) : _open.add(index),
+            );
+      // A row that opens something (a drill-down, its job) opens it on a tap,
+      // as the table's row does; its other figures then open from "more".
+      final opens = grid.onTap;
       final title = [
         for (final i in pinned)
           if (row[i].text.trim().isNotEmpty) row[i].text,
@@ -428,11 +436,9 @@ class _GridCardsState extends State<_GridCards> {
         child: InkWell(
           key: index == null ? null : ValueKey('report-grid-card-$index'),
           borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
-          onTap: index == null || rest.isEmpty
-              ? null
-              : () => setState(
-                  () => open ? _open.remove(index) : _open.add(index),
-                ),
+          onTap: index != null && opens != null
+              ? () => opens(index)
+              : toggle,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             child: Column(
@@ -498,11 +504,19 @@ class _GridCardsState extends State<_GridCards> {
                         ],
                       ),
                     ),
-                ] else if (rest.isNotEmpty && index != null) ...[
+                ],
+                if (toggle != null && (opens != null || !open)) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    '${rest.length} more ▾',
-                    style: muted?.copyWith(color: scheme.primary),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: InkWell(
+                      key: ValueKey('report-grid-more-$index'),
+                      onTap: opens == null ? null : toggle,
+                      child: Text(
+                        open ? 'Less ▴' : '${rest.length} more ▾',
+                        style: muted?.copyWith(color: scheme.primary),
+                      ),
+                    ),
                   ),
                 ],
               ],

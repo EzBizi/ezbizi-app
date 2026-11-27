@@ -365,11 +365,10 @@ class Session extends ChangeNotifier {
   /// push registration, then sign out here (audit 11-27). A server that cannot
   /// be reached does not keep anybody signed in on this device.
   Future<void> logOut() async {
-    final device = PushRegistration.lastToken;
+    await PushRegistration.unregister(_api);
     try {
-      await _api.post('/auth/logout', {'device_token': ?device});
+      await _api.post('/auth/logout', {});
     } catch (_) {}
-    PushRegistration.forget();
     signOut();
   }
 

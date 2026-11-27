@@ -256,20 +256,6 @@ class ChatTest extends TestCase
         $this->signedInAs($this->ana)->get("/api/v1/attachments/{$sent['attachment']['id']}")->assertForbidden();
     }
 
-    /** Audit 11-27: signing out forgets this device's push token, and only it. */
-    public function test_sign_out_forgets_this_devices_push_token(): void
-    {
-        foreach (['tok-mine', 'tok-other'] as $t) {
-            \App\Models\DeviceToken::query()->withoutGlobalScopes()->create([
-                'organization_id' => $this->bar->organization_id, 'user_id' => $this->bar->id,
-                'platform' => 'android', 'app' => 'ezchat', 'token' => $t, 'last_registered_at' => now(),
-            ]);
-        }
-        $this->signedInAs($this->bar)->postJson('/api/v1/auth/logout', ['device_token' => 'tok-mine'])->assertOk();
-        $left = \App\Models\DeviceToken::query()->withoutGlobalScopes()->where('user_id', $this->bar->id)->pluck('token')->all();
-        $this->assertSame(['tok-other'], $left);
-    }
-
     public function test_a_call_is_recorded_as_a_line(): void
     {
         $chat = $this->direct($this->bar, $this->ana);

@@ -1220,12 +1220,17 @@ void main() {
 
     await tester.tap(find.byKey(const Key('orders-tile-receive')));
     await tester.pumpAndSettle();
-    expect(asked['purchase-orders'], {'filter': 'to_receive'});
+    expect(asked['purchase-orders'], {
+      'filter': 'to_receive',
+      'page': '1',
+      'per_page': '200',
+    });
 
     await tester.tap(find.byKey(const Key('orders-tile-sales')));
     await tester.pumpAndSettle();
-    expect(asked['sales'], {'filter': 'open'});
-    expect(asked['purchase-orders'], isEmpty);
+    expect(asked['sales'], {'filter': 'open', 'page': '1', 'per_page': '200'});
+    // Every page is read now (audit 11-27); no filter is the point.
+    expect(asked['purchase-orders'], {'page': '1', 'per_page': '200'});
     expect(find.byKey(const Key('order-row-po-po-1')), findsNothing);
   });
 

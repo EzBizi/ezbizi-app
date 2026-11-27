@@ -124,6 +124,9 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
      */
     String? sourceId;
     String? table;
+    // The probe that found weeks already holds the latest week: shown as it
+    // is, not fetched a second time (audit 2026-11-27).
+    ApiResponse? found;
 
     for (final source in sources) {
       final tables = (source['tables'] as List<dynamic>?) ?? [];
@@ -144,6 +147,7 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
       if (probe.ok && ((probe.body['weeks'] as List?) ?? const []).isNotEmpty) {
         sourceId = source['id'] as String;
         table = tables.first as String;
+        found = probe;
         break;
       }
     }
@@ -153,12 +157,16 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
       _sources = sources;
       _sourceId = sourceId;
       _table = table;
+      if (found != null) _showWeek(found);
     });
 
-    if (_sourceId != null && _table != null) _loadWeek();
+    if (found == null && _sourceId != null && _table != null) _loadWeek();
   }
 
+  int _weekLoads = 0;
+
   Future<void> _loadWeek() async {
+    final ticket = ++_weekLoads;
     setState(() {
       _loadingWeek = true;
       _error = null;
@@ -173,24 +181,29 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
 
     final response = await _get('/reports/profit-loss', query);
 
-    if (!mounted) return;
+    // The base or table picked meanwhile is the one shown: an earlier pick's
+    // figures answering late no longer land under it.
+    if (!mounted || ticket != _weekLoads) return;
 
-    setState(() {
-      _loadingWeek = false;
+    setState(() => _showWeek(response));
+  }
 
-      if (!response.ok) {
-        _error = response.message;
-        _figures = null;
-        return;
-      }
+  /// One week's answer on the screen; inside a setState.
+  void _showWeek(ApiResponse response) {
+    _loadingWeek = false;
 
-      _weeks = ((response.body['weeks'] as List<dynamic>?) ?? [])
-          .map((week) => week as String)
-          .toList();
+    if (!response.ok) {
+      _error = response.message;
+      _figures = null;
+      return;
+    }
 
-      _figures = response.body['week'] as Map<String, dynamic>?;
-      _week = _figures?['week'] as String?;
-    });
+    _weeks = ((response.body['weeks'] as List<dynamic>?) ?? [])
+        .map((week) => week as String)
+        .toList();
+
+    _figures = response.body['week'] as Map<String, dynamic>?;
+    _week = _figures?['week'] as String?;
   }
 
   Map<String, dynamic>? get _source {
