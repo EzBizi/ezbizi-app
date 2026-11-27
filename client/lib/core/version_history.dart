@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0662', date: '27 Nov 2026', items: [
+      'Chat: each company gets automatic Dispatchers, Technicians and Leadership groups; people join and leave them with their role, and admins choose which roles feed each group',
       'Roles: every module with anything under it now opens the same way, showing its sub-modules then its tabs, with Expand all and Collapse all',
       'EzChat: sign in with email and password, no authenticator code; the EzChat sign-in only works for chat, and the main EzBizi app still asks for the code',
       'Task Board on phones: tapping the board title opens a home with your favourite boards, recently visited boards and the workspace tree, like Monday',
