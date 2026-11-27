@@ -737,10 +737,11 @@ class TasksController extends Controller
             ->latest('task_updates.created_at')->limit(50)->get();
 
         return response()->json([
-            'data' => $rows->map(fn (TaskUpdate $u) => self::presentUpdate($u) + [
+            // A sensitive task's update shows the notice, with no body and no files (array_replace: `+` keeps the left's keys).
+            'data' => $rows->map(fn (TaskUpdate $u) => array_replace(self::presentUpdate($u) + [
                 'task_id' => $u->task_id, 'task' => (string) $u->getAttribute('task_title'),
                 'board_id' => $u->getAttribute('task_board_id'), 'board' => (string) ($boards[$u->getAttribute('task_board_id')] ?? ''),
-            ] + ($u->getAttribute('task_sensitive') ? ['body' => SensitiveTasks::NOTICE] : []))->values(),
+            ], $u->getAttribute('task_sensitive') ? ['body' => SensitiveTasks::NOTICE, 'attachments' => []] : []))->values(),
             'meta' => ['boards' => $counts->map(fn ($c, $b) => ['id' => $b, 'name' => (string) ($boards[$b] ?? ''), 'count' => (int) $c])->values()],
         ]);
     }
