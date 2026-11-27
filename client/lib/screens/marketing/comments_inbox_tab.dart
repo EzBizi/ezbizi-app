@@ -177,6 +177,9 @@ class _CommentsInboxState extends State<CommentsInbox> {
   String? _replyingTo;
   final _reply = TextEditingController();
   bool _busy = false;
+
+  /// Delete was tapped once on this comment; the next tap deletes.
+  String? _confirmDelete;
   String? _error;
 
   @override
@@ -237,7 +240,14 @@ class _CommentsInboxState extends State<CommentsInbox> {
   }
 
   Future<void> _delete(InboxComment c) async {
-    setState(() => _busy = true);
+    if (_confirmDelete != c.id) {
+      setState(() => _confirmDelete = c.id);
+      return;
+    }
+    setState(() {
+      _confirmDelete = null;
+      _busy = true;
+    });
     await _after(
       await widget.api.delete(
         '/social/connections/${c.connectionId}/comments/${c.network}/${c.id}',
@@ -441,7 +451,7 @@ class _CommentsInboxState extends State<CommentsInbox> {
                   TextButton(
                     key: Key('social-comment-delete-${c.id}'),
                     onPressed: _busy ? null : () => _delete(c),
-                    child: const Text('Delete'),
+                    child: Text(_confirmDelete == c.id ? 'Tap again to delete' : 'Delete'),
                   ),
               ],
             ),
