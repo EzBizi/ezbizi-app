@@ -193,6 +193,7 @@ class _VehicleServiceCardState extends State<VehicleServiceCard> {
           if (visit['id'] != null) ...[
             const SizedBox(height: 8),
             VehiclePapers(
+              key: ValueKey('papers-${visit['id']}'),
               api: widget.api,
               attachableType: 'vehicle_service_visits',
               attachableId: visit['id'] as String,
