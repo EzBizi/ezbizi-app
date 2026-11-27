@@ -41,7 +41,7 @@ class JobsByStatus
             // moves, which is exactly when somebody is looking at it.
             'rows' => array_map(fn (string $status) => [
                 'status' => $status,
-                'total'  => (int) ($counts[$status] ?? 0),
+                'total' => (int) ($counts[$status] ?? 0),
             ], $statuses),
 
             'total' => (int) $counts->sum(),
