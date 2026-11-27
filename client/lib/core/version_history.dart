@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0657', date: '27 Nov 2026', items: [
+      'Customer notes take bold, italic and underline, and exports always send notes as plain text',
+    ]),
     VersionRelease(version: '0.0.0656', date: '27 Nov 2026', items: [
       'Leaderboard: the top three are ranked by booking rate; answer rate and call score show beside each name, not ranked by',
     ]),
