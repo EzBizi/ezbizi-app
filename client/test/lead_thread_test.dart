@@ -281,9 +281,13 @@ void main() {
       find.text('Requested: Sunday, Oct 11 · 8:00 AM - 11:00 AM'),
       findsOneWidget,
     );
+    // Audit 11-27: a double tap booked two jobs. Two taps, one request.
+    _approvals = 0;
+    await tester.tap(find.byKey(const ValueKey('booking-approve')));
     await tester.tap(find.byKey(const ValueKey('booking-approve')));
     await tester.pumpAndSettle();
 
+    expect(_approvals, 1);
     expect(find.byKey(const ValueKey('booking-approve')), findsNothing);
     expect(find.text('Approved by Mia'), findsOneWidget);
   });
@@ -1883,6 +1887,7 @@ final _typingPosts = <String>[];
 final _forced = <bool>[];
 final _creditPosts = <String>[];
 final _followUpPosts = <String>[];
+var _approvals = 0;
 
 Future<void> _pump(
   WidgetTester tester, {
@@ -2044,6 +2049,7 @@ Future<void> _pump(
 
       if (request.method == 'POST' &&
           request.url.path.endsWith('/booking/approve')) {
+        _approvals++;
         return http.Response(
           jsonEncode({
             'data': {...?booking, 'status': 'approved', 'decided_by': 'Mia'},

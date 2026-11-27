@@ -202,6 +202,8 @@ class _LeadThreadState extends State<LeadThread> {
 
   bool _editingNote = false;
   bool _savingNote = false;
+  // Audit 11-27: a double tap on Approve booked two jobs and sent two texts.
+  bool _bookingBusy = false;
   // Bold, italic, underline (Eric's suggestion 01a21365, Jose 11-25).
   var _note = FormattedNotesController();
 
@@ -2786,18 +2788,18 @@ class _LeadThreadState extends State<LeadThread> {
           else if (status == 'pending') ...[
             FilledButton(
               key: const ValueKey('booking-approve'),
-              onPressed: () => _decideBooking('approve'),
+              onPressed: _bookingBusy ? null : () => _decideBooking('approve'),
               child: const Text('Approve'),
             ),
             OutlinedButton(
               key: const ValueKey('booking-decline'),
-              onPressed: () => _decideBooking('decline'),
+              onPressed: _bookingBusy ? null : () => _decideBooking('decline'),
               child: const Text('Decline'),
             ),
             // Jose, 2026-11-16: another window, giving the asked-for one back.
             OutlinedButton(
               key: const ValueKey('booking-move'),
-              onPressed: () => _moveBooking(hm),
+              onPressed: _bookingBusy ? null : () => _moveBooking(hm),
               child: const Text('Another date…'),
             ),
           ] else
@@ -2971,9 +2973,11 @@ class _LeadThreadState extends State<LeadThread> {
         ]),
       ),
     );
-    if (pick == null || !mounted) return;
+    if (pick == null || !mounted || _bookingBusy) return;
+    setState(() => _bookingBusy = true);
     final response = await widget.api.post('/leads/$id/booking/move', {'date': pick.date, 'start_time': pick.start});
     if (!mounted) return;
+    setState(() => _bookingBusy = false);
     if (response.ok && response.data is Map) {
       setState(() => _booking = Map<String, dynamic>.from(response.data as Map));
     } else {
@@ -2982,11 +2986,14 @@ class _LeadThreadState extends State<LeadThread> {
   }
 
   Future<void> _decideBooking(String decision) async {
+    if (_bookingBusy) return;
+    setState(() => _bookingBusy = true);
     // Two literal paths, so ClientCallsRealRoutesTest can match each route.
     final response = decision == 'approve'
         ? await widget.api.post('/leads/${widget.lead['id']}/booking/approve', const {})
         : await widget.api.post('/leads/${widget.lead['id']}/booking/decline', const {});
     if (!mounted) return;
+    setState(() => _bookingBusy = false);
     if (response.ok && response.data is Map) {
       setState(() => _booking = Map<String, dynamic>.from(response.data as Map));
     } else {

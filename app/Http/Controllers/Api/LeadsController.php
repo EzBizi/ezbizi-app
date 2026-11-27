@@ -915,6 +915,22 @@ class LeadsController extends Controller
     {
         $this->authorize('update', $lead);
 
+        // Audit 11-27: two taps at once booked two jobs and texted the customer
+        // twice. One answer at a time per lead, read fresh once it is ours; the
+        // lock spans the Workiz calls, so it is a cache lock, not a row lock.
+        $lock = Cache::lock('lead-booking-decision:'.$lead->getKey(), 120);
+        if (! $lock->get()) {
+            return response()->json(['message' => 'This request is already being answered.'], 409);
+        }
+        try {
+            return $this->decideBookingLocked($request, $lead->refresh(), $decision);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function decideBookingLocked(Request $request, Lead $lead, string $decision): JsonResponse
+    {
         $booking = WebBooking::query()->where('lead_id', $lead->getKey())->firstOrFail();
         $wasApproved = $booking->status === WebBooking::APPROVED;
 
@@ -1228,6 +1244,11 @@ class LeadsController extends Controller
         $user = $request->user();
 
         $result = DB::transaction(function () use ($lead, $input, $franchise, $existing, $user) {
+            // Audit 11-27: a second Book (double tap, two people) waits here and
+            // then finds the job the first one made.
+            if (Lead::query()->whereKey($lead->getKey())->lockForUpdate()->value('job_id') !== null) {
+                abort(409, 'This customer already has a job booked. Nothing was sent.');
+            }
             $customer = $existing;
             $created = false;
 
