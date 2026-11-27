@@ -230,7 +230,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     _load();
   }
 
+  int _loads = 0;
+
   Future<void> _load() async {
+    // Only the newest load lands: an older range answering late no longer
+    // replaces a newer one (audit 2026-11-27).
+    final ticket = ++_loads;
     setState(() {
       _loading = true;
       _error = null;
@@ -243,7 +248,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       'to': _span.toKey,
     });
 
-    if (!mounted) return;
+    if (!mounted || ticket != _loads) return;
 
     setState(() {
       _loading = false;
@@ -349,12 +354,19 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     _converting.remove(id);
 
     if (!response.ok) {
-      setState(() => _error = response.message);
+      setState(() {});
+      _actionFailed(response.message);
       return;
     }
 
     _load();
   }
+
+  /// A row's action failing says so and leaves the report where it is
+  /// (audit 2026-11-27: it replaced the whole page with the error).
+  void _actionFailed(String? message) => ScaffoldMessenger.maybeOf(
+    context,
+  )?.showSnackBar(SnackBar(content: Text(message ?? 'That did not save.')));
 
   /// A dispatcher's New / Existing tag, set by hand; null clears it. Only
   /// that row changes, at once, and goes back if the server refuses (Jose,
@@ -365,10 +377,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         if (p is Map && p['person'] == person) p,
     ].firstOrNull;
     final before = row?['tag'];
-    setState(() {
-      _error = null;
-      row?['tag'] = tag;
-    });
+    setState(() => row?['tag'] = tag);
 
     final response = await widget.api.put('/reports/experimental/people/tag', {
       'person': person,
@@ -376,10 +385,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     });
 
     if (!mounted || response.ok) return;
-    setState(() {
-      row?['tag'] = before;
-      _error = response.message;
-    });
+    setState(() => row?['tag'] = before);
+    _actionFailed(response.message);
   }
 
   @override
@@ -1802,7 +1809,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     if (calls.isEmpty)
       Text('No calls.', style: Theme.of(context).textTheme.bodyMedium)
     else
-      for (final call in calls) _call(context, null, call),
+      for (final call in calls)
+        Builder(builder: (context) => _call(context, null, call)),
   ];
 
   /// Every existing-client call in the period, with what each AI made of it.
@@ -1817,7 +1825,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       if (mine.isEmpty)
         Text('No existing-client calls.', style: theme.textTheme.bodyMedium)
       else
-        for (final call in mine) _call(context, null, call),
+        for (final call in mine)
+          Builder(builder: (context) => _call(context, null, call)),
     ];
   }
 
@@ -1972,7 +1981,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           style: theme.textTheme.bodyMedium,
         )
       else
-        for (final call in shown) _call(context, null, call),
+        for (final call in shown)
+          Builder(builder: (context) => _call(context, null, call)),
       const SizedBox(height: 16),
       Text('Converted to booked', style: theme.textTheme.titleSmall),
       const SizedBox(height: 4),
@@ -2071,13 +2081,40 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// New-client calls [person] answered: the credit goes to who took the
   /// call, never to everyone it rang (Jose, 2026-11-03).
   List<Map> _answeredNew(Map<String, dynamic> person) => [
-    for (final call in (_report?['calls'] as List? ?? const []))
-      if (call is Map &&
-          call['answered_by'] == person['person'] &&
-          call['queue'] == _newQueue &&
-          call['mark'] == null)
-        call,
+    for (final call in _answeredBy(person['person']))
+      if (call['queue'] == _newQueue && call['mark'] == null) call,
   ];
+
+  /// Each person's calls, grouped once per report rather than every call
+  /// rescanned for every cell of every row (audit 2026-11-27).
+  List<dynamic>? _indexed;
+  var _byAnswerer = <Object?, List<Map>>{};
+  var _byRang = <Object?, List<Map>>{};
+
+  void _index() {
+    final calls = _report?['calls'] as List? ?? const [];
+    if (identical(calls, _indexed)) return;
+    _indexed = calls;
+    _byAnswerer = {};
+    _byRang = {};
+    for (final call in calls) {
+      if (call is! Map) continue;
+      (_byAnswerer[call['answered_by']] ??= []).add(call);
+      for (final who in {...?(call['rang'] as List?)}) {
+        (_byRang[who] ??= []).add(call);
+      }
+    }
+  }
+
+  List<Map> _answeredBy(Object? name) {
+    _index();
+    return _byAnswerer[name] ?? const [];
+  }
+
+  List<Map> _rangFor(Object? name) {
+    _index();
+    return _byRang[name] ?? const [];
+  }
 
   int _booked(Map<String, dynamic> person) =>
       _answeredNew(person).where((c) => c['booked'] == true).length;
@@ -2099,9 +2136,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   /// The AI coaching reads of the calls [name] answered in these dates.
   List<Map<String, dynamic>> _scoresOf(String name) => [
-    for (final call in (_report?['calls'] as List? ?? const []))
-      if (call is Map && call['answered_by'] == name && call['score'] is Map)
-        (call['score'] as Map).cast<String, dynamic>(),
+    for (final call in _answeredBy(name))
+      if (call['score'] is Map) (call['score'] as Map).cast<String, dynamic>(),
   ];
 
   bool get _scored => (_report?['calls'] as List? ?? const []).any(
@@ -2302,9 +2338,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final name = person['person'];
     var teammate = 0;
     var nobody = 0;
-    for (final call in (_report?['calls'] as List? ?? const [])) {
-      if (call is! Map || call['answered_by'] == name) continue;
-      if (!((call['rang'] as List?) ?? const []).contains(name)) continue;
+    for (final call in _rangFor(name)) {
+      if (call['answered_by'] == name) continue;
       call['answered_by'] == null ? nobody++ : teammate++;
     }
     return (teammate: teammate, nobody: nobody);
@@ -3295,7 +3330,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                     current: current,
                     setBy: (call['set_by'] as Map?)?[field],
                     onSaved: _load,
-                    onError: (m) => setState(() => _error = m),
+                    onError: _actionFailed,
                   ),
                   // The AI may suggest it; a person confirms (Trey, 2026-11-04).
                   if (field == 'mark' &&

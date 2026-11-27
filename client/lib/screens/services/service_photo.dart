@@ -73,18 +73,9 @@ class _ServicePhotoState extends State<ServicePhoto> {
       _error = null;
     });
 
+    // Upload first; the server drops the old photo only once this one is
+    // stored, so a failed upload keeps the photo the service already had.
     final existing = widget.photo?['id'] as String?;
-    if (existing != null) {
-      final removed = await widget.api.delete('/attachments/$existing');
-      if (!mounted) return;
-      if (!removed.ok) {
-        setState(() {
-          _busy = false;
-          _error = removed.reason;
-        });
-        return;
-      }
-    }
 
     final response = await widget.api.postFile(
       '/attachments',
@@ -94,6 +85,7 @@ class _ServicePhotoState extends State<ServicePhoto> {
       fields: {
         'attachable_type': 'services',
         'attachable_id': widget.serviceId,
+        if (existing != null) 'replace': '1',
       },
     );
 
@@ -158,14 +150,8 @@ class _ServicePhotoState extends State<ServicePhoto> {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          'Square (1:1).',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        if (_error != null) ...[
-          const SizedBox(height: 8),
-          ErrorNote(_error!),
-        ],
+        Text('Square (1:1).', style: Theme.of(context).textTheme.bodySmall),
+        if (_error != null) ...[const SizedBox(height: 8), ErrorNote(_error!)],
         if (widget.canEdit) ...[
           const SizedBox(height: 8),
           Wrap(
@@ -174,7 +160,9 @@ class _ServicePhotoState extends State<ServicePhoto> {
               FilledButton.tonalIcon(
                 onPressed: _busy ? null : _add,
                 icon: const Icon(Icons.add_a_photo, size: 18),
-                label: Text(widget.photo == null ? 'Add photo' : 'Replace photo'),
+                label: Text(
+                  widget.photo == null ? 'Add photo' : 'Replace photo',
+                ),
               ),
               if (widget.photo != null)
                 OutlinedButton(

@@ -35,7 +35,7 @@ class DispatchReportController extends Controller
         $zone = ReportView::zone();
 
         $leads = DB::table('leads')->where('organization_id', $org)->where('is_test', false)->whereNull('hidden_at')
-            ->when(ReportView::franchiseIds(), fn ($w, $ids) => $w->whereIn('franchise_id', $ids))
+            ->where(fn ($w) => ReportView::whereInView($w, 'franchise_id'))
             ->whereBetween('received_at', [CarbonImmutable::parse($q['from'], $zone)->utc(), CarbonImmutable::parse($q['to'], $zone)->endOfDay()->utc()])
             ->get(['id', 'dispatcher', 'lead_type', 'received_at']);
         $messages = $leads->filter(fn (object $l) => mb_strtoupper((string) $l->lead_type) !== 'PHONE_CALL');

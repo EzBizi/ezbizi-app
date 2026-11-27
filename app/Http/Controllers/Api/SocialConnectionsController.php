@@ -267,6 +267,7 @@ class SocialConnectionsController extends Controller
         $row = SocialConnection::query()->find($connection);
 
         abort_if($row === null || ! $this->access->inView($user, $row), Status::HTTP_NOT_FOUND);
+        $this->mayWrite($user, $row);
         abort_unless(
             $user->hasPermission($row->providerEnum()?->connectPermission() ?? 'marketing.edit'),
             Status::HTTP_FORBIDDEN,
@@ -301,6 +302,8 @@ class SocialConnectionsController extends Controller
             $row === null || ! $this->access->inView($user, $row),
             Status::HTTP_NOT_FOUND,
         );
+
+        $this->mayWrite($user, $row);
 
         // The same gate as connecting, disconnecting and placing: the module
         // that reads the account decides what it is called.
@@ -347,6 +350,7 @@ class SocialConnectionsController extends Controller
     public function whatsappPurpose(Request $request, string $connection): JsonResponse
     {
         [$row, $number] = $this->whatsappNumber($request, $connection);
+        $this->mayWrite($request->user(), $row);
 
         $purpose = $request->validate([
             'purpose' => ['required', Rule::in(WhatsAppNumber::PURPOSES)],
@@ -430,6 +434,7 @@ class SocialConnectionsController extends Controller
         $user = $request->user();
         $row = SocialConnection::query()->find($connection);
         abort_if($row === null || ! $this->access->inView($user, $row), Status::HTTP_NOT_FOUND);
+        $this->mayWrite($user, $row);
         abort_unless(
             $user->hasPermission(SocialProvider::tryFrom($row->provider)?->connectPermission() ?? 'marketing.edit'),
             Status::HTTP_FORBIDDEN,
@@ -463,6 +468,8 @@ class SocialConnectionsController extends Controller
             Status::HTTP_NOT_FOUND,
         );
 
+        $this->mayWrite($user, $row);
+
         // Same gate as connecting and disconnecting: the module that reads the
         // account decides where its leads go.
         $provider = SocialProvider::tryFrom($row->provider);
@@ -495,6 +502,13 @@ class SocialConnectionsController extends Controller
                 ->exists();
 
             abort_unless($owned, Status::HTTP_NOT_FOUND);
+
+            // And somewhere the caller can act: a branch user files leads only into their own branches.
+            abort_unless(
+                $user->canActOnFranchise(Franchise::query()->findOrFail($franchiseId)),
+                Status::HTTP_FORBIDDEN,
+                Refusal::permission('send leads to that branch')->message(),
+            );
         }
 
         $before = $row->leads_franchise_id;
@@ -591,6 +605,8 @@ class SocialConnectionsController extends Controller
             Status::HTTP_NOT_FOUND,
         );
 
+        $this->mayWrite($user, $row);
+
         $this->mayDisconnect($user, $row);
 
         // A fresh authenticator code, after the row is found and authorised.
@@ -642,6 +658,8 @@ class SocialConnectionsController extends Controller
             ->orderBy('created_at')
             ->get()
             ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))
+            // Seeing an org-level row is not owning it: a branch user leaves it alone.
+            ->filter(fn (SocialConnection $c) => $this->access->reaches($user, $c))
             ->values();
 
         if ($rows->isNotEmpty()) {
@@ -745,6 +763,19 @@ class SocialConnectionsController extends Controller
      * publishing networks are untouched because theirs already answers
      * `marketing.edit`.
      */
+    /**
+     * Every write needs the connection's own scope, not just sight of it: inView()
+     * shows org-level rows to branch users, which must not let them change them.
+     */
+    private function mayWrite(User $user, SocialConnection $row): void
+    {
+        abort_unless(
+            $this->access->reaches($user, $row),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('change a connection that belongs to a wider part of the organization')->message(),
+        );
+    }
+
     private function mayDisconnect(User $user, SocialConnection $row): void
     {
         $provider = SocialProvider::tryFrom($row->provider);

@@ -74,10 +74,22 @@ class WorkizConnectController extends Controller
         );
 
         $data = $request->validate([
-            'api_token' => ['required', 'string', 'max:120'],
+            'api_token' => ['nullable', 'required_without:label', 'string', 'max:120'],
             'auth_secret' => ['nullable', 'string', 'max:120'],
             'method' => ['nullable', 'in:v1,v2'],
+            'label' => ['nullable', 'string', 'max:120'],
         ]);
+
+        // A new name is kept; with no new key, the name is the whole edit (audit 11-27).
+        if (filled($data['label'] ?? null)) {
+            $connection->forceFill(['display_name' => trim($data['label'])])->save();
+        }
+
+        if (blank($data['api_token'] ?? null)) {
+            $this->audit->log('social.renamed', $connection, ['provider' => SocialProvider::Workiz->value, 'name' => $connection->display_name], actor: $user);
+
+            return response()->json(['data' => ['id' => $connection->getKey(), 'method' => $connection->credentials['api_version'] ?? 'v1']]);
+        }
 
         try {
             $version = $this->workiz->verify($data['api_token']);

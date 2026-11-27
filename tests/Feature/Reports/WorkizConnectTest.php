@@ -182,6 +182,22 @@ class WorkizConnectTest extends TestCase
         $this->assertSame(0, $this->inTenant($tenant['org'], fn () => SocialConnection::query()->count()));
     }
 
+    /** Audit 11-27: editing only the name keeps the name and needs no key. */
+    public function test_an_account_is_renamed_without_its_key(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $branch = $this->branch($tenant, 'New Jersey');
+        $this->workizAccepts();
+        $this->signedInAs($this->viewing($tenant, $branch))->postJson('/api/v1/reports/experimental/workiz', ['api_token' => 'api_first'])->assertCreated();
+        $row = $this->inTenant($tenant['org'], fn () => SocialConnection::query()->sole());
+
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/social/workiz/'.$row->id, ['label' => 'NJ main'])->assertOk();
+
+        $row = $this->inTenant($tenant['org'], fn () => $row->fresh());
+        $this->assertSame('NJ main', $row->display_name);
+        $this->assertSame('api_first', $row->credentials['api_token']);
+    }
+
     /** An existing account's key is replaced in place, never shown back; someone who cannot connect cannot edit. */
     public function test_an_existing_account_is_edited_in_place(): void
     {

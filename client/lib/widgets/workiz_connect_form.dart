@@ -92,7 +92,8 @@ class _WorkizConnectFormState extends State<WorkizConnectForm> {
     });
     final body = {
       'method': _method,
-      'api_token': _token.text.trim(),
+      if (!_editing || _token.text.trim().isNotEmpty)
+        'api_token': _token.text.trim(),
       if (_method == 'v1' && _secret.text.trim().isNotEmpty)
         'auth_secret': _secret.text.trim(),
       if (_label.text.trim().isNotEmpty) 'label': _label.text.trim(),

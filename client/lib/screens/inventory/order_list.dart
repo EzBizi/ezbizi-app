@@ -111,7 +111,11 @@ class _OrderListState extends State<OrderList> {
       _addingPo || _addingIssue || _addingSale || _open != null;
 
   /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  /// Bumped per read; a slower, older answer (an earlier search) is dropped.
+  int _loadSeq = 0;
+
   Future<void> _load({bool quiet = false}) async {
+    final seq = ++_loadSeq;
     if (!quiet) {
       setState(() {
         _loading = _orders.isEmpty && _issues.isEmpty && _sales.isEmpty;
@@ -119,20 +123,20 @@ class _OrderListState extends State<OrderList> {
       });
     }
 
-    final po = await widget.api.get('/inventory/purchase-orders', {
+    final po = await inventoryAllPages(widget.api, '/inventory/purchase-orders', {
       if (_tile == 'receive') 'filter': 'to_receive',
       if (_tile == 'open') 'filter': 'open',
       if (_q.isNotEmpty) 'q': _q,
     });
-    final issues = await widget.api.get('/inventory/issues', {
+    final issues = await inventoryAllPages(widget.api, '/inventory/issues', {
       if (_q.isNotEmpty) 'q': _q,
     });
-    final sales = await widget.api.get('/inventory/sales', {
+    final sales = await inventoryAllPages(widget.api, '/inventory/sales', {
       if (_tile == 'sales') 'filter': 'open',
       if (_q.isNotEmpty) 'q': _q,
     });
 
-    if (!mounted) return;
+    if (!mounted || seq != _loadSeq) return;
     if (quiet && !(po.ok && issues.ok && sales.ok)) return;
 
     if (!po.ok) {

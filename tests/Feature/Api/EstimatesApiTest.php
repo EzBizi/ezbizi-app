@@ -164,6 +164,17 @@ class EstimatesApiTest extends TestCase
         $this->amend($id, ['lines' => []])->assertStatus(422)->assertJsonValidationErrors(['lines' => 'fixed']);
     }
 
+    public function test_an_imported_total_without_lines_survives_a_title_edit_and_an_empty_lines_list(): void
+    {
+        // Audit 2026-11-27: A1-imported estimates carry a total and no lines.
+        $id = $this->create()->json('data.id');
+        $this->inTenant($this->alpha['org'], fn () => \App\Models\Estimate::whereKey($id)->update(['total_minor' => 45000]));
+
+        $this->amend($id, ['title' => 'Chimney rebuild'])->assertOk()->assertJsonPath('data.total_minor', 45000);
+        $this->amend($id, ['lines' => []])->assertStatus(422)->assertJsonValidationErrors('lines');
+        $this->assertSame(45000, $this->amend($id, ['note' => 'x'])->json('data.total_minor'));
+    }
+
     public function test_only_a_draft_can_be_deleted(): void
     {
         $draft = $this->create()->json('data.id');

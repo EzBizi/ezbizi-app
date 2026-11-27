@@ -215,6 +215,7 @@ final class WebsiteEnquiries
         return LeadConversation::query()
             ->where('lead_id', $lead->getKey())
             ->orderByDesc('occurred_at')
+            ->orderByDesc('id') // UUID v7: same-second ties go to the newest (audit 2026-11-27)
             ->firstOrFail();
     }
 

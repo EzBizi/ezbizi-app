@@ -43,12 +43,10 @@ class ReportBuilder extends StatefulWidget {
     super.key,
     required this.api,
     required this.onSaved,
-    this.editing,
   });
 
   final ApiClient api;
   final void Function(String id) onSaved;
-  final String? editing;
 
   /// The fields beside the report at this width and wider; narrower, stacked.
   static const double sideBySide = 900;
@@ -1054,7 +1052,12 @@ class _ReportBuilderState extends State<ReportBuilder> {
                 set(_Filter(filter.field, op ?? ops.first, null)),
           ),
         ),
-        value,
+        // A box keeps its own text: keyed by filter, field and condition, a
+        // changed filter starts from its own value, not the last one's.
+        KeyedSubtree(
+          key: ValueKey('builder-filter-$i-${filter.field.key}-${filter.op}'),
+          child: value,
+        ),
       ],
     );
   }

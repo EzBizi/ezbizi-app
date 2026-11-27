@@ -72,6 +72,7 @@ class PushRegistration {
     _androidListening = false;
     _appleListening = false;
     _registered = false;
+    _lastToken = null;
   }
 
   /// Registers the current token, and keeps registering it when it rotates.
@@ -186,6 +187,21 @@ class PushRegistration {
   /// by it and sends EzChat only chat messages and call rings.
   static String app = 'ezbizi';
 
+  /// The token this handset last registered, so sign-out can withdraw it.
+  static String? _lastToken;
+
+  /// Sign-out: this handset stops receiving the person's pushes. Best effort;
+  /// a failure must never block signing out.
+  static Future<void> unregister(ApiClient api) async {
+    final token = _lastToken;
+    if (token == null) return;
+    try {
+      await api.deleteWithBody('/notifications/devices', {'token': token});
+    } catch (_) {}
+    _lastToken = null;
+    _registered = false;
+  }
+
   static Future<void> _register(ApiClient api, String token, String platform) async {
     final response = await api.post('/notifications/devices', {
       'token': token,
@@ -200,5 +216,6 @@ class PushRegistration {
     }
 
     _registered = true;
+    _lastToken = token;
   }
 }

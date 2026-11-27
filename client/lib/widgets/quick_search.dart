@@ -92,6 +92,9 @@ class _QuickSearchState extends State<QuickSearch> {
   }
 
   void _changed(String value) {
+    // Any answer still on its way is for an older term now, even when the
+    // new one is too short to search (audit 2026-11-27).
+    _asked++;
     setState(() {
       _term = value.trim();
       _at = 0;

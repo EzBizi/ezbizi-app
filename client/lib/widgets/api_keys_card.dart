@@ -48,6 +48,9 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
 
   bool _loading = true;
   String? _error;
+
+  /// A revoke that failed: which key, and why. Shown under that key's row.
+  (String, String)? _revokeError;
   List<Map<String, dynamic>> _keys = const [];
 
   /// The form is open.
@@ -157,9 +160,13 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
     setState(() {
       _revoking = null;
       if (!response.ok) {
-        _error = response.reason;
+        // Inline, beside the key: setting _error swaps the whole card for the
+        // error note, which would hide a just-made key's shown-once value
+        // (audit 11-27).
+        _revokeError = (id, response.reason);
         return;
       }
+      _revokeError = null;
       _keys = [
         for (final key in _keys)
           if ('${key['id']}' != id) key,
@@ -534,7 +541,7 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
       );
     }
 
-    final row = Padding(
+    Widget row = Padding(
       key: ValueKey('api-key-$id'),
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -599,6 +606,12 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
         ],
       ),
     );
+    if (_revokeError case (final failed, final why) when failed == id) {
+      row = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [row, ErrorNote(why)],
+      );
+    }
     if (_activity != id) return row;
 
     // What an AI or a script did with it (Jose, 2026-10-07: "an MCP-API log

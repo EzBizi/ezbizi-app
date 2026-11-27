@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0659', date: '27 Nov 2026', items: [
+      'Estimates: editing the title or note of an imported estimate never wipes its lines or total',
+      'Reports: saved, sent and job reports keep to your view and permissions, CSV exports are safe to open, Thumbtack and Local Services use local days, and several report screens are fixed',
+    ]),
     VersionRelease(version: '0.0.0658', date: '27 Nov 2026', items: [
       'Training: tests can now be published from their editor, so learners can take them',
       'HR: signing an onboarding cannot happen twice, time-off changes cannot race, impossible dates are refused, and several Recruiting, Payroll and Contracts screens keep your edits',

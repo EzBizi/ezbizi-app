@@ -99,6 +99,21 @@ class NewsletterImportAndTestSendTest extends TestCase
             ->assertJsonPath('data.0.html_override', '<p>Before</p>');
     }
 
+    public function test_a_block_hand_edited_in_html_with_a_script_is_refused(): void
+    {
+        $t = $this->tenantWithAddress('BlockScript');
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, ['subject' => 'C'])->assertCreated()->json('data.id');
+
+        $this->signedInAs($t['admin'])->putJson(self::ENDPOINT."/{$id}", ['subject' => 'C', 'blocks' => [
+            ['type' => 'text', 'text' => 'Fine'],
+            ['type' => 'text', 'text' => 'x', 'html' => '<tr><td><script>alert(1)</script></td></tr>'],
+        ]])->assertUnprocessable()->assertJsonValidationErrors('blocks.1.html');
+
+        $this->signedInAs($t['admin'])->putJson(self::ENDPOINT."/{$id}", ['subject' => 'C', 'blocks' => [
+            ['type' => 'text', 'text' => 'x', 'html' => '<tr><td><b>Mine</b></td></tr>'],
+        ]])->assertOk();
+    }
+
     // ── 4. Preflight and single-recipient test ──────────────────
 
     public function test_preflight_names_each_check_and_shows_the_mailchimp_list(): void
