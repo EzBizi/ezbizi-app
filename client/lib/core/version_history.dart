@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0663', date: '27 Nov 2026', items: [
+      'Chat and EzChat: tapping a notification opens that chat, messages stack per chat with an unread badge on the app icon, calls ring by push even when the app is closed, missed calls notify, and computers and browsers show notifications for chats you are not looking at',
+    ]),
     VersionRelease(version: '0.0.0662', date: '27 Nov 2026', items: [
       'Chat: each company gets automatic Dispatchers, Technicians and Leadership groups; people join and leave them with their role, and admins choose which roles feed each group',
       'Roles: every module with anything under it now opens the same way, showing its sub-modules then its tabs, with Expand all and Collapse all',
