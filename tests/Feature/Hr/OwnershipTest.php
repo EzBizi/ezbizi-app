@@ -61,7 +61,12 @@ class OwnershipTest extends TestCase
         $branchEditor = $this->userWithRole($alpha, 'Branch editor', ['company.edit'], onlyAt: $alpha['franchise']);
         $body = ['kind' => 'process', 'key' => 'job', 'user_id' => $owner->id];
 
-        $this->signedInAs($branchEditor)->putJson('/api/v1/hr/ownership', $body)->assertForbidden();
+        // Refused the way every out-of-reach scope is (ScopeReach::assertCovers:
+        // 422 on scope_id), and nothing is saved.
+        $this->signedInAs($branchEditor)->putJson('/api/v1/hr/ownership', $body)
+            ->assertUnprocessable()->assertJsonValidationErrors('scope_id');
+        $this->assertSame(0, $this->inTenant($alpha['org'], fn () => \App\Models\Ownership::query()
+            ->where(['kind' => 'process', 'key' => 'job'])->whereNull('scope_type')->count()));
         $this->signedInAs($branchEditor)->putJson('/api/v1/hr/ownership', $body + [
             'scope_type' => 'franchise', 'scope_id' => $alpha['franchise']->id,
         ])->assertOk();
