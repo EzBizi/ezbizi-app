@@ -264,9 +264,9 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     final picker = find.byKey(const ValueKey('tasks-boards'));
-    for (final f in [quick, picker]) {
-      expect(f, findsOneWidget);
-      expect(tester.getRect(f).right, lessThanOrEqualTo(390));
-    }
+    // Row 70: a phone has Monday's one-line header; the board title opens the chooser.
+    expect(quick, findsNothing);
+    expect(picker, findsOneWidget);
+    expect(tester.getRect(picker).right, lessThanOrEqualTo(390));
   });
 }

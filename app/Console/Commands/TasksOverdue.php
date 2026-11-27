@@ -25,7 +25,7 @@ class TasksOverdue extends Command
     {
         $raised = 0;
 
-        $due = Task::query()->withoutGlobalScopes()
+        $due = Task::query()->withoutGlobalScopes()->whereHas('board', fn ($b) => $b->withoutGlobalScopes()->whereNull('deleted_at'))
             ->whereNull('deleted_at')
             ->whereNull('overdue_announced_at')
             ->where('status', '!=', Task::STATUS_DONE)

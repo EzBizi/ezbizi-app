@@ -783,6 +783,10 @@ class TaskWriter
 
         if (array_key_exists('assignee_user_id', $input)) {
             $primary = $input['assignee_user_id'];
+            // The same check as a list (audit 11-27): a lone id may not name somebody who cannot own a task here.
+            if ($primary !== null && $primary !== '' && ! app(TaskBoards::class)->assignable($board)->pluck('id')->map(fn ($id) => (string) $id)->contains((string) $primary)) {
+                throw ValidationException::withMessages(['assignee_user_id' => $board->isPrivate() ? 'Add this person to this board first.' : 'This person cannot own a task on this board.']);
+            }
 
             return $primary === null || $primary === ''
                 ? []
@@ -1225,7 +1229,11 @@ class TaskWriter
                 // Files already on the task (its attachments), by id.
                 $ids = is_array($value) && array_is_list($value) ? array_values(array_unique(array_map('strval', $value))) : null;
                 $ok = $ids !== null && $ids !== [] && count($ids) <= 50
-                    && Attachment::query()->whereIn('id', $ids)->count() === count($ids);
+                    // Only files on this board's task updates (audit 11-27: any id showed another record's file name).
+                    && Attachment::query()->whereIn('id', $ids)->where('attachable_type', 'task_updates')
+                        ->whereIn('attachable_id', TaskUpdate::query()->select('id')
+                            ->whereIn('task_id', Task::withTrashed()->where('board_id', $board->id)->select('id')))
+                        ->count() === count($ids);
                 $why = 'A list of files added to this task.';
                 $row['value_text'] = $ok ? json_encode($ids) : null;
                 break;

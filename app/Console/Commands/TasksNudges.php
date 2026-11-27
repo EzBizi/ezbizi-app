@@ -39,7 +39,7 @@ class TasksNudges extends Command
                 }
 
                 $since = now()->subDays(self::QUIET_DAYS);
-                $quiet = Task::query()->whereNull('completed_at')->whereNull('parent_task_id')
+                $quiet = Task::query()->whereHas('board')->whereNull('completed_at')->whereNull('parent_task_id')
                     ->where('updated_at', '<', $since)
                     ->whereNotExists(fn ($q) => $q->from('task_updates')->whereColumn('task_updates.task_id', 'tasks.id')->where('task_updates.created_at', '>=', $since))
                     ->where(fn ($q) => $q->whereNull('stale_announced_at')->orWhereColumn('stale_announced_at', '<', 'updated_at'))
