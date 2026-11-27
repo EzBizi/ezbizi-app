@@ -701,7 +701,7 @@ class TaskWriter
                     if (Gate::forUser($user)->check('view', $task)) {
                         app(NotificationDispatcher::class)->dispatch(
                             title: $actor->name.' deleted an update on '.$task->title, body: null,
-                            subject: $task, onlyTo: $user, kind: 'task.update_deleted', source: 'tasks',
+                            subject: $task, onlyTo: $user, kind: 'task.update_deleted', source: 'tasks', actor: $actor,
                         );
                     }
                 }
@@ -824,7 +824,7 @@ class TaskWriter
         // and not again for a linked twin.
         $new = array_values(array_diff($ids, $had, [$actor?->getKey()]));
         if ($new !== [] && ! $this->quiet && ! $this->syncing) {
-            DB::afterCommit(fn () => self::tellAssigned($task, $new));
+            DB::afterCommit(fn () => self::tellAssigned($task, $new, $actor));
         }
     }
 
@@ -840,7 +840,10 @@ class TaskWriter
     {
         $org = Organization::query()->withoutGlobalScopes()->find($update->organization_id);
 
-        return $org === null ? 0 : app(TenantContext::class)->run($org, function () use ($update, $skip) {
+        // The poster, for the bell's avatar.
+        $poster = $update->user_id === null ? null : User::query()->find($update->user_id);
+
+        return $org === null ? 0 : app(TenantContext::class)->run($org, function () use ($update, $skip, $poster) {
             $task = Task::query()->with('board')->find($update->task_id);
             if ($task === null) {
                 return 0;
@@ -881,7 +884,7 @@ class TaskWriter
                             default => $who.' posted on '.$task->title,
                         },
                         body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) \App\Support\NotesMarkup::plain((string) $update->body)), 160),
-                        subject: $task, onlyTo: $user, kind: $kind, source: 'tasks',
+                        subject: $task, onlyTo: $user, kind: $kind, source: 'tasks', actor: $poster,
                     );
                 }
             }
@@ -905,7 +908,7 @@ class TaskWriter
         return app(NotificationDispatcher::class)->dispatch(
             title: $by->name.' liked your update on '.$task->title,
             body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) \App\Support\NotesMarkup::plain((string) SensitiveTasks::open($update->body))), 160),
-            subject: $task, onlyTo: $author, kind: 'task.reaction', source: 'tasks',
+            subject: $task, onlyTo: $author, kind: 'task.reaction', source: 'tasks', actor: $by,
         );
     }
 
@@ -934,7 +937,7 @@ class TaskWriter
                     $told += app(NotificationDispatcher::class)->dispatch(
                         title: $who.' mentioned you',
                         body: $task->sensitive ? SensitiveTasks::NOTICE : Str::limit(trim((string) \App\Support\NotesMarkup::plain((string) $update->body)), 160),
-                        subject: $task, onlyTo: $user, source: 'mention', kind: 'task.mentioned',
+                        subject: $task, onlyTo: $user, source: 'mention', kind: 'task.mentioned', actor: $update->user_id === null ? null : User::query()->find($update->user_id),
                     );
                 }
             }
@@ -944,18 +947,18 @@ class TaskWriter
     }
 
     /** @param  string[]  $userIds */
-    public static function tellAssigned(Task $task, array $userIds): int
+    public static function tellAssigned(Task $task, array $userIds, ?User $by = null): int
     {
         // After commit a command may have left its tenant: tell in the task's.
         $org = Organization::query()->withoutGlobalScopes()->find($task->organization_id);
 
-        return $org === null ? 0 : app(TenantContext::class)->run($org, function () use ($task, $userIds) {
+        return $org === null ? 0 : app(TenantContext::class)->run($org, function () use ($task, $userIds, $by) {
             $told = 0;
             foreach (User::query()->whereKey($userIds)->get() as $user) {
                 $told += app(NotificationDispatcher::class)->dispatch(
                     title: 'New task: '.$task->title,
                     body: 'On '.($task->board?->name ?? 'the Task Board'),
-                    subject: $task, onlyTo: $user, kind: 'task.assigned',
+                    subject: $task, onlyTo: $user, kind: 'task.assigned', actor: $by,
                 );
             }
 
