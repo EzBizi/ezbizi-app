@@ -3897,7 +3897,9 @@ Route::prefix('v1')
  * background beat should not be interrupted by either gate.
  */
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'tenant'])
+    // `api-key`: a key reaching these is bound by its level and logged like
+    // everywhere else (audit 11-27: a read-only key could post heartbeats).
+    ->middleware(['auth:sanctum', 'tenant', 'api-key'])
     ->group(function () {
         // Each agent route counts in its OWN bucket (the third throttle
         // argument). Unnamed, Laravel keys every throttle by user id alone,

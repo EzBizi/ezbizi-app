@@ -57,6 +57,7 @@ final class ChatPeople
     {
         $events = AuditEvent::query()
             ->where('action', 'lead.replied')
+            ->where('target_type', Lead::class) // lets the (target_type, target_id) index work
             ->where('target_id', $lead->getKey())
             ->where('actor_type', AuditEvent::ACTOR_USER)
             ->get(['changes', 'actor_id']);
@@ -82,6 +83,7 @@ final class ChatPeople
     {
         $ids = AuditEvent::query()
             ->where('action', 'lead.replied')
+            ->where('target_type', Lead::class) // lets the (target_type, target_id) index work
             ->where('actor_type', AuditEvent::ACTOR_USER)
             ->where('occurred_at', '>=', now()->subDays(30))
             ->whereIn('target_id', Lead::query()->where('company_id', $site->company_id)->select('id'))

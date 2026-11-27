@@ -6649,6 +6649,113 @@ void _jose1116Tests() {
         '/api/v1/social/connections/conn-1/comments/youtube/yt-1/hide',
       ]);
     });
+
+    testWidgets('Delete on a comment asks for a second tap first', (tester) async {
+      final deleted = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_facebookPage, _pinterestBoard],
+        tabs: const [..._allTabs, 'marketing.comments.view'],
+      );
+      await _pumpSocial(tester, (request) async {
+        final path = request.url.path;
+        if (request.method == 'GET' && path.endsWith('/social/comments')) {
+          return _json({
+            'data': [
+              {
+                'id': 'ig-1',
+                'network': 'instagram',
+                'connection_id': 'conn-1',
+                'account': 'Everdoors',
+                'post': {'id': 'p', 'text': 'A post'},
+                'author': 'someone',
+                'text': 'Nice work',
+                'timestamp': '2026-11-13T10:00:00Z',
+                'hidden': false,
+                'replies': [],
+                'actions': ['delete'],
+                'unavailable': {},
+              },
+            ],
+            'sources': [],
+          });
+        }
+        if (request.method == 'DELETE') {
+          deleted.add(path);
+          return _json({'data': {'deleted': true}});
+        }
+        return inner(request);
+      });
+      await tester.tap(find.byKey(const Key('social-comments')));
+      await tester.pumpAndSettle();
+
+      final delete = find.byKey(const Key('social-comment-delete-ig-1'));
+      await tester.ensureVisible(delete);
+      await tester.tap(delete);
+      await tester.pumpAndSettle();
+      expect(deleted, isEmpty);
+      expect(find.text('Tap again to delete'), findsOneWidget);
+
+      await tester.tap(delete);
+      await tester.pumpAndSettle();
+      expect(deleted, ['/api/v1/social/connections/conn-1/comments/instagram/ig-1']);
+    });
+  });
+
+  testWidgets('removing a block inside a column does not hand its text to '
+      'the next one', (tester) async {
+    const letter = {
+      'id': 'n-col',
+      'subject': 'Columns',
+      'status': 'draft',
+      'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+      'blocks': [
+        {
+          'type': 'columns',
+          'columns': [
+            {
+              'blocks': [
+                {'type': 'text', 'text': 'First'},
+                {'type': 'text', 'text': 'Second'},
+              ],
+            },
+            {'blocks': <Map<String, dynamic>>[]},
+          ],
+        },
+      ],
+    };
+    final saved = <Map<String, dynamic>>[];
+    final inner = _handler(canEdit: true, newsletters: const [letter]);
+    await _pumpComposer(tester, (request) {
+      if (request.method == 'PUT') {
+        saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return Future.value(_json({'data': {...letter, 'revision': saved.length + 1}}));
+      }
+      return inner(request);
+    });
+    await _toStep(tester, 'design');
+    await tester.tap(find.byKey(const Key('newsletter-block-0')));
+    await tester.pumpAndSettle();
+
+    final remove = find.byTooltip('Remove').first;
+    await tester.ensureVisible(remove);
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+
+    final field = find.descendant(
+      of: find.byKey(const ValueKey('newsletter-inspector')),
+      matching: find.byKey(const ValueKey('newsletter-field-text')),
+    );
+    expect(field, findsOneWidget);
+    expect(find.descendant(of: field, matching: find.text('Second')), findsOneWidget);
+
+    await tester.enterText(field, 'Second!');
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    final cols = ((saved.last['blocks'] as List).first as Map)['columns'] as List;
+    expect((cols.first as Map)['blocks'], [
+      {'type': 'text', 'text': 'Second!'},
+    ]);
   });
 }
 

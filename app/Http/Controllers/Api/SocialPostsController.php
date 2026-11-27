@@ -608,7 +608,7 @@ class SocialPostsController extends Controller
         } else {
             if ($file !== null) {
                 $bytes = (string) file_get_contents($file->getRealPath());
-                $extension = strtolower($file->getClientOriginalExtension());
+                $extension = strtolower((string) $file->extension());
             } else {
                 $item = NewsletterAccess::visible(SocialLibraryItem::query(), $user)->find($data['library_item'])
                     ?? throw ValidationException::withMessages(['library_item' => 'That picture is no longer in the library for this view.']);

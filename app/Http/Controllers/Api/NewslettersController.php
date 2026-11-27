@@ -1107,6 +1107,12 @@ class NewslettersController extends Controller
         if (is_string($data['html_override'] ?? null) && HtmlImportConverter::unsafe($data['html_override'])) {
             throw ValidationException::withMessages(['html_override' => HtmlImportConverter::UNSAFE_MESSAGE]);
         }
+        // A block hand-edited in HTML mode is sent as written, so it is held to the same rule.
+        foreach (is_array($data['blocks'] ?? null) ? $data['blocks'] : [] as $i => $block) {
+            if (is_array($block) && is_string($block['html'] ?? null) && HtmlImportConverter::unsafe($block['html'])) {
+                throw ValidationException::withMessages(["blocks.{$i}.html" => HtmlImportConverter::UNSAFE_MESSAGE]);
+            }
+        }
 
         return $data;
     }
