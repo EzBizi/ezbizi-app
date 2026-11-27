@@ -7,7 +7,9 @@ use App\Models\PlatformStaff;
 use App\Models\StaffImpersonation;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Services\Staff\ImpersonationService;
+use App\Services\Staff\StaffAuthenticator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use PragmaRX\Google2FA\Google2FA;
 use Tests\TestCase;
@@ -35,10 +37,10 @@ class StaffControlPlaneTest extends TestCase
     private function staff(string $tier = PlatformStaff::TIER_LEAD, bool $enrolled = true): array
     {
         $staff = PlatformStaff::create([
-            'name'      => 'Jose',
-            'email'     => $tier.'@ezbizi.test',
-            'password'  => 'a-sufficiently-long-password',
-            'tier'      => $tier,
+            'name' => 'Jose',
+            'email' => $tier.'@ezbizi.test',
+            'password' => 'a-sufficiently-long-password',
+            'tier' => $tier,
             'is_active' => true,
         ]);
 
@@ -53,9 +55,9 @@ class StaffControlPlaneTest extends TestCase
     private function signIn(PlatformStaff $staff, string $secret): string
     {
         return $this->postJson('/api/v1/staff/auth/login', [
-            'email'    => $staff->email,
+            'email' => $staff->email,
             'password' => 'a-sufficiently-long-password',
-            'code'     => $this->totp->getCurrentOtp($secret),
+            'code' => $this->totp->getCurrentOtp($secret),
         ])->assertOk()->json('token');
     }
 
@@ -72,13 +74,33 @@ class StaffControlPlaneTest extends TestCase
 
     public function test_a_correct_password_alone_does_not_sign_in(): void
     {
-        [$staff, ] = $this->staff();
+        [$staff] = $this->staff();
 
         $this->postJson('/api/v1/staff/auth/login', [
-            'email'    => $staff->email,
+            'email' => $staff->email,
             'password' => 'a-sufficiently-long-password',
-            'code'     => '000000',
+            'code' => '000000',
         ])->assertUnauthorized()->assertJsonPath('code', 'invalid_credentials');
+    }
+
+    /** Rotating IPs no longer buys unlimited guesses at one staff account. */
+    public function test_guesses_from_many_addresses_are_capped_per_account(): void
+    {
+        [$staff, $secret] = $this->staff();
+
+        for ($i = 1; $i <= 20; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => "10.0.0.{$i}"])
+                ->postJson('/api/v1/staff/auth/login', [
+                    'email' => $staff->email, 'password' => "guess-{$i}", 'code' => '000000',
+                ])->assertUnauthorized();
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.1.1'])
+            ->postJson('/api/v1/staff/auth/login', [
+                'email' => $staff->email,
+                'password' => 'a-sufficiently-long-password',
+                'code' => $this->totp->getCurrentOtp($secret),
+            ])->assertStatus(429);
     }
 
     public function test_staff_login_is_not_served_on_the_customer_host(): void
@@ -88,9 +110,9 @@ class StaffControlPlaneTest extends TestCase
         // An absolute URL so Symfony takes the host from it — a relative
         // path is built against APP_URL (localhost) and HTTP_HOST is ignored.
         $this->postJson('http://app.ezbizi.com/api/v1/staff/auth/login', [
-            'email'    => $staff->email,
+            'email' => $staff->email,
             'password' => 'a-sufficiently-long-password',
-            'code'     => $this->totp->getCurrentOtp($secret),
+            'code' => $this->totp->getCurrentOtp($secret),
         ])->assertNotFound();
     }
 
@@ -113,9 +135,9 @@ class StaffControlPlaneTest extends TestCase
         [$staff, $secret] = $this->staff(enrolled: false);
 
         $denied = $this->postJson('/api/v1/staff/auth/login', [
-            'email'    => $staff->email,
+            'email' => $staff->email,
             'password' => 'a-sufficiently-long-password',
-            'code'     => $this->totp->getCurrentOtp($secret),
+            'code' => $this->totp->getCurrentOtp($secret),
         ])->assertForbidden()->assertJsonPath('code', 'totp_enrolment_required');
 
         $message = $denied->json('message');
@@ -128,7 +150,7 @@ class StaffControlPlaneTest extends TestCase
     {
         [$staff, $secret] = $this->staff();
 
-        $auth = app(\App\Services\Staff\StaffAuthenticator::class);
+        $auth = app(StaffAuthenticator::class);
 
         // Recovery codes are issued when a pending secret is confirmed, so this
         // goes through the real enrolment path rather than poking the model.
@@ -188,7 +210,7 @@ class StaffControlPlaneTest extends TestCase
         $this->withHeader('Authorization', "Bearer {$token}")
             ->postJson('/api/v1/staff/impersonations', [
                 'organization_id' => $org->id,
-                'reason'          => 'Investigating a reported export failure.',
+                'reason' => 'Investigating a reported export failure.',
             ])->assertStatus(422);
     }
 
@@ -203,9 +225,9 @@ class StaffControlPlaneTest extends TestCase
         // be enough, whether or not the field is still accepted.
         $this->withHeader('Authorization', "Bearer {$token}")
             ->postJson('/api/v1/staff/impersonations', [
-                'organization_id'  => $org->id,
-                'reason'           => 'Investigating a reported export failure.',
-                'client_approved'  => true,
+                'organization_id' => $org->id,
+                'reason' => 'Investigating a reported export failure.',
+                'client_approved' => true,
                 'approved_by_user_id' => $org->id,
             ])->assertStatus(422);
 
@@ -222,13 +244,13 @@ class StaffControlPlaneTest extends TestCase
         $this->withHeader('Authorization', "Bearer {$token}")
             ->postJson('/api/v1/staff/impersonations', [
                 'organization_id' => $org->id,
-                'reason'          => 'Investigating a reported export failure.',
+                'reason' => 'Investigating a reported export failure.',
             ])->assertCreated()->assertJsonPath('data.client_approved', false);
 
         // The Lead Developer's ordinary audit is suppressed. This must not be —
         // it is the record that answers a client asking who opened their data.
         $this->assertDatabaseHas('audit_events', [
-            'action'   => 'staff.impersonation_started',
+            'action' => 'staff.impersonation_started',
             'actor_id' => $staff->id,
         ]);
     }
@@ -243,7 +265,7 @@ class StaffControlPlaneTest extends TestCase
         $this->withHeader('Authorization', "Bearer {$token}")
             ->postJson('/api/v1/staff/impersonations', [
                 'organization_id' => $org->id,
-                'reason'          => '   ',
+                'reason' => '   ',
             ])->assertStatus(422);
     }
 
@@ -258,7 +280,7 @@ class StaffControlPlaneTest extends TestCase
      */
     public function test_closing_somebody_elses_impersonation_says_who_can(): void
     {
-        [$opener, ]            = $this->staff(PlatformStaff::TIER_LEAD);
+        [$opener] = $this->staff(PlatformStaff::TIER_LEAD);
         [$other, $otherSecret] = $this->staff(PlatformStaff::TIER_DEV);
 
         ['organization' => $org] = $this->organization();
@@ -285,7 +307,7 @@ class StaffControlPlaneTest extends TestCase
 
     public function test_an_expired_session_stops_granting_access(): void
     {
-        [$staff, ] = $this->staff();
+        [$staff] = $this->staff();
         ['organization' => $org] = $this->organization();
 
         $service = app(ImpersonationService::class);
@@ -305,7 +327,7 @@ class StaffControlPlaneTest extends TestCase
 
     public function test_expiring_stale_sessions_closes_and_records_them(): void
     {
-        [$staff, ] = $this->staff();
+        [$staff] = $this->staff();
         ['organization' => $org] = $this->organization();
 
         $service = app(ImpersonationService::class);
@@ -329,7 +351,7 @@ class StaffControlPlaneTest extends TestCase
         $token = $this->signIn($staff, $secret);
 
         // Straight to the query builder: the model refuses deletes, and rightly.
-        \Illuminate\Support\Facades\DB::table('audit_events')->delete();
+        DB::table('audit_events')->delete();
 
         $this->withHeader('Authorization', "Bearer {$token}")
             ->getJson('/api/v1/staff/organizations')->assertOk();

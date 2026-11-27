@@ -21,6 +21,9 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class DevelopmentUnlockController extends Controller
 {
+    /** Wrong codes per linked account per hour, from any number of IPs. */
+    private const PER_ACCOUNT_ATTEMPTS = 10;
+
     public function __construct(
         private readonly StaffAuthenticator $auth,
         private readonly AuditLogger $audit,
@@ -36,12 +39,18 @@ class DevelopmentUnlockController extends Controller
         $user = $request->user();
         $key = 'development-unlock|'.$user->getKey().'|'.$request->ip();
 
-        if (RateLimiter::tooManyAttempts($key, maxAttempts: 5)) {
-            return response()->json([
-                'message' => 'Too many attempts. Try again shortly.',
-                'code' => 'throttled',
-                'retry_after' => RateLimiter::availableIn($key),
-            ], Response::HTTP_TOO_MANY_REQUESTS);
+        // Per account as well: keyed on the IP too, a stolen CRM session behind
+        // rotating addresses had unlimited guesses at the staff authenticator.
+        $accountKey = 'development-unlock-account|'.$user->getKey();
+
+        foreach ([$key => 5, $accountKey => self::PER_ACCOUNT_ATTEMPTS] as $limiter => $max) {
+            if (RateLimiter::tooManyAttempts($limiter, maxAttempts: $max)) {
+                return response()->json([
+                    'message' => 'Too many attempts. Try again shortly.',
+                    'code' => 'throttled',
+                    'retry_after' => RateLimiter::availableIn($limiter),
+                ], Response::HTTP_TOO_MANY_REQUESTS);
+            }
         }
 
         $staff = PlatformStaffLink::staffFor($user->getKey());
@@ -63,6 +72,18 @@ class DevelopmentUnlockController extends Controller
 
         if (! $this->auth->verifySecondFactor($staff, $input['code'])) {
             RateLimiter::hit($key, decaySeconds: 900);
+            RateLimiter::hit($accountKey, decaySeconds: 3600);
+
+            // The alert: one entry in the security record the moment the
+            // account limit is reached, which is what someone grinding from
+            // many addresses looks like.
+            if (RateLimiter::attempts($accountKey) === self::PER_ACCOUNT_ATTEMPTS) {
+                $this->audit->logError('staff.development_unlock_throttled', [
+                    'email' => $staff->email,
+                    'ip' => $request->ip(),
+                    'user_agent' => $request->userAgent(),
+                ]);
+            }
 
             $this->audit->logError('staff.sign_in_failed', [
                 'email' => $staff->email,
@@ -78,6 +99,7 @@ class DevelopmentUnlockController extends Controller
         }
 
         RateLimiter::clear($key);
+        RateLimiter::clear($accountKey);
 
         $staff->forceFill([
             'last_login_at' => now(),

@@ -350,4 +350,29 @@ return [
 
     // Task Board rules move a misfiled item to its group (Jose 11-17); false only flags.
     'task_board_moves' => (bool) env('TASK_BOARD_MOVES', true),
+
+    /*
+     * Texted verification codes (SmsCodesController). Every send is a paid
+     * message, so a loop on POST /me/sms-codes is toll fraud and a loop on
+     * confirm is a brute force. The limits are deliberately small: a person
+     * needs one code, maybe two.
+     *
+     * Countries: US and Canada only — every number EzBizi has texted so far is
+     * North American. +1 alone is not enough, because it also covers Caribbean
+     * nations whose area codes are classic premium-rate fraud targets; those
+     * and 900/976 are refused by area code.
+     */
+    'sms_codes' => [
+        'sends_per_user_per_hour' => (int) env('SMS_CODES_SENDS_PER_USER_PER_HOUR', 3),
+        'sends_per_number_per_day' => (int) env('SMS_CODES_SENDS_PER_NUMBER_PER_DAY', 5),
+        'confirm_attempts' => (int) env('SMS_CODES_CONFIRM_ATTEMPTS', 5),
+        'blocked_area_codes' => [
+            // NANP members that are not the US or Canada.
+            '242', '246', '264', '268', '284', '345', '441', '473', '649', '658',
+            '664', '721', '758', '767', '784', '809', '829', '849', '868', '869',
+            '876',
+            // Premium-rate.
+            '900', '976',
+        ],
+    ],
 ];

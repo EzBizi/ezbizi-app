@@ -30,6 +30,32 @@ trait HasTotp
     }
 
     /**
+     * Record the TOTP time-step a code used — once, whoever gets there first.
+     *
+     * A compare-and-set, not read-then-save. Two requests carrying the same
+     * code both read the old step, both found the code "newer", and both
+     * saved: one code, two sign-ins. The WHERE makes the second update match
+     * nothing, so exactly one of them is told the code was good.
+     *
+     * Straight to the query builder without scopes: this runs at login,
+     * before any tenant is set, on the account's own row by primary key.
+     */
+    public function claimTotpStep(int $step): bool
+    {
+        $claimed = $this->newQueryWithoutScopes()
+            ->whereKey($this->getKey())
+            ->where(fn ($q) => $q->whereNull('last_totp_timestamp')->orWhere('last_totp_timestamp', '<', $step))
+            ->update(['last_totp_timestamp' => $step]) === 1;
+
+        if ($claimed) {
+            $this->last_totp_timestamp = $step;
+            $this->syncOriginalAttribute('last_totp_timestamp');
+        }
+
+        return $claimed;
+    }
+
+    /**
      * Burn a recovery code. Single use — returns false if it wasn't valid.
      *
      * Locked for the duration, because "single use" has to survive two requests

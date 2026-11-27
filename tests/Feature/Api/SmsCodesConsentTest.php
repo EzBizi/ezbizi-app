@@ -4,6 +4,8 @@ namespace Tests\Feature\Api;
 
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Phone\HttpTwilioGateway;
+use App\Support\Phone\TwilioGateway;
 use App\Support\Sms\PlatformSms;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -44,7 +46,7 @@ class SmsCodesConsentTest extends TestCase
     private function withSender(): void
     {
         // The real gateway, so Http::fake sees the request Twilio would.
-        $this->app->bind(\App\Support\Phone\TwilioGateway::class, \App\Support\Phone\HttpTwilioGateway::class);
+        $this->app->bind(TwilioGateway::class, HttpTwilioGateway::class);
         config([
             'services.twilio.platform_account_sid' => 'ACtest',
             'services.twilio.platform_auth_token' => 'token',
@@ -290,6 +292,103 @@ class SmsCodesConsentTest extends TestCase
         $this->assertNull($this->admin()->sms_code_number);
 
         Http::assertNothingSent();
+    }
+
+    // ── rate limits (audit 2026-11-27) ───────────────────────────
+
+    private function ask(string $phone = '3055550199')
+    {
+        return $this->signedIn()->postJson('/api/v1/me/sms-codes', ['phone' => $phone, 'consent' => 'accepted']);
+    }
+
+    private function textsSent(): int
+    {
+        return collect(Http::recorded())
+            ->filter(fn ($pair) => str_contains($pair[0]->url(), 'Messages.json'))
+            ->count();
+    }
+
+    /** Every send is a paid text: a loop on this endpoint is toll fraud. */
+    public function test_sends_are_capped_per_person(): void
+    {
+        $this->withSender();
+        Http::fake(['api.twilio.com/*' => Http::response(['sid' => 'SM1'], 201)]);
+        config(['ezbizi.sms_codes.sends_per_user_per_hour' => 3]);
+
+        $this->ask('3055550101')->assertOk();
+        $this->ask('3055550102')->assertOk();
+        $this->ask('3055550103')->assertOk();
+        $this->ask('3055550104')->assertStatus(429)->assertJsonPath('code', 'throttled');
+
+        $this->assertSame(3, $this->textsSent());
+    }
+
+    /** And per destination, so one number cannot be pumped however it is asked for. */
+    public function test_sends_are_capped_per_number(): void
+    {
+        $this->withSender();
+        Http::fake(['api.twilio.com/*' => Http::response(['sid' => 'SM1'], 201)]);
+        config([
+            'ezbizi.sms_codes.sends_per_user_per_hour' => 100,
+            'ezbizi.sms_codes.sends_per_number_per_day' => 2,
+        ]);
+
+        $this->ask()->assertOk();
+        $this->ask()->assertOk();
+        $this->ask()->assertStatus(429);
+
+        // Another number is still fine: the cap is on the destination.
+        $this->ask('3055550188')->assertOk();
+
+        $this->assertSame(3, $this->textsSent());
+    }
+
+    /**
+     * US and Canada only. +1 alone is not enough: it also reaches Caribbean
+     * nations and premium-rate codes, the destinations toll fraud pumps.
+     */
+    public function test_only_us_and_canadian_numbers_are_texted(): void
+    {
+        $this->withSender();
+        Http::fake(['api.twilio.com/*' => Http::response(['sid' => 'SM1'], 201)]);
+
+        foreach (['+44 7700 900123', '+1 876 555 0199', '+1 900 555 0199', '+1 809 555 0199'] as $phone) {
+            $this->ask($phone)->assertStatus(422);
+        }
+
+        $this->assertSame(0, $this->textsSent());
+        $this->assertNull($this->admin()->sms_code_number);
+
+        $this->ask('+1 416 555 0199')->assertOk();
+        $this->assertSame(1, $this->textsSent());
+    }
+
+    /** A handful of wrong guesses kills the code; six digits do not survive a script. */
+    public function test_wrong_guesses_kill_the_code(): void
+    {
+        $this->withSender();
+        Http::fake(['api.twilio.com/*' => Http::response(['sid' => 'SM1'], 201)]);
+        config(['ezbizi.sms_codes.confirm_attempts' => 5]);
+
+        $this->ask()->assertOk();
+
+        $sent = null;
+        foreach (Http::recorded() as [$request]) {
+            if (preg_match('/(\d{6})/', (string) ($request['Body'] ?? ''), $m)) {
+                $sent = $m[1];
+            }
+        }
+        $this->assertNotNull($sent);
+        $wrong = $sent === '000000' ? '111111' : '000000';
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->signedIn()->postJson('/api/v1/me/sms-codes/confirm', ['code' => $wrong])->assertStatus(422);
+        }
+
+        // The right code no longer works: the one that was guessed at is gone.
+        $this->signedIn()->postJson('/api/v1/me/sms-codes/confirm', ['code' => $sent])->assertStatus(429);
+        $this->assertNull($this->admin()->sms_code_confirmed_at);
+        $this->assertNull($this->admin()->sms_code_hash);
     }
 
     /** With nothing configured the sender says so rather than throwing. */

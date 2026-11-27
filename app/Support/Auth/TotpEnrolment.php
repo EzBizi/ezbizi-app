@@ -52,7 +52,7 @@ class TotpEnrolment
 
         return [
             'secret' => $secret,
-            'uri'    => $this->totp->getQRCodeUrl('EzBizi', $label, $secret),
+            'uri' => $this->totp->getQRCodeUrl('EzBizi', $label, $secret),
         ];
     }
 
@@ -133,19 +133,18 @@ class TotpEnrolment
             return false;
         }
 
-        $account->forceFill(['last_totp_timestamp' => $timestamp])->save();
-
-        return true;
+        // Compare-and-set: two requests racing with one code get one yes.
+        return $account->claimTotpStep((int) $timestamp);
     }
 
     /** Switch it off entirely, and take the recovery codes with it. */
     public function disable(Model $account): void
     {
         $account->forceFill([
-            'totp_secret'         => null,
+            'totp_secret' => null,
             'pending_totp_secret' => null,
-            'totp_confirmed_at'   => null,
-            'recovery_codes'      => null,
+            'totp_confirmed_at' => null,
+            'recovery_codes' => null,
             'last_totp_timestamp' => null,
         ])->save();
     }

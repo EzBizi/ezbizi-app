@@ -26,6 +26,9 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class StaffAuthController extends Controller
 {
+    /** Failures per staff address per hour, from any number of IPs. */
+    private const PER_ACCOUNT_ATTEMPTS = 20;
+
     public function __construct(
         private readonly StaffAuthenticator $auth,
         private readonly AuditLogger $audit,
@@ -35,9 +38,9 @@ class StaffAuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $input = $request->validate([
-            'email'    => ['required', 'email'],
+            'email' => ['required', 'email'],
             'password' => ['required', 'string'],
-            'code'     => ['required', 'string'],
+            'code' => ['required', 'string'],
         ]);
 
         // Tighter than the tenant login (5 per 5 min): fewer accounts exist here
@@ -45,18 +48,27 @@ class StaffAuthController extends Controller
         // for a staff address to fail repeatedly.
         $key = 'staff|'.strtolower($input['email']).'|'.$request->ip();
 
-        if (RateLimiter::tooManyAttempts($key, maxAttempts: 5)) {
-            return response()->json([
-                'message'     => 'Too many attempts. Try again shortly.',
-                'code'        => 'throttled',
-                'retry_after' => RateLimiter::availableIn($key),
-            ], Response::HTTP_TOO_MANY_REQUESTS);
+        // And per address alone: keyed on the IP too, a guesser with many IPs
+        // had unlimited tries at one staff account. Looser than the per-IP key
+        // so one office mistyping cannot lock the account out, tight enough
+        // that rotating addresses buys an attacker little.
+        $emailKey = 'staff-email|'.strtolower($input['email']);
+
+        foreach ([$key => 5, $emailKey => self::PER_ACCOUNT_ATTEMPTS] as $limiter => $max) {
+            if (RateLimiter::tooManyAttempts($limiter, maxAttempts: $max)) {
+                return response()->json([
+                    'message' => 'Too many attempts. Try again shortly.',
+                    'code' => 'throttled',
+                    'retry_after' => RateLimiter::availableIn($limiter),
+                ], Response::HTTP_TOO_MANY_REQUESTS);
+            }
         }
 
         $staff = $this->auth->verifyPassword($input['email'], $input['password']);
 
         if ($staff === null) {
             RateLimiter::hit($key, decaySeconds: 900);
+            RateLimiter::hit($emailKey, decaySeconds: 3600);
 
             return $this->rejected($request, $input['email'], 'password');
         }
@@ -67,17 +79,19 @@ class StaffAuthController extends Controller
         if (! $staff->hasTotp()) {
             return response()->json([
                 'message' => 'This account has not completed authenticator setup and cannot sign in yet.',
-                'code'    => 'totp_enrolment_required',
+                'code' => 'totp_enrolment_required',
             ], Response::HTTP_FORBIDDEN);
         }
 
         if (! $this->auth->verifySecondFactor($staff, $input['code'])) {
             RateLimiter::hit($key, decaySeconds: 900);
+            RateLimiter::hit($emailKey, decaySeconds: 3600);
 
             return $this->rejected($request, $input['email'], 'second_factor');
         }
 
         RateLimiter::clear($key);
+        RateLimiter::clear($emailKey);
 
         $staff->forceFill([
             'last_login_at' => now(),
@@ -100,21 +114,21 @@ class StaffAuthController extends Controller
             staffId: $staff->getKey(),
             staffLabel: "{$staff->name} <{$staff->email}>",
             metadata: [
-                'ip'         => $request->ip(),
+                'ip' => $request->ip(),
                 'user_agent' => $request->userAgent(),
-                'tier'       => $staff->tier,
+                'tier' => $staff->tier,
                 'recovery_code_count' => count($staff->recovery_codes ?? []),
             ],
         );
 
         return response()->json([
             'status' => 'authenticated',
-            'token'  => $token->plainTextToken,
-            'staff'  => [
-                'id'    => $staff->id,
-                'name'  => $staff->name,
+            'token' => $token->plainTextToken,
+            'staff' => [
+                'id' => $staff->id,
+                'name' => $staff->name,
                 'email' => $staff->email,
-                'tier'  => $staff->tier,
+                'tier' => $staff->tier,
             ],
         ]);
     }
@@ -141,13 +155,13 @@ class StaffAuthController extends Controller
         $staff = $request->user();
 
         return response()->json(['data' => [
-            'id'    => $staff->id,
-            'name'  => $staff->name,
+            'id' => $staff->id,
+            'name' => $staff->name,
             'email' => $staff->email,
-            'tier'  => $staff->tier,
+            'tier' => $staff->tier,
             'may_enter_without_approval' => $staff->mayEnterWithoutApproval(),
-            'recovery_code_count'   => count($staff->recovery_codes ?? []),
-            'last_login_at'              => $staff->last_login_at?->toIso8601String(),
+            'recovery_code_count' => count($staff->recovery_codes ?? []),
+            'last_login_at' => $staff->last_login_at?->toIso8601String(),
         ]]);
     }
 
@@ -163,15 +177,15 @@ class StaffAuthController extends Controller
     private function rejected(Request $request, string $email, string $stage): JsonResponse
     {
         $this->audit->logError('staff.sign_in_failed', [
-            'email'      => $email,
-            'stage'      => $stage,   // 'password' or 'second_factor'
-            'ip'         => $request->ip(),
+            'email' => $email,
+            'stage' => $stage,   // 'password' or 'second_factor'
+            'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
         ]);
 
         return response()->json([
             'message' => 'Those credentials do not match our records.',
-            'code'    => 'invalid_credentials',
+            'code' => 'invalid_credentials',
         ], Response::HTTP_UNAUTHORIZED);
     }
 }

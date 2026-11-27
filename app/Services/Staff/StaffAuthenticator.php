@@ -94,9 +94,8 @@ class StaffAuthenticator
             return false;
         }
 
-        $staff->forceFill(['last_totp_timestamp' => $timestamp])->save();
-
-        return true;
+        // Compare-and-set: two requests racing with one code get one yes.
+        return $staff->claimTotpStep((int) $timestamp);
     }
 
     // ── enrolment ────────────────────────────────────────────────
@@ -129,7 +128,7 @@ class StaffAuthenticator
 
         return [
             'secret' => $secret,
-            'uri'    => $this->totp->getQRCodeUrl('EzBizi', $staff->email, $secret),
+            'uri' => $this->totp->getQRCodeUrl('EzBizi', $staff->email, $secret),
         ];
     }
 

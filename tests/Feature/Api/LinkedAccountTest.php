@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\AuditEvent;
 use App\Models\PlatformStaff;
 use App\Models\PlatformStaffLink;
 use App\Models\User;
@@ -25,8 +26,11 @@ class LinkedAccountTest extends TestCase
     use RefreshDatabase;
 
     private Google2FA $totp;
+
     private array $org;
+
     private PlatformStaff $staff;
+
     private string $secret;
 
     protected function setUp(): void
@@ -59,7 +63,7 @@ class LinkedAccountTest extends TestCase
     {
         PlatformStaffLink::create([
             'staff_id' => $this->staff->getKey(),
-            'user_id'  => $this->org['admin']->getKey(),
+            'user_id' => $this->org['admin']->getKey(),
         ]);
     }
 
@@ -206,6 +210,34 @@ class LinkedAccountTest extends TestCase
         $this->withHeader('Authorization', "Bearer {$plainToken}")
             ->postJson('/api/v1/me/development/unlock', ['code' => '123456'])
             ->assertForbidden();
+    }
+
+    /** Per account, not only per IP, and the limit leaves a mark in the security record. */
+    public function test_development_unlock_guesses_are_capped_per_account(): void
+    {
+        $this->link();
+
+        $tenantToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'jose@ezbizi.test', 'password' => 'a-sufficiently-long-staff-password',
+            'code' => $this->code(),
+        ])->assertOk()->json('token');
+
+        for ($i = 1; $i <= 10; $i++) {
+            $this->app['auth']->forgetGuards();
+            $this->withServerVariables(['REMOTE_ADDR' => "10.0.0.{$i}"])
+                ->withHeader('Authorization', "Bearer {$tenantToken}")
+                ->postJson('/api/v1/me/development/unlock', ['code' => '000000'])
+                ->assertUnauthorized();
+        }
+
+        $this->app['auth']->forgetGuards();
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.1.1'])
+            ->withHeader('Authorization', "Bearer {$tenantToken}")
+            ->postJson('/api/v1/me/development/unlock', ['code' => $this->code()])
+            ->assertStatus(429);
+
+        $this->assertSame(1, AuditEvent::withoutGlobalScopes()
+            ->where('action', 'staff.development_unlock_throttled')->count());
     }
 
     public function test_me_reports_the_development_access_that_drives_the_sidebar(): void

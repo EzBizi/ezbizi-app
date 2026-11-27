@@ -206,7 +206,10 @@ class AuthenticateUser
             fn () => User::query()->with('organization')->find($userId)
         );
 
-        if ($user === null || $user->email !== $email || ! $user->is_active) {
+        // Case-insensitive, as the first step's lookup is (MySQL's collation):
+        // typing Jose@… there offered the picker, and an exact compare here
+        // then refused every choice it had just offered.
+        if ($user === null || strcasecmp((string) $user->email, trim($email)) !== 0 || ! $user->is_active) {
             return AuthenticationResult::failed();
         }
 
