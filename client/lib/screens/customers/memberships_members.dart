@@ -496,8 +496,9 @@ class _MembershipDetailState extends State<MembershipDetail> {
 
     setState(() {
       _saving = false;
-      _editingPaid = false;
       _confirmCancel = false;
+      // Closed only when it saved: a refusal leaves the typed amount to fix.
+      if (response.ok) _editingPaid = false;
       if (response.ok) {
         final data = response.body['data'];
         if (data is Map<String, dynamic>) _row = Membership.fromJson(data);
@@ -627,10 +628,11 @@ class _MembershipDetailState extends State<MembershipDetail> {
                               border: const OutlineInputBorder(),
                               options: [
                                 for (final plan in widget.plans)
-                                  SearchOption(
-                                    value: plan.id,
-                                    label: plan.label,
-                                  ),
+                                  if (plan.active || plan.id == row.planId)
+                                    SearchOption(
+                                      value: plan.id,
+                                      label: plan.label,
+                                    ),
                               ],
                               onChanged: (id) {
                                 if (id != null && id != row.planId) {
