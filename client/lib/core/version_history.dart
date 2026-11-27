@@ -15,8 +15,9 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0657', date: '27 Nov 2026', items: [
       'Customer notes take bold, italic and underline, and exports always send notes as plain text',
+      'Monday sync is back on: Monday stays connected until Monday itself shuts down, and its tile is back in Integrations',
     ]),
-    VersionRelease(version: '0.0.0656', date: '27 Nov 2026', items: [
+    VersionRelease(version: '0.0.0656', date: '27 Nov 2026', deployed: '2026-11-27 14:03', items: [
       'Leaderboard: the top three are ranked by booking rate; answer rate and call score show beside each name, not ranked by',
     ]),
     VersionRelease(version: '0.0.0655', date: '26 Nov 2026', deployed: '2026-11-26 14:16', items: [
