@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0665', date: '27 Nov 2026', items: [
+      'Android: chat notifications now use the phone own call screen and Reply and Mark read buttons, Answer joins the call, and a chat read elsewhere clears its notification',
+    ]),
     VersionRelease(version: '0.0.0664', date: '27 Nov 2026', items: [
       'Chat and EzChat: @mention people in groups, and a mention reaches them even when the group is muted',
       'Chat: a switch to hide message text in notifications, and muting a chat Always now works',
