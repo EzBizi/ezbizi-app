@@ -13,7 +13,7 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
-    VersionRelease(version: '0.0.0666', date: '28 Nov 2026', items: [
+    VersionRelease(version: '0.0.0666', date: '28 Nov 2026', deployed: '2026-11-28 01:18', items: [
       'Chat: technicians assigned to a branch now join their company automatic groups',
     ]),
     VersionRelease(version: '0.0.0665', date: '27 Nov 2026', deployed: '2026-11-27 23:38', items: [
