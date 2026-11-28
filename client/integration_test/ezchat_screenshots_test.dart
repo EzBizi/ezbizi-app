@@ -3,6 +3,9 @@
 //
 // Signed in as the demo tenant (SHOT_EMAIL / SHOT_PASSWORD from the relay's
 // screenshot.env), never a real company: these go on a public product page.
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -35,6 +38,11 @@ void main() {
     };
 
     await app.main();
+    // Android draws into a SurfaceView the screenshot path cannot read; swap
+    // it first (same as store_screenshots_test.dart). Android only.
+    if (!kIsWeb && Platform.isAndroid) {
+      await binding.convertFlutterSurfaceToImage();
+    }
     // Cold start on the iPad sim is slow; wait for the button, not the clock.
     for (var i = 0; i < 30 && find.text('Sign in').evaluate().isEmpty; i++) {
       await settle(1);
