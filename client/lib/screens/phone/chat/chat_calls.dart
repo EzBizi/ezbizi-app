@@ -15,8 +15,10 @@ import 'package:record/record.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/call_alerts.dart';
+import '../../../core/os_notifications.dart';
 import '../../../core/session.dart';
 import '../../../widgets/user_avatar.dart';
+import 'chat_alerts.dart';
 import 'call_view.dart';
 import 'chat_store.dart';
 
@@ -51,6 +53,27 @@ class ChatCalls extends ChangeNotifier with WidgetsBindingObserver {
     _api = api;
     WidgetsBinding.instance.addObserver(this);
     _schedule(true);
+    // Answer was tapped on the phone's call screen before Chat was signed in.
+    final pending = _pendingAnswer;
+    _pendingAnswer = null;
+    if (pending != null) unawaited(answerById(pending));
+  }
+
+  String? _pendingAnswer;
+
+  /// Answer on the phone's own call screen (Android's full-screen ring,
+  /// `chat:{chat}?call={call}`): join that call as Answer on the in-app ring would.
+  Future<void> answerById(String callId) async {
+    if (_api == null) {
+      _pendingAnswer = callId;
+      return;
+    }
+    await poll();
+    final ring = ringing.where((r) => r['call_id'] == callId).firstOrNull;
+    if (ring != null) return answer(ring);
+    // Not ringing any more for me (answered on the ring screen a moment late,
+    // or a group call in progress): join it if it is still on.
+    await join(callId, video: false, title: 'Call');
   }
 
   void stop() {
@@ -223,11 +246,15 @@ class ChatCallLayer extends StatefulWidget {
     required this.api,
     required this.session,
     this.calls,
+    this.alerts,
   });
 
   final ApiClient api;
   final Session session;
   final ChatCalls? calls;
+
+  /// A test's own; the app's is [ChatAlerts.instance].
+  final ChatAlerts? alerts;
 
   @override
   State<ChatCallLayer> createState() => _ChatCallLayerState();
@@ -253,11 +280,41 @@ class _ChatCallLayerState extends State<ChatCallLayer> {
     _signedInChanged();
   }
 
+  /// Reply, Mark read and Decline pressed on a phone notification.
+  Future<void> _notificationAction(
+    String action,
+    Map<String, dynamic> args,
+  ) async {
+    final chat = args['chat_id']?.toString();
+    switch (action) {
+      case 'reply':
+        final text = args['text']?.toString().trim() ?? '';
+        if (chat != null && text.isNotEmpty) {
+          await widget.api.post('/chat/chats/$chat/messages', {'body': text});
+        }
+      case 'markRead':
+        if (chat != null) {
+          await widget.api.patch('/chat/chats/$chat/settings', {
+            'marked_unread': false,
+          });
+        }
+      case 'callDeclined':
+        final call = args['call_id']?.toString();
+        if (call != null) {
+          await widget.api.post('/chat/calls/$call/decline', {});
+        }
+    }
+  }
+
   @override
   void dispose() {
+    if (OsNotifications.onAction == _notificationAction) {
+      OsNotifications.onAction = null;
+    }
     // The layer lives as long as the app; a test tearing the tree down must
     // not leave the ring poll running.
     _calls.stop();
+    (widget.alerts ?? ChatAlerts.instance).stop();
     _calls.removeListener(_changed);
     widget.session.removeListener(_signedInChanged);
     unawaited(_refusals?.cancel());
@@ -274,6 +331,11 @@ class _ChatCallLayerState extends State<ChatCallLayer> {
         widget.session.me?.permissions.contains('phone.chat.view') ?? false;
     if (may && !_calls.started) _calls.start(widget.api);
     if (!may && _calls.started) _calls.stop();
+    // And the OS notifications for new messages, alongside the ring.
+    final alerts = widget.alerts ?? ChatAlerts.instance;
+    if (may && !alerts.started) alerts.start(widget.api);
+    if (!may && alerts.started) alerts.stop();
+    OsNotifications.onAction = may ? _notificationAction : null;
   }
 
   @override

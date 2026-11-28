@@ -839,6 +839,14 @@ class TasksController extends Controller
             $memo->set($key, TaskColumn::query()->where('board_id', $task->board_id)->where('type', 'mirror')->get());
         }
         $columns = $memo->get($key);
+        $seeable = function () use ($memo): array {
+            if (! $memo->has('task-mirrors:seeable')) {
+                $me = request()->user();
+                $memo->set('task-mirrors:seeable', $me === null ? [] : app(TaskBoards::class)->visibleTo($me)->pluck('id')->all());
+            }
+
+            return $memo->get('task-mirrors:seeable');
+        };
         $out = [];
         foreach ($columns as $c) {
             $through = $c->settings['connect_column_id'] ?? null;
@@ -847,7 +855,8 @@ class TasksController extends Controller
             $ids = $link ? (json_decode((string) SensitiveTasks::open($link->value_text), true) ?: []) : [];
             $out[$c->id] = ! $target || $ids === [] ? [] : TaskColumnValue::query()->with('column')
                 ->whereIn('task_id', $ids)->where('column_id', $target)
-                ->whereHas('task', fn ($q) => $q->where('sensitive', false))->get()
+                // Only tasks on boards this person can open (audit 11-27).
+                ->whereHas('task', fn ($q) => $q->where('sensitive', false)->whereIn('board_id', $seeable()))->get()
                 ->map(fn ($v) => ColumnConverter::words($v->column, $v))->filter()->values()->all();
         }
 

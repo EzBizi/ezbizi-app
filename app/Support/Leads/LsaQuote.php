@@ -57,7 +57,7 @@ final class LsaQuote
     public static function windows(Lead $lead, int $count = 3): string
     {
         $zip = preg_match('/\b(\d{5})\b/', (string) ($lead->postal_code ?: self::customer($lead)?->postal_code), $m) ? $m[1] : null;
-        $area = $zip === null ? null : ServiceArea::forZip($zip);
+        $area = $zip === null ? null : ServiceArea::forZip($zip, \App\Support\Scheduling\SlotOffer::reach($lead));
         if ($area === null || ! Openings::hasCapacity($area)) {
             return '';
         }

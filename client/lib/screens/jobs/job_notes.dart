@@ -1,3 +1,4 @@
+import '../../widgets/confirm_panel.dart';
 import '../../widgets/formatted_notes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -474,7 +475,16 @@ class _NoteRowState extends State<_NoteRow> {
                   size: 18,
                   color: theme.colorScheme.error,
                 ),
-                onPressed: () => _run(null),
+                onPressed: () async {
+                  if (await confirmInPanel(
+                    context,
+                    title: 'Delete this note?',
+                    body: 'The note is removed for everyone. This cannot be undone.',
+                    confirm: 'Delete note',
+                  )) {
+                    _run(null);
+                  }
+                },
                 child: const Text('Delete'),
               ),
             ],

@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\AuditEvent;
 use App\Models\PlatformStaff;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
+use App\Services\Staff\StaffAuthenticator;
+use App\Support\Auth\TotpEnrolment;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -26,6 +29,7 @@ class SelfServiceTotpTest extends TestCase
     use RefreshDatabase;
 
     private Google2FA $totp;
+
     private array $org;
 
     protected function setUp(): void
@@ -223,7 +227,7 @@ class SelfServiceTotpTest extends TestCase
     {
         $staff = $this->staff();
 
-        $issued = app(\App\Support\Auth\TotpEnrolment::class)->begin($staff, $staff->email);
+        $issued = app(TotpEnrolment::class)->begin($staff, $staff->email);
 
         $begin = $this->postJson('/api/v1/staff/auth/enrolment', [
             'email' => 'new@ezbizi.test', 'password' => 'a-sufficiently-long-password',
@@ -268,7 +272,7 @@ class SelfServiceTotpTest extends TestCase
 
         $this->postJson('/api/v1/auth/login', [
             'email' => 'a@alpha.test', 'password' => 'a-real-password',
-            'code'  => $this->totp->getCurrentOtp($secret),
+            'code' => $this->totp->getCurrentOtp($secret),
         ])->assertOk()->assertJsonPath('status', 'authenticated');
     }
 
@@ -282,7 +286,7 @@ class SelfServiceTotpTest extends TestCase
         // somebody started and never confirmed.
         $this->assertSame(
             1,
-            \App\Models\AuditEvent::where('action', 'user.two_factor_enrolment_started')->count(),
+            AuditEvent::where('action', 'user.two_factor_enrolment_started')->count(),
         );
     }
 
@@ -316,12 +320,78 @@ class SelfServiceTotpTest extends TestCase
         $this->freshStep();
         $request->deleteJson('/api/v1/me/totp', [
             'password' => 'a-real-password',
-            'code'     => $this->totp->getCurrentOtp($secret),
+            'code' => $this->totp->getCurrentOtp($secret),
         ])->assertOk();
 
         // withoutGlobalScopes for the same reason as freshStep(): between
         // requests there is no tenant, so a scoped read has nothing to scope by.
         $this->assertFalse(User::withoutGlobalScopes()->find($this->org['admin']->id)->hasTotp());
+    }
+
+    /**
+     * A stolen session cannot grind the password and code here (audit
+     * 2026-11-27): without a limit, "that password is not right" confirms a
+     * hit, then the code can be ground, then the factor switched off.
+     */
+    public function test_proving_it_is_you_is_throttled_per_user(): void
+    {
+        $begin = $this->signedIn()->postJson('/api/v1/me/totp')->assertOk();
+        $secret = $begin->json('enrolment.secret');
+
+        $this->app['auth']->forgetGuards();
+        $this->signedIn()->postJson('/api/v1/me/totp/confirm', [
+            'code' => $this->totp->getCurrentOtp($secret),
+        ])->assertOk();
+
+        $this->app['auth']->forgetGuards();
+        $stolen = $this->signedIn($secret);
+
+        for ($i = 0; $i < 5; $i++) {
+            $stolen->deleteJson('/api/v1/me/totp', ['password' => "guess-{$i}"])->assertStatus(422);
+        }
+
+        // Even the right password and a right code are refused now.
+        $this->freshStep();
+        $stolen->deleteJson('/api/v1/me/totp', [
+            'password' => 'a-real-password',
+            'code' => $this->totp->getCurrentOtp($secret),
+        ])->assertStatus(429);
+
+        $this->assertTrue(User::withoutGlobalScopes()->find($this->org['admin']->id)->hasTotp());
+        $this->assertSame(1, AuditEvent::withoutGlobalScopes()
+            ->where('action', 'user.two_factor_reauth_throttled')->count());
+    }
+
+    /**
+     * One code, one yes — even for two requests that read the account before
+     * either wrote (audit 2026-11-27: the replay check was read-then-save).
+     * Two copies of the model loaded before either verifies are exactly that.
+     */
+    public function test_a_code_is_accepted_once_even_by_two_racing_requests(): void
+    {
+        $secret = $this->totp->generateSecretKey(32);
+        $id = $this->org['admin']->id;
+
+        app(TenantContext::class)->run($this->org['organization'], fn () => User::findOrFail($id)
+            ->forceFill(['totp_secret' => $secret, 'totp_confirmed_at' => now()])->save());
+
+        $first = User::withoutGlobalScopes()->findOrFail($id);
+        $second = User::withoutGlobalScopes()->findOrFail($id);
+        $code = $this->totp->getCurrentOtp($secret);
+
+        $enrolment = app(TotpEnrolment::class);
+        $this->assertTrue($enrolment->verify($first, $code));
+        $this->assertFalse($enrolment->verify($second, $code), 'one code signed in twice');
+
+        $staff = $this->staff(enrolled: true);
+        $staffSecret = $staff->totp_secret;
+        $a = PlatformStaff::findOrFail($staff->id);
+        $b = PlatformStaff::findOrFail($staff->id);
+        $staffCode = $this->totp->getCurrentOtp($staffSecret);
+
+        $auth = app(StaffAuthenticator::class);
+        $this->assertTrue($auth->verifySecondFactor($a, $staffCode));
+        $this->assertFalse($auth->verifySecondFactor($b, $staffCode), 'one staff code signed in twice');
     }
 
     public function test_a_user_cannot_opt_out_of_a_policy_their_organization_set(): void
@@ -346,7 +416,7 @@ class SelfServiceTotpTest extends TestCase
         $this->freshStep();
         $request->deleteJson('/api/v1/me/totp', [
             'password' => 'a-real-password',
-            'code'     => $this->totp->getCurrentOtp($secret),
+            'code' => $this->totp->getCurrentOtp($secret),
         ])->assertStatus(422);
     }
 
@@ -377,7 +447,7 @@ class SelfServiceTotpTest extends TestCase
         $this->freshStep();
         $second = $request->postJson('/api/v1/me/totp', [
             'password' => 'a-real-password',
-            'code'     => $this->totp->getCurrentOtp($secret),
+            'code' => $this->totp->getCurrentOtp($secret),
         ])->assertOk();
 
         $newSecret = $second->json('enrolment.secret');

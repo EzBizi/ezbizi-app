@@ -45,7 +45,7 @@ class TasksDatesArrived extends Command
                 $days = [$today->toDateString() => 0, $today->addDay()->toDateString() => 1];
 
                 $hits = [];
-                foreach (Task::query()->with('board')->whereIn('due_on', array_keys($days))->get() as $task) {
+                foreach (Task::query()->with('board')->whereHas('board')->whereIn('due_on', array_keys($days))->get() as $task) {
                     $hits[] = [$task, 'due', 'Due date', $task->due_on->toDateString()];
                 }
                 $values = TaskColumnValue::query()->with(['column', 'task.board'])

@@ -44,7 +44,9 @@ class RequireTwoFactorEnrolment
     {
         $user = $request->user();
 
-        if ($user === null || $this->isAlwaysPermitted($request)) {
+        // EzChat's chat-only token asks no authenticator (Jose, 11-27).
+        if ($user === null || $this->isAlwaysPermitted($request)
+            || \App\Support\Auth\ChatToken::is($user->currentAccessToken())) {
             return $next($request);
         }
 

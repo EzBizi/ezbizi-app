@@ -65,6 +65,14 @@ class SmsConsentTest extends TestCase
         });
     }
 
+    /** Audit 11-27: only a real "reply STOP" instruction replaces the footer. */
+    public function test_only_a_stop_instruction_counts_as_opt_out_wording(): void
+    {
+        $this->assertTrue(\App\Support\Phone\SmsConsent::saysHowToStop('Reply STOP to opt out'));
+        $this->assertTrue(\App\Support\Phone\SmsConsent::saysHowToStop('Text stop to unsubscribe.'));
+        $this->assertFalse(\App\Support\Phone\SmsConsent::saysHowToStop('Stop by this week for 20% off'));
+    }
+
     public function test_twilios_unsubscribed_refusal_is_recorded_so_the_next_text_never_reaches_twilio(): void
     {
         $twilio = new FakeTwilioGateway;

@@ -609,6 +609,17 @@ class _AreaMapPaneState extends State<AreaMapPane> {
     _autoError = null;
   });
 
+  void _clearEditor() {
+    setState(() {
+      _shapes = [];
+      _open = [];
+      _states = {};
+      _take.clear();
+      _circle = null;
+    });
+    _changed();
+  }
+
   void _cancel() {
     _debounce?.cancel();
     _previewRequest++;
@@ -720,19 +731,19 @@ class _AreaMapPaneState extends State<AreaMapPane> {
     for (final z in (_preview?[key] as List? ?? const [])) '$z',
   ];
 
-  Future<void> _save({bool clear = false}) async {
+  Future<void> _save() async {
     final id = _selectedId;
     if (id == null) return;
     _debounce?.cancel();
-    if (!clear && _open.length >= 3) _closeShape();
+    if (_open.length >= 3) _closeShape();
     setState(() {
       _saving = true;
       _paneError = null;
     });
     final response = await widget.api.put('/scheduling/areas/$id/polygons', {
-      'polygons': clear ? const [] : _wire(_shapes),
-      'states': clear ? const [] : (_states.toList()..sort()),
-      if (!clear) 'take': _take.toList(),
+      'polygons': _wire(_shapes),
+      'states': _states.toList()..sort(),
+      'take': _take.toList(),
     });
     if (!mounted) return;
     if (!response.ok) {
@@ -745,7 +756,7 @@ class _AreaMapPaneState extends State<AreaMapPane> {
       return;
     }
     final circle = _circle;
-    if (!clear && circle != null) {
+    if (circle != null) {
       // The centre and radius the drawing came from, kept with the area.
       final kept = await widget.api.patch('/scheduling/areas/$id', {
         'center_zip': circle.zip,
@@ -762,10 +773,9 @@ class _AreaMapPaneState extends State<AreaMapPane> {
     }
     final data = response.body['data'] as Map? ?? const {};
     int count(String k) => (data[k] as List? ?? const []).length;
-    final line = clear
-        ? 'Drawing cleared: ${count('removed')} removed'
-        : 'Saved: ${count('added')} added, ${count('moved')} moved, '
-              '${count('removed')} removed';
+    final line =
+        'Saved: ${count('added')} added, ${count('moved')} moved, '
+        '${count('removed')} removed';
     ScaffoldMessenger.maybeOf(
       context,
     )?.showSnackBar(SnackBar(content: Text(line)));
@@ -1374,7 +1384,9 @@ class _AreaMapPaneState extends State<AreaMapPane> {
               children: [
                 TextButton(
                   key: const ValueKey('area-map-clear'),
-                  onPressed: _saving ? null : () => _save(clear: true),
+                  // Audit 11-27: clears the editor only; Save shows the preview
+                  // of what goes before anything is written.
+                  onPressed: _saving ? null : _clearEditor,
                   child: const Text('Clear drawing'),
                 ),
                 TextButton(

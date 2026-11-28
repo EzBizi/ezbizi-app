@@ -2,12 +2,14 @@
 
 namespace App\Services\Auth;
 
+use App\Models\Organization;
 use App\Models\PlatformStaff;
 use App\Models\PlatformStaffLink;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -70,6 +72,12 @@ class PasswordResets
                 continue;
             }
 
+            // A reset must not reopen what deactivating the staff account
+            // closed (Jose, 11-27).
+            if (PlatformStaffLink::deactivatedFor($user->getKey())) {
+                continue;
+            }
+
             $linked = PlatformStaffLink::staffFor($user->getKey());
 
             // Already covered by the staff record above; adding it again would
@@ -85,7 +93,7 @@ class PasswordResets
     }
 
     /**
-     * @return array{token: string, expires_at: \Illuminate\Support\Carbon}
+     * @return array{token: string, expires_at: Carbon}
      */
     public function issue(Model $subject, ?string $ip = null): array
     {
@@ -102,17 +110,17 @@ class PasswordResets
         $token = Str::random(48);
 
         DB::table('password_resets')->insert([
-            'id'            => (string) Str::uuid7(),
-            'subject_type'  => $subject::class,
-            'subject_id'    => $subject->getKey(),
+            'id' => (string) Str::uuid7(),
+            'subject_type' => $subject::class,
+            'subject_id' => $subject->getKey(),
             // Hashed with sha256 rather than bcrypt: it is a 48-character random
             // string, not a human-chosen password, so there is nothing to slow a
             // guesser down about — and a reset check should not cost 100ms.
-            'token_hash'    => hash('sha256', $token),
-            'expires_at'    => now()->addMinutes($minutes),
-            'requested_ip'  => $ip,
-            'created_at'    => now(),
-            'updated_at'    => now(),
+            'token_hash' => hash('sha256', $token),
+            'expires_at' => now()->addMinutes($minutes),
+            'requested_ip' => $ip,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         return ['token' => $token, 'expires_at' => now()->addMinutes($minutes)];
@@ -146,7 +154,7 @@ class PasswordResets
      * organization's setting has any claim on their password. Their floor is the
      * one in StaffAccountsController, which is higher than any tenant's anyway.
      */
-    public function organizationFor(string $token): ?\App\Models\Organization
+    public function organizationFor(string $token): ?Organization
     {
         $subject = $this->subjectFor($token);
 
@@ -183,11 +191,12 @@ class PasswordResets
             // believes the old password is known, and leaving live tokens would
             // make the reset cosmetic.
             $subject->tokens()->delete();
+            $this->revokeLinkedUsers($subject);
         });
 
         $this->audit->logError('auth.password_reset', [
             'subject' => class_basename($subject),
-            'email'   => $subject->email,
+            'email' => $subject->email,
         ]);
 
         return $subject;
@@ -208,11 +217,40 @@ class PasswordResets
             $subject->tokens()
                 ->when($keepTokenId, fn ($q, $id) => $q->where('id', '!=', $id))
                 ->delete();
+            $this->revokeLinkedUsers($subject, $keepTokenId);
         });
 
         $this->audit->log('auth.password_changed', $subject instanceof User ? $subject : null, metadata: [
             'subject' => class_basename($subject),
         ]);
+    }
+
+    /**
+     * A staff password also signs in every CRM account linked to it (§4.2,
+     * revised), so a CRM token is a session of the same credential. Revoking
+     * only the staff tokens left a stolen CRM token working for up to 30 days
+     * after the reset that was meant to end it.
+     *
+     * Straight on personal_access_tokens: User is tenant-scoped and a reset
+     * runs with no tenant, and these are other organizations' rows besides.
+     */
+    private function revokeLinkedUsers(Model $subject, int|string|null $keepTokenId = null): void
+    {
+        if (! $subject instanceof PlatformStaff) {
+            return;
+        }
+
+        $userIds = PlatformStaffLink::query()->where('staff_id', $subject->getKey())->pluck('user_id');
+
+        if ($userIds->isEmpty()) {
+            return;
+        }
+
+        DB::table('personal_access_tokens')
+            ->where('tokenable_type', (new User)->getMorphClass())
+            ->whereIn('tokenable_id', $userIds)
+            ->when($keepTokenId, fn ($q, $id) => $q->where('id', '!=', $id))
+            ->delete();
     }
 
     /** The row for a token that is still good, or null. */

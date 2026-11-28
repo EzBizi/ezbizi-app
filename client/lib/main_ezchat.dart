@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import 'core/api_client.dart';
 import 'core/client_platform.dart';
+import 'core/os_notifications.dart';
 import 'core/push_registration.dart';
 import 'core/session.dart';
 import 'core/theme.dart';
@@ -31,6 +32,7 @@ Future<void> main() async {
   EzBiziTheme.isEzChat = true;
   // Accounts are made in EzBizi (an invitation); EzChat only signs in.
   LoginScreen.showCreateAccount = false;
+  LoginScreen.chatOnly = true;
   runApp(const EzChatApp());
 }
 
@@ -117,6 +119,23 @@ class _EzChatHomeState extends State<EzChatHome> {
   void initState() {
     super.initState();
     if (!ClientPlatform.isWeb) unawaited(PushRegistration.start(widget.api));
+    // A tapped push or desktop notification opens its chat (Jose 11-27).
+    OsNotifications.onClick = _tapped;
+    unawaited(OsNotifications.listenForPushTaps());
+    if (!ClientPlatform.isWeb) unawaited(OsNotifications.enable());
+  }
+
+  void _tapped(String? payload) {
+    final chat = ChatTab.chatOf(payload);
+    if (chat == null || !mounted) return;
+    setState(() => _tab = 0);
+    ChatTab.openFromNotification(payload);
+  }
+
+  @override
+  void dispose() {
+    if (OsNotifications.onClick == _tapped) OsNotifications.onClick = null;
+    super.dispose();
   }
 
   @override
@@ -243,6 +262,17 @@ class _You extends StatelessWidget {
               'appearance.theme',
               dark ? 'dark' : 'light',
             ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          margin: EdgeInsets.zero,
+          child: SwitchListTile(
+            key: const ValueKey('ezchat-show-preview'),
+            secondary: const Icon(Icons.notifications_outlined),
+            title: const Text('Show message text in notifications'),
+            value: session.me?.preferences['chat.show_preview'] != false,
+            onChanged: (on) => session.setPreference('chat.show_preview', on),
           ),
         ),
         const SizedBox(height: 12),

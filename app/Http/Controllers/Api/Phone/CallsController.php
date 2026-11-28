@@ -302,7 +302,8 @@ class CallsController extends Controller
             $query->forPage(max(1, (int) $request->query('page', 1)), min($perPage, 200));
         }
 
-        $calls = $query->get();
+        // Tags in one query (audit 11-27: lazy-loaded per row).
+        $calls = $query->with('tag')->get();
 
         $customerIds = $this->customerIdsByPhone($calls);
         $customerNames = $this->customerNamesById(array_values($customerIds));
@@ -1242,8 +1243,13 @@ class CallsController extends Controller
             return [];
         }
 
+        // Only the people named (audit 11-27: every user, every request).
+        $ids = array_filter(array_map(
+            fn (string $key) => ClientIdentity::uuidOf($key) ?? (\Illuminate\Support\Str::isUuid($key) ? $key : null),
+            array_keys($identities),
+        ));
         $names = [];
-        foreach (User::query()->get(['id', 'name']) as $user) {
+        foreach (User::query()->whereIn('id', $ids)->get(['id', 'name']) as $user) {
             foreach ([ClientIdentity::of($user), (string) $user->id] as $key) {
                 if (isset($identities[$key])) {
                     $names[$key] = (string) $user->name;

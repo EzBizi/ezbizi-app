@@ -13,8 +13,52 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0666', date: '28 Nov 2026', items: [
+      'Chat: technicians assigned to a branch now join their company automatic groups',
+    ]),
+    VersionRelease(version: '0.0.0665', date: '27 Nov 2026', deployed: '2026-11-27 23:38', items: [
+      'Android: chat notifications now use the phone own call screen and Reply and Mark read buttons, Answer joins the call, and a chat read elsewhere clears its notification',
+      'Windows: the taskbar button shows your unread chat count, like WhatsApp desktop',
+      'Mac: the dock icon shows your unread chat count',
+      'iPhone: chat calls ring on the iPhone call screen once the app update lands, and message notifications get Reply and Mark read',
+    ]),
+    VersionRelease(version: '0.0.0664', date: '27 Nov 2026', items: [
+      'Chat and EzChat: @mention people in groups, and a mention reaches them even when the group is muted',
+      'Chat: a switch to hide message text in notifications, and muting a chat Always now works',
+    ]),
+    VersionRelease(version: '0.0.0663', date: '27 Nov 2026', items: [
+      'Chat and EzChat: tapping a notification opens that chat, messages stack per chat with an unread badge on the app icon, calls ring by push even when the app is closed, missed calls notify, and computers and browsers show notifications for chats you are not looking at',
+      'Android: chat notifications have Reply and Mark read buttons, calls ring like WhatsApp, and a chat read elsewhere clears its notification',
+    ]),
+    VersionRelease(version: '0.0.0662', date: '27 Nov 2026', items: [
+      'Chat: each company gets automatic Dispatchers, Technicians and Leadership groups; people join and leave them with their role, and admins choose which roles feed each group',
+      'Roles: every module with anything under it now opens the same way, showing its sub-modules then its tabs, with Expand all and Collapse all',
+      'EzChat: sign in with email and password, no authenticator code; the EzChat sign-in only works for chat, and the main EzBizi app still asks for the code',
+      'Task Board on phones: tapping the board title opens a home with your favourite boards, recently visited boards and the workspace tree, like Monday',
+      'Task Board notifications show who did it, with their picture',
+      'Notifications on phones look like Monday: an Unread tab, the person who did it as an avatar with a badge for what they did, and a board and item line',
+      'Task Board on phones: My work has Past dates, This week, Next week and Later tiles like Monday, and tapping one narrows the list',
+      'Task Board: mirror columns only read boards you can open, imports keep commas in titles, and Undo, Duplicate and Move to top say when they fail',
+      'A deactivated account can no longer sign in to EzBizi in any way, including through a linked login, and deactivating staff signs out their open sessions',
+      'Sign-in: text-message codes have send and guess limits and go to US and Canadian numbers only, signing out ends the session on the server, and choosing a code-protected organization asks for the code',
+      'If the server cannot be reached when the app opens, it keeps you signed in and retries instead of showing the sign-in screen',
+      'The app own customer export can be imported back, and attachments are only removed after their record is really deleted',
+    ]),
+    VersionRelease(version: '0.0.0661', date: '27 Nov 2026', deployed: '2026-11-27 21:04', items: [
+      'Task Board on phones: a one-line header and a floating bar for search, filter, sort, hide and quick filters, like Monday',
+      'Training: overdue and expiry dates use your local day, and unsaved edits and blank answers are handled before submit',
+      'Scheduling: same-day overbookings are flagged in local time, each company can own its own ZIP codes, slot offers use the lead company, and clearing a map drawing asks first',
+      'Task Board: tasks on deleted boards stop sending reminders, and only an update author or an Administrator can change its files',
+    ]),
     VersionRelease(version: '0.0.0660', date: '27 Nov 2026', items: [
       'Customer Experience: eKomi accounts and review customer suggestions stay within the companies you can reach, failed saves keep your notes, and Draft all leaves the reply you are typing alone',
+      'Phone: a line can turn recording off even when its company records, the company after-hours forward applies to lines, the Everyone ring group rings only that company staff, and removing a menu, hours or mailbox asks first',
+      'Leads: the rest of the audit fixes, including accented first names, safer Google sign-in checks and a Try again on failed Ads loads',
+      'Jobs and Project Management: the rest of the audit fixes, and project reminders are sent once per day and retried when they fail',
+      'Task Board on phones: boards are now a dense table like Monday, with the name column pinned, the other columns sliding underneath, and the group colour down the left edge; long-press a row for its menu',
+      'Scoring: jobs tagged Training, and the calls to or from their numbers, no longer count in Performance, Scoring, the Leaderboard or My performance',
+      'Meta and WhatsApp: access tokens never travel in URLs, customer erasure covers WhatsApp messages, and the staff bot Daily conversion uses your own day',
+      'Leaderboard: a new full-width design with a podium for the top three, everyone else ranked by place and rate, and a You panel showing the bookings that move you up',
       'Monitoring: camera health only says OK when a stream is connected, and the recorder password is no longer left in a file on the recorder PC',
       'Task Board: deleting a folder moves its boards and subfolders up instead of removing them, sensitive task text stays hidden in the updates feed, plus 12 more fixes',
       'Customers: a failed load offers Retry, delete needs two presses, and edits only send what changed',

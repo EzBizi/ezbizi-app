@@ -21,6 +21,14 @@ class TaskUpdatePolicy
 
     public function update(User $user, TaskUpdate $update): Response
     {
-        return $update->task ? $this->tasks->update($user, $update->task) : Response::denyAsNotFound();
+        if (! $update->task) {
+            return Response::denyAsNotFound();
+        }
+        // Files on an update are its author's (audit 11-27): another editor of the board may not add or remove them.
+        if ((string) $update->user_id !== (string) $user->id && ! $user->isAdministrator()) {
+            return Response::deny('Only the person who wrote this update, or an Administrator, can change its files.');
+        }
+
+        return $this->tasks->update($user, $update->task);
     }
 }

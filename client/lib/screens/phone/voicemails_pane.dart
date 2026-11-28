@@ -141,7 +141,12 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
   }
 
   /// [quiet]: a live re-read; a failure keeps the messages on screen.
+  /// Only the newest request may draw (audit 11-27: a slow answer showed one
+  /// mailbox's messages under another).
+  int _messagesSeq = 0;
+
   Future<void> _loadMessages({bool quiet = false}) async {
+    final seq = ++_messagesSeq;
     final boxId = _boxId;
 
     // No box chosen is EVERY voicemail, not none. `voicemail_only` asks the
@@ -162,12 +167,15 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
     };
 
     final response = await widget.api.get('/phone/calls', query);
-    if (!mounted || (quiet && !response.ok)) return;
+    if (!mounted || seq != _messagesSeq || (quiet && !response.ok)) return;
 
     final meta = response.ok ? response.body['meta'] : null;
     final tiles = meta is Map ? meta['tiles'] : null;
 
     setState(() {
+      // A failed load is an error with Try again, never "No voicemails yet"
+      // (audit 11-27).
+      if (!response.ok) _error = response.reason;
       _messages = response.ok
           ? [
               for (final row in (response.data as List? ?? const []))

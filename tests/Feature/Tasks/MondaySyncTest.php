@@ -91,6 +91,23 @@ class MondaySyncTest extends TestCase
         $this->artisan('ezbizi:monday-sync')->assertSuccessful();
     }
 
+    /** Audit 11-27: the sync's save keeps what another writer put on the connection meanwhile (webhooks, people). */
+    public function test_the_sync_save_keeps_keys_written_meanwhile(): void
+    {
+        $this->inTenant($this->tenant['org'], fn () => $this->connection->forceFill(['setup' => ['monday' => [
+            'as' => $this->jose->id, 'webhooks' => ['100' => 'w1'], 'people' => ['a@example.com' => 'b@example.com'],
+        ]]])->save());
+        // The sync's state as it read it before those were written.
+        $save = new \ReflectionMethod(\App\Support\Tasks\Monday\MondaySync::class, 'save');
+        $save->invoke(app(\App\Support\Tasks\Monday\MondaySync::class), $this->tenant['org'], $this->connection,
+            ['as' => $this->jose->id, 'cursors' => ['100' => '2026-11-12T11:00:00Z'], 'last' => ['at' => 'now', 'boards' => []]]);
+
+        $monday = $this->inTenant($this->tenant['org'], fn () => $this->connection->fresh()->setup['monday']);
+        $this->assertSame(['100' => 'w1'], $monday['webhooks']);
+        $this->assertSame(['a@example.com' => 'b@example.com'], $monday['people']);
+        $this->assertSame('2026-11-12T11:00:00Z', $monday['cursors']['100']);
+    }
+
     /** Desk 11-20: an item Monday sent with no Status gets ours, and ours goes back so Monday is not left blank. */
     public function test_a_blank_status_from_monday_is_pushed_back(): void
     {

@@ -43,6 +43,10 @@ class ApiClient {
   void setView(String? view) => _view = view;
   bool get hasToken => _token != null;
 
+  /// The bearer for native code that calls the API while Flutter is not
+  /// running (Android chat notification Reply / Mark read / Decline).
+  String? get bearer => _token;
+
   /// Called when the server refuses a request from a token we were holding.
   ///
   /// ── Why this exists at all ───────────────────────────────────
@@ -185,13 +189,18 @@ class ApiClient {
     Map<String, String>? headers,
   ]) async {
     final uri = Uri.parse('$_root/api/v1$path').replace(queryParameters: query);
-    return _send('GET', path, () => _http.get(uri, headers: {..._headers, ...?headers}));
+    return _send(
+      'GET',
+      path,
+      () => _http.get(uri, headers: {..._headers, ...?headers}),
+    );
   }
 
   Future<ApiResponse> post(String path, Map<String, dynamic> body) async {
     final uri = Uri.parse('$_root/api/v1$path');
     return _send(
-      'POST', path,
+      'POST',
+      path,
       () => _http.post(uri, headers: _headers, body: jsonEncode(body)),
     );
   }
@@ -202,7 +211,8 @@ class ApiClient {
   Future<ApiResponse> put(String path, Map<String, dynamic> body) async {
     final uri = Uri.parse('$_root/api/v1$path');
     return _send(
-      'PUT', path,
+      'PUT',
+      path,
       () => _http.put(uri, headers: _headers, body: jsonEncode(body)),
     );
   }
@@ -214,7 +224,8 @@ class ApiClient {
   ]) async {
     final uri = Uri.parse('$_root/api/v1$path').replace(queryParameters: query);
     return _send(
-      'PATCH', path,
+      'PATCH',
+      path,
       () => _http.patch(uri, headers: _headers, body: jsonEncode(body)),
     );
   }
@@ -237,7 +248,8 @@ class ApiClient {
   ) async {
     final uri = Uri.parse('$_root/api/v1$path');
     return _send(
-      'DELETE', path,
+      'DELETE',
+      path,
       () => _http.delete(uri, headers: _headers, body: jsonEncode(body)),
     );
   }
@@ -285,7 +297,11 @@ class ApiClient {
     path,
     [
       for (final file in files)
-        http.MultipartFile.fromBytes('$field[]', file.bytes, filename: file.name),
+        http.MultipartFile.fromBytes(
+          '$field[]',
+          file.bytes,
+          filename: file.name,
+        ),
     ],
     fields,
     'Could not send that. Check your connection.',
@@ -327,16 +343,41 @@ class ApiClient {
       // real socket that is not there. Routing it through `_http` puts it on the
       // same footing as every other verb, which is the only way the identity
       // headers above and the 426 check below can be shown to work.
+      final started = DateTime.now();
       final streamed = await _http.send(request);
       final response = await http.Response.fromStream(streamed);
 
       _noticeResponse(response, tokenGeneration, authenticated);
 
+      // Reported like every other verb's: a 502 from the proxy during a
+      // deploy is the app's problem to know about.
+      if (response.statusCode >= 500) {
+        IssueReporter.instance.apiFailure(
+          'POST',
+          _pathShape(path),
+          response.statusCode,
+          DateTime.now().difference(started),
+        );
+      }
+
+      Map<String, dynamic> body;
+      try {
+        body = response.body.isEmpty
+            ? <String, dynamic>{}
+            : jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        // A 502/504 page is HTML. Decoding it threw into the catch below and
+        // became "check your connection" with status 0 — wrong, and lost.
+        body = {
+          'message':
+              'The server could not take that just now (HTTP '
+              '${response.statusCode}). Try again in a moment.',
+        };
+      }
+
       return ApiResponse(
         statusCode: response.statusCode,
-        body: response.body.isEmpty
-            ? <String, dynamic>{}
-            : jsonDecode(response.body) as Map<String, dynamic>,
+        body: body,
         correlationId: response.headers['x-correlation-id'],
         headers: Map<String, String>.unmodifiable(response.headers),
       );
@@ -445,7 +486,11 @@ class ApiClient {
       // Server errors are the app's problem to report too (2026-10-15).
       if (response.statusCode >= 500) {
         IssueReporter.instance.apiFailure(
-          method, _pathShape(path), response.statusCode, DateTime.now().difference(started));
+          method,
+          _pathShape(path),
+          response.statusCode,
+          DateTime.now().difference(started),
+        );
       }
 
       /*
@@ -508,7 +553,11 @@ class ApiClient {
       );
     } catch (e) {
       IssueReporter.instance.apiFailure(
-          method, _pathShape(path), 0, DateTime.now().difference(started));
+        method,
+        _pathShape(path),
+        0,
+        DateTime.now().difference(started),
+      );
       return ApiResponse(
         statusCode: 0,
         body: {'message': 'Could not reach the server. Check your connection.'},
@@ -534,8 +583,25 @@ class ApiClient {
     _noticeUpgradeRequired(response.statusCode, response.body);
     if (response.statusCode == 401 &&
         authenticated &&
-        generation == _tokenGeneration) {
+        generation == _tokenGeneration &&
+        !_typedPasswordRefused(response.body)) {
       onUnauthorized?.call();
+    }
+  }
+
+  /// A 401 that refuses a password typed into a form, not the token.
+  ///
+  /// Delete account (and staff setup) answer a wrong password with 401
+  /// `invalid_credentials`, while the session that sent it is perfectly
+  /// good. Read as a dead token, one mistyped password signed somebody out
+  /// as "session expired". A refused token never carries this code.
+  static bool _typedPasswordRefused(String body) {
+    if (!body.contains('invalid_credentials')) return false;
+    try {
+      final decoded = jsonDecode(body);
+      return decoded is Map && decoded['code'] == 'invalid_credentials';
+    } catch (_) {
+      return false;
     }
   }
 

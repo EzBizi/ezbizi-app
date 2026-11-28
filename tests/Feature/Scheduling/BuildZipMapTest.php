@@ -277,6 +277,28 @@ class BuildZipMapTest extends TestCase
         $this->assertSame($newJersey->id, $rows->first()->service_area_id);
     }
 
+    /** Audit 11-27: each company owns its own map, so two companies' areas both keep a zip they share. */
+    public function test_two_companies_naming_one_zip_each_get_it(): void
+    {
+        [$tenant, $newJersey] = $this->tenantWithArea('New Jersey');
+
+        app(TenantContext::class)->set($tenant['org']);
+        $sister = \App\Models\Company::create(['organization_id' => $tenant['org']->id, 'name' => 'Sister Co']);
+        $branch = Franchise::create(['organization_id' => $tenant['org']->id, 'company_id' => $sister->id, 'name' => 'Sister NJ']);
+        $theirs = ServiceArea::create(['franchise_id' => $branch->id, 'name' => 'Jersey Shore']);
+
+        $this->job($tenant, 'Jersey Shore', '08753', franchise: $branch);
+        foreach (range(1, 3) as $ignored) {
+            $this->job($tenant, 'New Jersey', '08753');
+        }
+
+        $this->artisan('scheduling:build-zip-map', ['--organization' => 'Alpha'])->assertSuccessful();
+
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertEqualsCanonicalizing([$newJersey->id, $theirs->id],
+            ServiceAreaZip::query()->where('zip', '08753')->pluck('service_area_id')->all());
+    }
+
     /**
      * A NAME IS ONLY UNIQUE WITHIN ITS BRANCH'S WORKIZ ACCOUNT. On 2026-09-28
      * Nationwide gained its own Austin beside Texas's, and a dry run keyed on

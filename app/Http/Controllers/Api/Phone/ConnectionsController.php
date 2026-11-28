@@ -499,10 +499,11 @@ class ConnectionsController extends Controller
             // whole desk out of the ring group for an hour after one call,
             // and would find out when the phone stopped ringing.
             'wrap_up_seconds' => ['sometimes', 'integer', 'min:0', 'max:300'],
-            'default_flow_id' => ['sometimes', 'nullable', 'string', 'max:191'],
-            'default_hours_schedule_id' => ['sometimes', 'nullable', 'string', 'max:191'],
-            'default_ring_group_id' => ['sometimes', 'nullable', 'string', 'max:191'],
-            'default_voicemail_box_id' => ['sometimes', 'nullable', 'string', 'max:191'],
+            // Must exist on THIS account (audit 11-27).
+            'default_flow_id' => ['sometimes', 'nullable', 'uuid', Rule::exists((new \App\Models\PhoneFlow)->getTable(), 'id')->where('connection_id', $connection->id)],
+            'default_hours_schedule_id' => ['sometimes', 'nullable', 'uuid', Rule::exists((new \App\Models\PhoneHoursSchedule)->getTable(), 'id')->where('connection_id', $connection->id)],
+            'default_ring_group_id' => ['sometimes', 'nullable', 'uuid', Rule::exists((new \App\Models\PhoneRingGroup)->getTable(), 'id')->where('connection_id', $connection->id)],
+            'default_voicemail_box_id' => ['sometimes', 'nullable', 'uuid', Rule::exists((new \App\Models\PhoneVoicemailBox)->getTable(), 'id')->where('connection_id', $connection->id)],
             'default_fallback_number' => ['sometimes', 'nullable', 'string', 'max:32'],
             'default_recording_notice' => ['sometimes', 'nullable', 'string', 'max:500'],
             'default_record' => ['sometimes', 'boolean'],

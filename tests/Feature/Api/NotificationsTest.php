@@ -445,11 +445,16 @@ class NotificationsTest extends TestCase
             $outsider = User::query()->forceCreate([
                 'organization_id' => $this->org['organization']->id, 'name' => 'Outsider',
                 'email' => 'outsider@alpha.test', 'password' => bcrypt('a-real-password'),
-                'role_id' => $this->org['admin']->role_id, 'is_active' => true,
+                // A plain role: an Administrator reaches every company.
+                'role_id' => \App\Models\Role::query()->forceCreate([
+                    'id' => (string) \Illuminate\Support\Str::uuid7(),
+                    'organization_id' => $this->org['organization']->id, 'name' => 'Tech',
+                ])->id,
+                'is_active' => true,
             ]);
             Assignment::query()->forceCreate([
                 'organization_id' => $this->org['organization']->id, 'user_id' => $outsider->id,
-                'scope_type' => Assignment::SCOPE_COMPANY, 'scope_id' => $other->id,
+                'assigned_company_id' => $other->id,
             ]);
 
             return [$other, $outsider];
@@ -473,6 +478,7 @@ class NotificationsTest extends TestCase
                 \App\Models\DeviceToken::query()->forceCreate([
                     'id' => (string) \Illuminate\Support\Str::uuid7(), 'organization_id' => $this->org['organization']->id,
                     'user_id' => $this->org['admin']->id, 'token' => $t, 'platform' => 'android',
+                    'last_registered_at' => now(),
                 ]);
             }
         });
@@ -481,6 +487,19 @@ class NotificationsTest extends TestCase
             ->assertOk()->assertJsonPath('data.deleted', 1);
 
         $this->assertSame(['phone-b'], $this->inTenant(fn () => \App\Models\DeviceToken::query()->pluck('token')->all()));
+    }
+
+    public function test_a_row_names_who_did_it_and_what_they_did(): void
+    {
+        // Monday's phone cards (Jose, 2026-11-27): actor avatar + action badge.
+        $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: 'Admin posted on Call back', onlyTo: $this->org['admin'], source: 'system',
+            kind: 'task.reply.mine', actor: $this->org['admin'],
+        ));
+
+        $row = $this->as($this->org['admin'])->getJson('/api/v1/notifications')->assertOk()->json('data.0');
+        $this->assertSame(['id' => $this->org['admin']->id, 'name' => 'Admin'], $row['actor']);
+        $this->assertSame('task.reply.mine', $row['action']);
     }
 
     public function test_a_looping_rule_cannot_flood_one_persons_bell(): void

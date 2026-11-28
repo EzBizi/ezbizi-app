@@ -135,6 +135,45 @@ class ChangeFeedTest extends TestCase
         $this->assertGreaterThan($since, $data['cursor']);
     }
 
+    /** A cursor older than the prune says reload, not "nothing changed" (audit 2026-11-27). */
+    public function test_a_cursor_older_than_the_prune_says_reload(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->signedInAs($t['admin']);
+
+        $old = DB::table('change_events')->insertGetId(['organization_id' => $t['org']->id, 'type' => 'jobs',
+            'record_id' => 'gone', 'deleted' => false, 'changed_at' => now()->subDays(2)]);
+        DB::table('change_events')->insert(['organization_id' => $t['org']->id, 'type' => 'jobs',
+            'record_id' => 'kept', 'deleted' => false, 'changed_at' => now()]);
+
+        $this->artisan('ezbizi:prune-change-events')->assertSuccessful();
+
+        // A screen that last polled before `gone` was written.
+        $data = $this->feed($old - 1);
+        $this->assertTrue($data['reload'], 'a change that was pruned away was reported as no change');
+
+        // Its new cursor is current, so the next poll is ordinary again.
+        $this->assertFalse($this->feed($data['cursor'])['reload']);
+    }
+
+    /** A queue worker lives an hour; its jobs' changes must not wait for it to exit. */
+    public function test_a_queued_jobs_changes_are_flushed_when_the_job_ends(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        ChangeFeed::flush();
+        $org = (string) $t['org']->id;
+
+        dispatch(function () use ($org) {
+            $customer = (new Customer)->forceFill(['id' => 'cust-from-a-job', 'organization_id' => $org]);
+            ChangeFeed::record($customer, 'customers');
+        })->onConnection('sync');
+
+        $this->assertTrue(
+            DB::table('change_events')->where('record_id', 'cust-from-a-job')->exists(),
+            'the change stayed buffered after the job finished',
+        );
+    }
+
     public function test_prune_drops_rows_older_than_a_day(): void
     {
         $t = $this->provisionTenant('Alpha');

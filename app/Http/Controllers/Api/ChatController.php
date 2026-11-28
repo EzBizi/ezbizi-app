@@ -86,14 +86,7 @@ class ChatController extends Controller
         $mine = ChatMember::query()->where('user_id', $me->id)->whereNull('left_at')->get()->keyBy('chat_id');
         $chats = Chat::query()->whereIn('id', $mine->keys())->with(['activeMembers.user:id,name', 'job.customer:id,city'])->get();
 
-        $unread = ChatMessage::query()
-            ->join('chat_members as m', fn ($j) => $j->on('m.chat_id', '=', 'chat_messages.chat_id')->where('m.user_id', $me->id))
-            ->whereIn('chat_messages.chat_id', $mine->keys())
-            ->where(fn ($q) => $q->whereNull('chat_messages.sender_id')->orWhere('chat_messages.sender_id', '!=', $me->id))
-            ->whereNull('chat_messages.deleted_at')
-            ->whereNotIn('chat_messages.kind', ['system'])
-            ->whereRaw('chat_messages.created_at > COALESCE(m.read_at, ?)', ['1970-01-01'])
-            ->whereRaw('chat_messages.created_at > COALESCE(m.cleared_at, ?)', ['1970-01-01'])
+        $unread = ChatMessage::unreadFor($me->id, $mine->keys()->all())
             ->groupBy('chat_messages.chat_id')
             ->select('chat_messages.chat_id', DB::raw('COUNT(*) as n'))
             ->pluck('n', 'chat_id');
@@ -205,7 +198,8 @@ class ChatController extends Controller
             'description' => $chat->description,
             'only_admins_send' => $chat->only_admins_send,
             'created_at' => $chat->created_at?->toIso8601String(),
-            'i_am_admin' => $member->is_admin,
+            // An automatic group's admins are the organization's administrators.
+            'i_am_admin' => $chat->auto_key !== null ? $me->isAdministrator() : $member->is_admin,
             'muted' => $member->isMuted(),
             'muted_until' => $member->muted_until?->toIso8601String(),
             'pinned' => $member->pinned_at !== null,
@@ -294,7 +288,7 @@ class ChatController extends Controller
         }
         $this->pulse->bump($chat);
 
-        return $this->show($request, $chat);
+        return $this->showOrOk($request, $chat);
     }
 
     /** PATCH chat/chats/{chat}/members/{user} — make or dismiss an admin. */
@@ -307,23 +301,37 @@ class ChatController extends Controller
         $row->forceFill(['is_admin' => $input['is_admin']])->save();
         $this->pulse->bump($chat);
 
-        return $this->show($request, $chat);
+        return $this->showOrOk($request, $chat);
+    }
+
+    /** An administrator outside an automatic group changed it: nothing of theirs to show. */
+    private function showOrOk(Request $request, Chat $chat): JsonResponse
+    {
+        $in = $chat->members()->where('user_id', $request->user()->id)->whereNull('left_at')->exists();
+
+        return $in ? $this->show($request, $chat) : response()->json(['ok' => true]);
     }
 
     /** DELETE chat/chats/{chat}/members/{user} — an admin removes someone, or you leave. */
     public function removeMember(Request $request, Chat $chat, string $user): JsonResponse
     {
         $me = $request->user();
-        $member = $this->member($chat, $me);
-        abort_unless($chat->type === 'group', Response::HTTP_UNPROCESSABLE_ENTITY, 'You cannot leave a direct chat; archive or clear it instead.');
-        abort_unless($user === $me->id || $member->is_admin, Response::HTTP_FORBIDDEN, 'Only group admins can remove people.');
+        if ($chat->auto_key !== null) {
+            // Nobody leaves an automatic group or removes from it, but an administrator.
+            $this->adminOfGroup($chat, $me);
+        } else {
+            $member = $this->member($chat, $me);
+            abort_unless($chat->type === 'group', Response::HTTP_UNPROCESSABLE_ENTITY, 'You cannot leave a direct chat; archive or clear it instead.');
+            abort_unless($user === $me->id || $member->is_admin, Response::HTTP_FORBIDDEN, 'Only group admins can remove people.');
+        }
 
         $row = $chat->activeMembers()->where('user_id', $user)->firstOrFail();
         $row->forceFill(['left_at' => now(), 'is_admin' => false])->save();
         $this->system($chat, $me, $user === $me->id ? 'left' : 'removed', ['user_id' => $user, 'name' => $row->user?->name]);
 
         // A group never loses its last admin: the longest-standing member takes over.
-        if (! $chat->activeMembers()->where('is_admin', true)->exists()) {
+        // An automatic group has none; the administrators look after it.
+        if ($chat->auto_key === null && ! $chat->activeMembers()->where('is_admin', true)->exists()) {
             $chat->activeMembers()->oldest()->first()?->forceFill(['is_admin' => true])->save();
         }
         $this->pulse->bump($chat, also: [$user]);
@@ -360,7 +368,8 @@ class ChatController extends Controller
             $hours = $input['mute_hours'];
             $member->muted_until = match (true) {
                 $hours === 0 => null,
-                $hours < 0 => Carbon::create(2100),
+                // "Always": the furthest a TIMESTAMP column holds (2038); 2100 was refused.
+                $hours < 0 => Carbon::create(2038, 1, 1),
                 default => now()->addHours($hours),
             };
         }
@@ -404,6 +413,7 @@ class ChatController extends Controller
         if ($latest !== null && ($member->read_at === null || $member->read_at->lt(Carbon::parse($latest)))) {
             $member->forceFill(['delivered_at' => $latest, 'read_at' => $latest]);
             $this->pulse->bump($chat);
+            $this->nativeNote([$member->user_id], ['type' => 'chat_read', 'chat_id' => $chat->id]);
         }
     }
 
@@ -423,6 +433,13 @@ class ChatController extends Controller
         $me = $request->user();
         $this->pulse->seen($me->id);
         $chatIds = ChatMember::query()->where('user_id', $me->id)->whereNull('left_at')->pluck('chat_id')->all();
+        // This handset has this chat on screen: its pushes for it stay quiet
+        // there, and only there (WhatsApp; desk 11-27).
+        $viewing = $request->query('viewing');
+        $device = $request->query('device');
+        if (is_string($viewing) && in_array($viewing, $chatIds, true) && is_string($device) && $device !== '' && strlen($device) <= 255) {
+            $this->pulse->viewing($device, $viewing);
+        }
 
         return response()->json(['data' => [
             'rev' => $this->pulse->rev($me->id),
@@ -466,12 +483,16 @@ class ChatController extends Controller
 
         $latest = $chat->messages()->max('created_at');
         if ($latest !== null) {
+            $wasUnread = $member->read_at === null || $member->read_at->lt(Carbon::parse($latest));
             $member->forceFill([
                 'delivered_at' => $latest,
                 'read_at' => $latest,
                 'marked_unread' => false,
             ])->save();
             $this->pulse->bump($chat);
+            if ($wasUnread) {
+                $this->nativeNote([$me->id], ['type' => 'chat_read', 'chat_id' => $chat->id]);
+            }
         }
 
         $receipts = $this->receipts($chat, $me);
@@ -500,6 +521,9 @@ class ChatController extends Controller
             'body' => ['nullable', 'string', 'max:65000'],
             'kind' => ['nullable', 'in:text,image,video,audio,voice,file,call'],
             'reply_to_id' => ['nullable', 'uuid'],
+            // @mentions in a group (desk 11-27): ids of members named in the text.
+            'mentions' => ['nullable', 'array', 'max:50'],
+            'mentions.*' => ['uuid'],
             'meta' => ['nullable', 'array'],
             'meta.status' => ['nullable', 'in:answered,missed,declined,failed'],
             'meta.duration' => ['nullable', 'integer', 'min:0', 'max:86400'],
@@ -537,7 +561,16 @@ class ChatController extends Controller
             abort_if($replyTo === null, Response::HTTP_UNPROCESSABLE_ENTITY, 'That message is no longer in this chat.');
         }
 
-        $message = DB::transaction(function () use ($chat, $me, $kind, $body, $replyTo, $input, $file, $uploader) {
+        // Only people in this group, never myself; kept with their names so the
+        // bubble can highlight them as they were called when it was sent.
+        $mentions = [];
+        if ($chat->type === 'group' && $kind === 'text' && ! empty($input['mentions'])) {
+            $mentions = $chat->activeMembers()->with('user:id,name')
+                ->whereIn('user_id', array_unique($input['mentions']))->where('user_id', '!=', $me->id)->get()
+                ->map(fn (ChatMember $m) => ['id' => $m->user_id, 'name' => $m->user?->name])->values()->all();
+        }
+
+        $message = DB::transaction(function () use ($chat, $me, $kind, $body, $replyTo, $input, $file, $uploader, $mentions) {
             $message = ChatMessage::query()->create([
                 'organization_id' => $chat->organization_id,
                 'chat_id' => $chat->id,
@@ -547,7 +580,7 @@ class ChatController extends Controller
                 'reply_to_id' => $replyTo?->id,
                 'meta' => $kind === 'call' || $kind === 'voice'
                     ? array_filter($input['meta'] ?? [], fn ($v) => $v !== null)
-                    : null,
+                    : ($mentions !== [] ? ['mentions' => $mentions] : null),
             ]);
             if ($file !== null) {
                 $uploader->upload($me, $message, $file, 'chat_messages');
@@ -847,6 +880,7 @@ class ChatController extends Controller
             $row->forceFill(['meta' => $meta])->save();
         });
         $this->calls->silence($chatMessage, $chat->type === 'direct' ? null : [$me->id]);
+        $this->nativeNote([$me->id], ['type' => 'chat_call_end', 'chat_id' => $chat->id, 'call_id' => $chatMessage->id, 'reason' => 'answered_elsewhere']);
         $this->pulse->bump($chat);
 
         return $this->callAnswer($connection, $me, $chatMessage->fresh(), $chat);
@@ -901,6 +935,25 @@ class ChatController extends Controller
             $row->forceFill(['meta' => $meta])->save();
         });
         $this->calls->silence($call);
+        // Stop the ring on every handset, the caller's other ones too.
+        $this->nativeNote($call->chat->members()->pluck('user_id')->all(), [
+            'type' => 'chat_call_end', 'chat_id' => $call->chat_id, 'call_id' => $call->id,
+            'reason' => match ($status) { 'missed' => 'missed', 'answered' => 'answered_elsewhere', default => 'cancelled' },
+        ]);
+
+        // Nobody answered: "Missed voice call" on everyone else's phone.
+        $call->refresh();
+        if ($status === 'missed' && ($call->meta['status'] ?? null) === 'missed') {
+            $chat = $call->chat;
+            $others = $chat->activeMembers()->where('user_id', '!=', $call->sender_id)->pluck('user_id')->all();
+            if ($others !== []) {
+                $from = $call->sender?->name ?? 'Someone';
+                $this->push($others, $chat->type === 'group' ? (string) $chat->name : $from,
+                    ($chat->type === 'group' ? $from.': ' : '').$this->callLine($call), $chat->organization_id, $chat->id, hidden: null,
+                    native: ['type' => 'chat_message', 'message_id' => $call->id, 'sender' => $from, 'body' => $this->callLine($call),
+                        'is_group' => $chat->type === 'group' ? '1' : '0', 'sent_at' => (string) $call->created_at->getTimestampMs()]);
+            }
+        }
     }
 
     private function callChat(ChatMessage $call, User $me): Chat
@@ -980,8 +1033,16 @@ class ChatController extends Controller
         return $member;
     }
 
-    private function adminOfGroup(Chat $chat, User $me): ChatMember
+    private function adminOfGroup(Chat $chat, User $me): ?ChatMember
     {
+        // An automatic group follows the role (ChatAutoGroups); only an
+        // administrator changes who is in it (Jose, 11-27).
+        if ($chat->auto_key !== null) {
+            abort_unless($me->isAdministrator(), Response::HTTP_FORBIDDEN, 'This group follows the role by itself; only an administrator changes it.');
+
+            return $chat->members()->where('user_id', $me->id)->whereNull('left_at')->first();
+        }
+
         $member = $this->member($chat, $me);
         abort_unless($chat->type === 'group', Response::HTTP_UNPROCESSABLE_ENTITY, 'A direct chat has no members to manage.');
         abort_unless($member->is_admin, Response::HTTP_FORBIDDEN, 'Only group admins can do that.');
@@ -1026,32 +1087,120 @@ class ChatController extends Controller
         $chat->members()->whereNotNull('archived_at')->where(fn ($q) => $q->whereNull('muted_until')->orWhere('muted_until', '<', now()))->update(['archived_at' => null]);
         $this->pulse->bump($chat);
 
-        $recipients = $chat->activeMembers()->with('user:id,name')->where('user_id', '!=', $message->sender_id)->get()
-            ->reject(fn (ChatMember $m) => $m->isMuted());
-        $absent = array_diff($recipients->pluck('user_id')->all(), $this->pulse->online($recipients->pluck('user_id')->all()));
-        if ($absent === []) {
-            return;
-        }
-
         $sender = $message->sender?->name ?? 'Someone';
         $title = $chat->type === 'group' ? (string) $chat->name : $sender;
         $line = ($chat->type === 'group' ? $sender.': ' : '').$this->preview($message);
-        $this->push($absent, $title, $line, $chat->organization_id);
+
+        // A ringing call reaches every phone, muted chat or not, whatever else is open.
+        if ($message->kind === 'call' && ($message->meta['status'] ?? null) === 'ringing') {
+            $everyone = $chat->activeMembers()->where('user_id', '!=', $message->sender_id)->pluck('user_id')->all();
+            if ($everyone !== []) {
+                $this->push($everyone, $title, $line, $chat->organization_id, $chat->id, urgent: true, hidden: null,
+                    native: ['type' => 'chat_call', 'call_id' => $message->id, 'sender' => $sender,
+                        'video' => ($message->meta['video'] ?? false) ? '1' : '0', 'is_group' => $chat->type === 'group' ? '1' : '0'],
+                    ttl: 30);
+            }
+
+            return;
+        }
+
+        // Every phone of everyone not muting it, open elsewhere or not; only a
+        // handset with this chat on screen stays quiet (see push()).
+        // A mention reaches a person who muted the group (WhatsApp).
+        $mentioned = array_column((array) ($message->meta['mentions'] ?? []), 'id');
+        $recipients = $chat->activeMembers()->where('user_id', '!=', $message->sender_id)->get()
+            ->reject(fn (ChatMember $m) => $m->isMuted() && ! in_array($m->user_id, $mentioned, true))->pluck('user_id')->all();
+        if ($recipients === []) {
+            return;
+        }
+
+        $this->push($recipients, $title, $line, $chat->organization_id, $chat->id, native: [
+            'type' => 'chat_message', 'message_id' => $message->id, 'sender' => $sender,
+            'body' => $this->preview($message), 'is_group' => $chat->type === 'group' ? '1' : '0',
+            'sent_at' => (string) $message->created_at->getTimestampMs(),
+        ]);
     }
 
     /** @param string[] $userIds push to these people's devices, after the response is sent */
-    private function push(array $userIds, string $title, string $line, string $organization): void
+    /**
+     * A push per person: tapping it opens the chat (`chat:{id}`, read by the
+     * app as it reads the bell's rows), one stack per chat, and the icon's
+     * badge is everything they have not read (WhatsApp, Jose 11-27). `urgent`
+     * uses Android's urgent channel: an incoming call.
+     */
+    private function push(array $userIds, string $title, string $line, string $organization, string $chatId, bool $urgent = false, ?string $hidden = 'New message', array $native = [], ?int $ttl = null): void
     {
         $userIds = array_values($userIds);
-        dispatch(function () use ($userIds, $title, $line, $organization) {
+        dispatch(function () use ($userIds, $title, $line, $organization, $chatId, $urgent, $hidden, $native, $ttl) {
             $push = app(PushSender::class);
             $org = \App\Models\Organization::query()->find($organization);
             if (! $push->configured() || $org === null || ! app(SettingsResolver::class)->get('notifications.push_enabled', $org)) {
                 return;
             }
+            $pulse = app(ChatPulse::class);
+            $prefs = User::query()->withoutGlobalScopes()->whereIn('id', $userIds)->pluck('preferences', 'id')
+                ->map(fn ($p) => is_array($p) ? $p : (array) json_decode((string) $p, true))->all();
             DeviceToken::query()->withoutGlobalScopes()->whereIn('user_id', $userIds)->get()
+                // Not the handset with this very chat open.
+                ->reject(fn (DeviceToken $d) => ! $urgent && $pulse->isViewing($d->token, $chatId))
                 ->groupBy('user_id')
-                ->each(fn (Collection $devices) => $push->send($devices, $title, $line));
+                ->each(function (Collection $devices, string $userId) use ($push, $title, $line, $chatId, $urgent, $hidden, $prefs, $native, $ttl) {
+                    $chats = ChatMember::query()->withoutGlobalScopes()->where('user_id', $userId)->whereNull('left_at')->pluck('chat_id')->all();
+                    // "Show preview" off: who wrote, never what (a call line is not private).
+                    $private = $hidden !== null && (($prefs[$userId] ?? [])['chat.show_preview'] ?? true) === false;
+                    $badge = ChatMessage::unreadFor($userId, $chats)->count();
+                    // A handset that draws Chat itself (Android, 11-27) gets the data;
+                    // the rest get a ready notification.
+                    [$draws, $plain] = $devices->partition(fn (DeviceToken $d) => $native !== [] && $d->drawsChat());
+                    // A ringing call on an iPhone with a VoIP token: CallKit, and no
+                    // alert as well for that app (Apple, 11-27).
+                    if (($native['type'] ?? null) === 'chat_call') {
+                        $voip = $plain->filter(fn (DeviceToken $d) => $d->platform === 'ios_voip');
+                        if ($voip->isNotEmpty()) {
+                            app(\App\Support\Notifications\ApnsSender::class)->sendRaw($voip, [
+                                'type' => 'chat_call', 'call_id' => $native['call_id'], 'chat_id' => $chatId,
+                                'caller_name' => $native['sender'] ?? $title, 'video' => ($native['video'] ?? '0') === '1',
+                            ], 'voip');
+                            $apps = $voip->pluck('app')->all();
+                            $plain = $plain->reject(fn (DeviceToken $d) => $d->platform === 'ios' && in_array($d->app, $apps, true));
+                        }
+                    }
+                    if ($draws->isNotEmpty()) {
+                        $push->sendData($draws, [...$native, 'chat_id' => $chatId, 'title' => $title,
+                            'body' => $private ? $hidden : ($native['body'] ?? $line), 'badge' => $badge], $ttl);
+                    }
+                    if ($plain->isNotEmpty()) {
+                        $push->send($plain, $title, $private ? $hidden : $line, urgent: $urgent, notificationId: 'chat:'.$chatId,
+                            thread: 'chat-'.$chatId, badge: $badge,
+                            category: ($native['type'] ?? null) === 'chat_message' ? 'CHAT_MESSAGE' : null);
+                    }
+                });
+        })->afterResponse();
+    }
+
+    /**
+     * A quiet note to the handsets that draw Chat themselves: `chat_call_end`
+     * stops a ring everywhere, `chat_read` clears a chat's notification once
+     * it was read on another device (Android, 11-27).
+     */
+    private function nativeNote(array $userIds, array $data): void
+    {
+        $userIds = array_values(array_unique($userIds));
+        if ($userIds === []) {
+            return;
+        }
+        dispatch(function () use ($userIds, $data) {
+            $push = app(PushSender::class);
+            $all = DeviceToken::query()->withoutGlobalScopes()->whereIn('user_id', $userIds)->get();
+            $devices = $all->filter(fn (DeviceToken $d) => $d->drawsChat());
+            if ($push->configured() && $devices->isNotEmpty()) {
+                $push->sendData($devices, $data);
+            }
+            // iPhones: a background push the app reads the same way.
+            $phones = $all->filter(fn (DeviceToken $d) => $d->platform === 'ios');
+            if ($phones->isNotEmpty()) {
+                app(\App\Support\Notifications\ApnsSender::class)->sendRaw($phones, $data, 'background');
+            }
         })->afterResponse();
     }
 
@@ -1082,6 +1231,8 @@ class ChatController extends Controller
         return [
             'id' => $chat->id,
             'type' => $chat->type,
+            // Automatic (Dispatchers / Technicians): no Leave, no Remove.
+            'auto' => $chat->auto_key !== null,
             'name' => $chat->type === 'direct' ? ($other?->user?->name ?? 'Former colleague') : $chat->name,
             'user_id' => $other?->user_id,
             'member_count' => $members->count(),

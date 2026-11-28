@@ -14,6 +14,9 @@ import '../../../core/session.dart';
 import '../../../core/soft_keyboard.dart';
 import '../../../widgets/side_panel.dart';
 import '../../../widgets/user_avatar.dart';
+import '../../../core/client_platform.dart';
+import '../../../core/os_notifications.dart';
+import 'chat_calls.dart';
 import 'chat_store.dart';
 import 'chat_thread.dart';
 
@@ -31,6 +34,37 @@ class ChatTab extends StatefulWidget {
 
   final ApiClient api;
   final Session session;
+
+  /// A chat to open, from a tapped push or desktop notification (`chat:{id}`).
+  /// The open Chat tab takes it and clears it; one mounted later takes it then.
+  static final ValueNotifier<String?> openRequest = ValueNotifier<String?>(
+    null,
+  );
+
+  /// `chat:{id}` (or `chat:{id}?call={call}`) → the chat id; anything else → null.
+  static String? chatOf(String? payload) =>
+      payload != null && payload.startsWith('chat:') && payload.length > 5
+      ? payload.substring(5).split('?').first
+      : null;
+
+  /// `chat:{id}?call={call}`: Answer on the phone's call screen → the call id.
+  static String? callOf(String? payload) {
+    if (chatOf(payload) == null) return null;
+    final q = payload!.indexOf('?');
+    if (q < 0) return null;
+    final call = Uri.splitQueryString(payload.substring(q + 1))['call'];
+    return call == null || call.isEmpty ? null : call;
+  }
+
+  /// A tapped chat notification: that chat open, and its call joined when
+  /// Answer was what was tapped.
+  static void openFromNotification(String? payload) {
+    final chat = chatOf(payload);
+    if (chat == null) return;
+    openRequest.value = chat;
+    final call = callOf(payload);
+    if (call != null) unawaited(ChatCalls.instance.answerById(call));
+  }
 
   @override
   State<ChatTab> createState() => _ChatTabState();
@@ -55,6 +89,9 @@ class _ChatTabState extends State<ChatTab> {
   // New group: who, then what it is called.
   final Set<String> _picked = {};
   bool _creating = false;
+
+  bool get _showPreview =>
+      widget.session.me?.preferences['chat.show_preview'] != false;
   bool _naming = false;
   final _groupName = TextEditingController();
   String? _groupError;
@@ -62,7 +99,25 @@ class _ChatTabState extends State<ChatTab> {
   List<Json> _starred = const [];
 
   @override
+  void initState() {
+    super.initState();
+    ChatTab.openRequest.addListener(_requested);
+    _requested();
+    // The browser asks for notifications once somebody opens Chat: the moment
+    // they would want them, not at sign-in (Jose 11-27).
+    if (ClientPlatform.isWeb) unawaited(OsNotifications.enable());
+  }
+
+  void _requested() {
+    final id = ChatTab.openRequest.value;
+    if (id == null || !mounted) return;
+    ChatTab.openRequest.value = null;
+    _openChat(id);
+  }
+
+  @override
   void dispose() {
+    ChatTab.openRequest.removeListener(_requested);
     _store.dispose();
     _search.dispose();
     _groupName.dispose();
@@ -416,9 +471,14 @@ class _ChatTabState extends State<ChatTab> {
                           setState(() => _side = _Side.archived);
                         } else if (v == 'read') {
                           unawaited(_store.readAll());
+                        } else if (v == 'preview') {
+                          widget.session.setPreference(
+                            'chat.show_preview',
+                            !_showPreview,
+                          );
                         }
                       },
-                      itemBuilder: (_) => const [
+                      itemBuilder: (_) => [
                         PopupMenuItem(value: 'group', child: Text('New group')),
                         PopupMenuItem(
                           value: 'starred',
@@ -431,6 +491,11 @@ class _ChatTabState extends State<ChatTab> {
                         PopupMenuItem(
                           value: 'read',
                           child: Text('Mark all read'),
+                        ),
+                        CheckedPopupMenuItem(
+                          value: 'preview',
+                          checked: _showPreview,
+                          child: const Text('Message text in notifications'),
                         ),
                       ],
                     ),

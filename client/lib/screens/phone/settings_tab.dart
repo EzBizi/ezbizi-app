@@ -301,6 +301,18 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   String? get _editRefusal =>
       _me.refusal('phone.edit', 'connect a phone account');
 
+  /// The place whose usage the Cost pane reads: a company with an account
+  /// (audit 11-27: the organization never has one, so the pane was empty).
+  // ponytail: first company with an account; a picker when someone has two.
+  _Place get _usagePlace =>
+      _places.firstWhere(
+        (p) => p.type == 'company' && _connectionFor(p) != null,
+        orElse: () => _places.firstWhere(
+          (p) => p.type == 'company',
+          orElse: () => _places.first,
+        ),
+      );
+
   List<_Place> get _places {
     final me = _me;
     // Organization card is always visible (numbers walk up to it). Connect
@@ -580,8 +592,8 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
           'cost' => UsagePane(
             api: widget.api,
             session: widget.session,
-            scopeType: _places.first.type,
-            scopeId: _places.first.id,
+            scopeType: _usagePlace.type,
+            scopeId: _usagePlace.id,
           ),
           _ => _unbuilt('Messaging campaigns will be set here.'),
         };

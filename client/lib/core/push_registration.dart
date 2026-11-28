@@ -35,6 +35,7 @@ class PushRegistration {
   /// than a common file three sessions edit, and a wrong name throws
   /// MissingPluginException rather than failing quietly.
   static const _channel = MethodChannel('com.ezbizi.app/fcm');
+  static const _nativeSession = MethodChannel('com.ezbizi.app/native_session');
 
   /// One flag PER PATH, because they guard different handlers.
   ///
@@ -147,6 +148,10 @@ class PushRegistration {
             if (token != null && token.isNotEmpty) {
               await _register(api, token, 'ios');
             }
+          case 'onVoipToken':
+            // PushKit's token, for CallKit rings (Apple, 11-27).
+            final token = call.arguments as String?;
+            if (token != null && token.isNotEmpty) await _registerVoip(api, token);
           case 'onTokenError':
             // Logged rather than swallowed: silence here is indistinguishable
             // from a token that simply has not arrived, and those want
@@ -166,6 +171,23 @@ class PushRegistration {
     } on MissingPluginException {
       debugPrint('push: the apns channel is not registered on this build');
     }
+    try {
+      final voip = await _appleChannel.invokeMethod<String>('getVoipToken');
+      if (voip != null && voip.isNotEmpty) await _registerVoip(api, voip);
+    } on PlatformException catch (_) {
+    } on MissingPluginException catch (_) {}
+  }
+
+  static String? _voipToken;
+
+  /// The PushKit token: only ever rung for a chat call, never an ordinary push.
+  static Future<void> _registerVoip(ApiClient api, String token) async {
+    final r = await api.post('/notifications/devices', {
+      'token': token,
+      'platform': 'ios_voip',
+      'app': app,
+    });
+    if (r.ok) _voipToken = token;
   }
 
   static Future<String?> _token() async {
@@ -190,9 +212,21 @@ class PushRegistration {
   /// The token this handset last registered, so sign-out can withdraw it.
   static String? _lastToken;
 
+  /// This handset's push token, or null before it registered. Chat's pulse
+  /// sends it with the chat on screen, so that chat's pushes skip this phone.
+  static String? get token => _lastToken;
+
   /// Sign-out: this handset stops receiving the person's pushes. Best effort;
   /// a failure must never block signing out.
   static Future<void> unregister(ApiClient api) async {
+    // Signed out: this iPhone stops ringing for them too.
+    final voip = _voipToken;
+    _voipToken = null;
+    if (voip != null) {
+      try {
+        await api.deleteWithBody('/notifications/devices', {'token': voip});
+      } catch (_) {}
+    }
     final token = _lastToken;
     if (token == null) return;
     try {
@@ -200,14 +234,33 @@ class PushRegistration {
     } catch (_) {}
     _lastToken = null;
     _registered = false;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await _nativeSession.invokeMethod('clear');
+      } on PlatformException catch (_) {
+      } on MissingPluginException catch (_) {}
+    }
   }
 
   static Future<void> _register(ApiClient api, String token, String platform) async {
+    final android = platform == 'android';
     final response = await api.post('/notifications/devices', {
       'token': token,
       'platform': platform,
       'app': app,
+      // Android draws chat pushes itself (call ring, Reply, Mark read), so it
+      // asks for data-only chat messages. See ChatPush.kt.
+      if (android) 'capabilities': ['chat_native'],
     });
+    if (android) {
+      try {
+        await _nativeSession.invokeMethod('set', {
+          'token': api.bearer,
+          'api_base': ApiClient.baseUrl,
+        });
+      } on PlatformException catch (_) {
+      } on MissingPluginException catch (_) {}
+    }
 
     if (!response.ok) {
       debugPrint('push: register failed ${response.statusCode}');

@@ -70,6 +70,7 @@ class NotificationsController extends Controller
             ->when($request->boolean('unread_only'), fn ($q) => $q->whereNull('read_at'))
             ->latest('created_at')
             ->limit(max(1, min((int) $request->query('limit', 50), 200)))
+            ->with('actor:id,name')
             ->get();
 
         /*
@@ -277,6 +278,9 @@ class NotificationsController extends Controller
             'platform' => ['required', 'string', Rule::in(app(PushSender::class)->platforms())],
             // EzChat, the chat companion, says so; an older EzBizi build says nothing.
             'app' => ['nullable', 'string', Rule::in(DeviceToken::APPS)],
+            // What the handset draws itself; `chat_native`: Chat's own (Android 11-27).
+            'capabilities' => ['nullable', 'array', 'max:10'],
+            'capabilities.*' => ['string', Rule::in(['chat_native'])],
         ]);
 
         $user = $request->user();
@@ -290,6 +294,7 @@ class NotificationsController extends Controller
                 'user_id' => $user->getKey(),
                 'platform' => $data['platform'],
                 'app' => $data['app'] ?? 'ezbizi',
+                'capabilities' => $data['capabilities'] ?? null,
                 'last_registered_at' => now(),
             ])->save();
         };
@@ -358,6 +363,29 @@ class NotificationsController extends Controller
         );
     }
 
+    /** @var array<string, ?string> */
+    private array $contexts = [];
+
+    /** "Board · item" for a task or an update on one; null for anything else. */
+    private function contextOf(Notification $notification): ?string
+    {
+        $taskId = match ($notification->subject_type) {
+            \App\Models\Task::class => $notification->subject_id,
+            \App\Models\TaskUpdate::class => \App\Models\TaskUpdate::query()->whereKey($notification->subject_id)->value('task_id'),
+            default => null,
+        };
+        if ($taskId === null) {
+            return null;
+        }
+
+        // ponytail: one lookup per distinct task on a page of 20.
+        return $this->contexts[$taskId] ??= (function () use ($taskId) {
+            $task = \App\Models\Task::query()->with('board:id,name')->find($taskId, ['id', 'title', 'board_id']);
+
+            return $task === null ? null : trim(($task->board?->name ?? '').' · '.$task->title, ' ·');
+        })();
+    }
+
     private function present(Notification $notification, $events): array
     {
         return [
@@ -374,6 +402,12 @@ class NotificationsController extends Controller
             // The inbox's "Assigned to me" and "Mentioned" tabs (monday port,
             // 2026-11-09): handed this person something, or @mentioned them.
             'kind' => $this->kindOf($notification, $events),
+            // Monday's phone cards (2026-11-27): who did it, what they did
+            // (the badge), and where — "board · item" for a task.
+            'action' => $notification->kind,
+            'actor' => $notification->actor === null ? null
+                : ['id' => $notification->actor->id, 'name' => $notification->actor->name],
+            'context' => $this->contextOf($notification),
             // Jose, 2026-10-22: the panel and the desktop toast lead with the
             // same "EzBizi - Company - Branch" as the push and the mail.
             'header' => $this->headerFor($notification),

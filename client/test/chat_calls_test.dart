@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/call_alerts.dart';
+import 'package:ezbizi_client/core/os_notifications.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/chat/chat_calls.dart';
@@ -138,6 +139,52 @@ void main() {
     expect(log, contains('POST /chat/calls/call-1/leave'));
     expect(find.byKey(const ValueKey('chat-call-active')), findsNothing);
   });
+
+  // Android 11-27: Answer on the phone's own call screen comes in as
+  // chat:{chat}?call={call}; the app joins that call.
+  testWidgets('Answer from the phone call screen joins that call', (
+    tester,
+  ) async {
+    ringing = [
+      {
+        'call_id': 'call-1',
+        'chat_id': 'c-1',
+        'from_name': 'Ana Ruiz',
+        'video': true,
+        'group': false,
+      },
+    ];
+    final calls = await pump(tester);
+    await tester.runAsync(() => calls.answerById('call-1'));
+    await tester.pump();
+
+    expect(log, contains('POST /chat/calls/call-1/join'));
+    expect(find.byKey(const ValueKey('chat-call-active')), findsOneWidget);
+  });
+
+  // Apple 11-27: Reply, Mark read and Decline on a phone notification.
+  testWidgets(
+    'Reply, Mark read and Decline on a notification reach the server',
+    (tester) async {
+      await pump(tester);
+      final act = OsNotifications.onAction!;
+      await tester.runAsync(
+        () => act('reply', {'chat_id': 'c-1', 'text': ' On my way '}),
+      );
+      await tester.runAsync(() => act('markRead', {'chat_id': 'c-1'}));
+      await tester.runAsync(
+        () => act('callDeclined', {'call_id': 'call-1', 'chat_id': 'c-1'}),
+      );
+      expect(
+        log,
+        containsAll([
+          'POST /chat/chats/c-1/messages',
+          'PATCH /chat/chats/c-1/settings',
+          'POST /chat/calls/call-1/decline',
+        ]),
+      );
+    },
+  );
 
   testWidgets('Decline stops the ring and tells the server', (tester) async {
     ringing = [

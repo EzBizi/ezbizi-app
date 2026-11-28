@@ -71,6 +71,9 @@ class TaskBoardScreen extends StatefulWidget {
   /// Under this the table's fixed columns leave the task's name no room.
   static const double tableAbove = 760;
 
+  /// Below this a phone: Monday's dense table with the name pinned (row 70).
+  static const double phoneTableBelow = 600;
+
   @override
   State<TaskBoardScreen> createState() => _TaskBoardScreenState();
 }
@@ -324,8 +327,9 @@ Object? _ownerId(_Json task) {
 String _dayLabel(DateTime? day, DisplayFormats formats) {
   if (day == null) return '';
   final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  return switch (day.difference(today).inDays) {
+  // Calendar days in UTC: a DST day is 23 or 25 hours (audit 11-27).
+  final today = DateTime.utc(now.year, now.month, now.day);
+  return switch (DateTime.utc(day.year, day.month, day.day).difference(today).inDays) {
     0 => 'Today',
     1 => 'Tomorrow',
     -1 => 'Yesterday',
@@ -611,7 +615,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   Future<void> _open(int index) async {
     final id = _boards[index]['id'];
-    if (id is String) store.writeItem(_lastKey, id, persist: true);
+    if (id is String) {
+      store.writeItem(_lastKey, id, persist: true);
+      // The phone home's "Recently visited" (row 70); a phone is where it shows.
+      if (mounted && MediaQuery.sizeOf(context).width < TaskBoardScreen.phoneTableBelow) _visited(id);
+    }
     setState(() {
       _selected = index;
       _error = null;
@@ -895,8 +903,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   /// Drag and drop: [id] lands in [groupId] at [position] (null = the end).
   /// A picked row carries every picked row with it, in board order.
-  Future<void> _moveTo(String id, Object? groupId, int? position) async {
-    if (groupId == null) return;
+  /// True when every row moved.
+  Future<bool> _moveTo(String id, Object? groupId, int? position) async {
+    if (groupId == null) return false;
     final all = _picked.contains(id) && _picked.length > 1
         ? _inBoardOrder(_picked)
         : [id];
@@ -908,7 +917,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     ];
     if (ids.length < all.length) {
       _say('A row from a branch board moves on its own board');
-      if (ids.isEmpty) return;
+      if (ids.isEmpty) return false;
     }
     String? failed;
     for (final (n, one) in ids.indexed) {
@@ -918,10 +927,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       });
       if (!res.ok) failed ??= res.reason;
     }
-    if (!mounted) return;
+    if (!mounted) return false;
     if (ids.length > 1) setState(_picked.clear);
     if (failed != null) _say(failed);
     await _load();
+    return failed == null && ids.length == all.length;
   }
 
   /// A task dropped on another board in the tree: the end of its first
@@ -935,8 +945,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     if (!res.ok) return _say(res.reason);
     final groups = ((res.body['data'] as Map?)?['groups'] as List?) ?? const [];
     if (groups.isEmpty) return _say('That board has no group to put it in.');
-    await _moveTo(id, (groups.first as Map)['id'], null);
-    if (mounted) _say('Moved to ${_boards[index]['name'] ?? 'that board'}');
+    // "Moved" only when it did (audit 11-27); a failure already said why.
+    if (await _moveTo(id, (groups.first as Map)['id'], null) && mounted) _say('Moved to ${_boards[index]['name'] ?? 'that board'}');
   }
 
   /// [ids] in the order the board lists them, group by group.
@@ -1007,10 +1017,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         key: const Key('task-undo'),
         label: 'Undo',
         onPressed: () async {
+          // Failures are said, not swallowed (audit 11-27).
+          var failed = 0;
           for (final id in gone) {
-            await widget.api.post('/tasks/$id/restore', const {});
+            if (!(await widget.api.post('/tasks/$id/restore', const {})).ok) failed++;
           }
-          if (mounted) await _load();
+          if (!mounted) return;
+          if (failed > 0) _say('$failed could not be restored');
+          await _load();
         },
       ),
     );
@@ -1051,11 +1065,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         _say('Archived; restore it from the board menu › Archived items');
         await _load();
       case 'top':
-        await widget.api.patch('/tasks/$id/move', {
+        final moved = await widget.api.patch('/tasks/$id/move', {
           'group_id': t['group_id'],
           'position': 0,
         });
-        if (mounted) await _load();
+        if (!mounted) return;
+        if (!moved.ok) _say(moved.reason);
+        await _load();
       case 'sensitive':
         await _toggleSensitive(t);
     }
@@ -1378,11 +1394,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         if (values == null) return;
         extra = {'values': values};
       case 'duplicate':
+        var failed = 0;
         for (final id in ids) {
-          await widget.api.post('/tasks/$id/copy', const {});
+          if (!(await widget.api.post('/tasks/$id/copy', const {})).ok) failed++;
         }
         if (!mounted) return;
         setState(_picked.clear);
+        if (failed > 0) _say('$failed of ${ids.length} could not be duplicated');
         return _load();
       case 'move':
       case 'copy':
@@ -2558,7 +2576,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       final on = picked.contains(id);
       if (on == shown.contains(id)) continue;
       if (id.startsWith('b:')) {
-        why ??= await _setBuiltin(id.substring(2), {'visible': on});
+        // Every change is tried; `??=` skipped the rest after one failure (audit 11-27).
+        final failed = await _setBuiltin(id.substring(2), {'visible': on});
+        why ??= failed;
       } else {
         own = true;
         final r = await widget.api.patch(
@@ -3099,6 +3119,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         final cards = constraints.maxWidth < TaskBoardScreen.tableAbove;
+        // Row 70 (Jose 11-27, "identical as Monday"): a phone gets Monday's
+        // dense table, the name pinned and the columns sliding under it.
+        _phoneTable = constraints.maxWidth < TaskBoardScreen.phoneTableBelow;
+        _phoneWidth = constraints.maxWidth;
 
         // One page colour behind the picker, toolbar and table: the canvas
         // on the table alone left a band above it (Jose 11-24).
@@ -3124,7 +3148,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                             _toolbar(context, phone: cards),
                             // UI pass 11-16: on the toolbar line a phone's search
                             // was 110 wide and read "Se…". Its own line instead.
-                            if (MediaQuery.sizeOf(context).width < 600)
+                            if (MediaQuery.sizeOf(context).width < 600 &&
+                                (!_phoneTable || _phoneSearch))
                               Padding(
                                 padding: const EdgeInsets.fromLTRB(
                                   16,
@@ -3135,7 +3160,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                 child: _search(),
                               ),
                             Expanded(
-                              child: switch (_view) {
+                              child: _withPhonePill(context, switch (_view) {
                                 'kanban' => _kanbanView(context, narrow: cards),
                                 'calendar' => _calendarView(phone: cards),
                                 'timeline' => _timelineView(phone: cards),
@@ -3146,8 +3171,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                   formats: _formats,
                                   onOpenTask: _openTaskById,
                                 ),
-                                _ => _tableView(context, cards: cards),
-                              },
+                                _ => _tableView(context, cards: cards && !_phoneTable),
+                              }),
                             ),
                           ],
                         ),
@@ -3203,7 +3228,171 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   );
 
   /// The phone's boards tree in place of the board, with its own way back.
-  Widget _choosingPane(BuildContext context) => Column(
+  static const _recentKey = 'task_board.recent';
+
+  /// [{id, at}] newest first, at most 8: the boards this person opened.
+  List<Map<String, dynamic>> get _recent => [
+    for (final r in (widget.session.me?.preferences[_recentKey] as List?) ?? const [])
+      if (r is Map && r['id'] is String) Map<String, dynamic>.from(r),
+  ];
+
+  void _visited(String id) {
+    final next = [
+      {'id': id, 'at': DateTime.now().toUtc().toIso8601String()},
+      for (final r in _recent)
+        if (r['id'] != id) r,
+    ].take(8).toList();
+    widget.session.setPreference(_recentKey, next);
+  }
+
+  List<String> get _favoriteIds => [
+    for (final f in (widget.session.me?.preferences['task_board.favorites'] as List?) ?? const [])
+      '$f',
+  ];
+
+  void _toggleFavorite(String id) {
+    final now = _favoriteIds;
+    now.contains(id) ? now.remove(id) : now.add(id);
+    widget.session.setPreference('task_board.favorites', now);
+    setState(() {});
+  }
+
+  static String _ago(String? iso) {
+    final at = iso == null ? null : DateTime.tryParse(iso);
+    if (at == null) return '';
+    final d = DateTime.now().toUtc().difference(at.toUtc());
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inHours < 1) return '${d.inMinutes} min ago';
+    if (d.inDays < 1) return '${d.inHours} h ago';
+    return '${d.inDays} d ago';
+  }
+
+  String _boardTitle(_Json b) => b['kind'] == 'user' &&
+          b['section'] != 'shared' &&
+          b['section'] != 'everyone'
+      ? 'My board'
+      : '${b['name'] ?? 'Board'}';
+
+  /// Row 70: the Task Board's phone landing, Monday's Home: a greeting,
+  /// favorites as cards, recently visited, then every board (workspaces).
+  Widget _phoneHome(BuildContext context) {
+    final theme = Theme.of(context);
+    final byId = {for (final (i, b) in _boards.indexed) '${b['id']}': (i, b)};
+    final favs = [for (final id in _favoriteIds) ?byId[id]];
+    final recent = [
+      for (final r in _recent)
+        if (byId[r['id']] case final hit?) (hit.$1, hit.$2, '${r['at']}'),
+    ].take(4).toList();
+    final hour = DateTime.now().hour;
+    final first = (widget.session.me?.name ?? '').split(' ').first;
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    void go(int i) {
+      setState(() => _choosing = false);
+      _open(i);
+    }
+
+    return Column(
+      key: const Key('tasks-phone-home'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            '${hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'}${first.isEmpty ? '' : ', $first'}',
+            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+        if (favs.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+            child: Text('My favorites', style: theme.textTheme.titleSmall),
+          ),
+          SizedBox(
+            height: 84,
+            child: ListView(
+              key: const Key('tasks-home-favorites'),
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              children: [
+                for (final (i, b) in favs)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: SizedBox(
+                      width: 150,
+                      child: Card(
+                        margin: EdgeInsets.zero,
+                        child: InkWell(
+                          key: ValueKey('tasks-home-fav-${b['id']}'),
+                          onTap: () => go(i),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(Icons.table_chart_outlined, size: 18),
+                                const Spacer(),
+                                Text(_boardTitle(b), maxLines: 2, overflow: TextOverflow.ellipsis),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        if (recent.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+            child: Text('Recently visited', style: theme.textTheme.titleSmall),
+          ),
+          for (final (i, b, at) in recent)
+            ListTile(
+              key: ValueKey('tasks-home-recent-${b['id']}'),
+              dense: true,
+              leading: const Icon(Icons.table_chart_outlined),
+              title: Text(_boardTitle(b), maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('Visited ${_ago(at)}', style: muted),
+              trailing: IconButton(
+                key: ValueKey('tasks-home-star-${b['id']}'),
+                tooltip: 'Favorite',
+                icon: Icon(
+                  _favoriteIds.contains('${b['id']}') ? Icons.star : Icons.star_border,
+                  color: _favoriteIds.contains('${b['id']}') ? EzBiziTheme.boardPalette[3] : null,
+                ),
+                onPressed: () => _toggleFavorite('${b['id']}'),
+              ),
+              onTap: () => go(i),
+            ),
+        ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+          child: Text('Workspaces', style: theme.textTheme.titleSmall),
+        ),
+        Expanded(child: _tree(docked: false)),
+      ],
+    );
+  }
+
+  Widget _choosingPane(BuildContext context) => _phoneTable
+      ? Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton(
+                key: const Key('tasks-boards-back'),
+                tooltip: 'Back to the board',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => setState(() => _choosing = false),
+              ),
+            ),
+            Expanded(child: _phoneHome(context)),
+          ],
+        )
+      : Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Padding(
@@ -3238,7 +3427,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis),
           )
         : Text(text);
-    final buttons = quick.isEmpty
+    final buttons = quick.isEmpty || _phoneTable
         ? null
         : SegmentedButton<int>(
             key: const Key('tasks-quick-boards'),
@@ -3715,7 +3904,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             onPressed: () => Navigator.of(panel).pop(
               box.text
                   .split('\n')
-                  .map((l) => l.split('\t').first.split(',').first.trim())
+                  // Tabs only: a title keeps its commas (audit 11-27).
+                  .map((l) => l.split('\t').first.trim())
                   .where((t) => t.isNotEmpty)
                   .toList(),
             ),
@@ -4330,7 +4520,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             16,
             10,
             16,
-            _picked.isNotEmpty && !cards ? 96 : 24,
+            _picked.isNotEmpty && !cards ? 96 : (_phoneTable ? 80 : 24),
           ),
           sliver: SliverMainAxisGroup(
             slivers: [
@@ -4470,11 +4660,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                                 '${group['name']}',
                                 key: ValueKey('task-group-title-$fold'),
                                 // A phone wraps a long name to two lines (phone 6).
-                                maxLines: cards ? 2 : 1,
+                                maxLines: cards || _phoneTable ? 2 : 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.titleSmall?.copyWith(
                                   color: ink,
-                                  fontSize: cards ? 18 : 20,
+                                  fontSize: cards || _phoneTable ? 18 : 20,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
@@ -4803,7 +4993,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       : _builtinDefaults.keys.toList().indexOf(key);
 
   /// A column's width: being dragged, saved by this person, or the default.
-  double _w(String key) =>
+  double _w(String key) => key == 'task' && _phoneTable
+      ? (_phoneWidth * 0.56).clamp(170.0, 260.0)
+      : _wSaved(key);
+
+  double _wSaved(String key) =>
       _dragWidths[key] ??
       _savedWidths()[_widthSlot(key)] ??
       _baseWidths[key] ??
@@ -5217,6 +5411,85 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     );
   }
 
+  /// Set by [_screen] each layout: a phone shows Monday's dense table (row 70).
+  bool _phoneTable = false;
+
+  /// The phone pill's search: the search line shows while this is on.
+  bool _phoneSearch = false;
+
+  /// Monday's floating bottom pill on a phone (row 70): search, quick
+  /// filters and the board's own filter/sort/hide, one tap each.
+  Widget _withPhonePill(BuildContext context, Widget view) {
+    if (!_phoneTable || _board == null) return view;
+    final theme = Theme.of(context);
+    final actions = [
+      ..._listToolbar().actions(context),
+      (
+        key: 'quick',
+        icon: Icons.bolt_outlined,
+        label: 'Quick filters',
+        count: 0,
+        onTap: _quickFilters,
+      ),
+    ];
+    Widget icon(Key key, IconData i, String tip, VoidCallback onTap, {bool on = false}) =>
+        IconButton(
+          key: key,
+          tooltip: tip,
+          isSelected: on,
+          onPressed: onTap,
+          icon: Icon(i),
+        );
+    return Stack(
+      children: [
+        Positioned.fill(child: view),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 12,
+          child: Center(
+            child: Material(
+              key: const Key('tasks-phone-pill'),
+              elevation: 6,
+              shape: const StadiumBorder(),
+              color: theme.colorScheme.surfaceContainerHigh,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    icon(
+                      const Key('tasks-pill-search'),
+                      Icons.search,
+                      'Search',
+                      () => setState(() => _phoneSearch = !_phoneSearch),
+                      on: _phoneSearch,
+                    ),
+                    for (final a in actions)
+                      Badge(
+                        isLabelVisible: a.count > 0,
+                        label: Text('${a.count}'),
+                        child: icon(Key('tasks-pill-${a.key}'), a.icon, a.label, a.onTap, on: a.count > 0),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  double _phoneWidth = 400;
+
+  void _rowLongPress(_Json t) {
+    final box = context.findRenderObject() as RenderBox?;
+    final at = box == null
+        ? Offset.zero
+        : box.localToGlobal(box.size.center(Offset.zero));
+    _rowRightClick(t, at);
+  }
+
   Widget _row(BuildContext context, _Json t, Color colour, {bool sub = false}) {
     final theme = Theme.of(context);
     final owners = _ownerNames(t);
@@ -5236,6 +5509,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         onSecondaryTapDown: sub
             ? null
             : (d) => _rowRightClick(t, d.globalPosition),
+        // A phone has no right button: a long press opens the same menu (row 70).
+        onLongPress: sub || !_phoneTable ? null : () => _rowLongPress(t),
         child: _RowShade(
           key: ValueKey('task-shade-${t['id']}'),
           selected: _openId == t['id'],
@@ -5261,7 +5536,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                       padding: EdgeInsets.only(left: sub ? 34 : 2, right: 10),
                       child: Row(
                         children: [
-                          if (!sub && _canEdit) ...[
+                          if (!sub && _canEdit && !_phoneTable) ...[
                             SizedBox(width: 18, child: _dragHandle(context, t)),
                             SizedBox(
                               width: 32,
@@ -5279,7 +5554,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                               ),
                             ),
                           ],
-                          if (!sub) SizedBox(width: 32, child: _rowMenu(t)),
+                          if (!sub && !_phoneTable) SizedBox(width: 32, child: _rowMenu(t)),
                           if (!sub) _subtaskToggle(t),
                           Flexible(
                             // Jose 11-24: the name edits in the same card as

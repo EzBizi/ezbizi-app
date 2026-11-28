@@ -5,12 +5,19 @@ namespace Tests\Feature\Api;
 use App\Models\Attachment;
 use App\Models\AuditEvent;
 use App\Models\Company;
+use App\Models\Concerns\HasAttachments;
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\InspectionDefinition;
+use App\Models\InspectionDefinitionVersion;
+use App\Models\InspectionReport;
 use App\Models\Job;
+use App\Support\Files\Attachables;
 use App\Support\Files\FileStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -54,14 +61,14 @@ class AttachmentsTest extends TestCase
     public function test_a_file_can_be_attached_to_a_job_and_read_back(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         $content = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< >>\n%%EOF\n";
 
         $created = $this->signedInAs($alpha['admin'])->post('/api/v1/attachments', [
             'attachable_type' => 'jobs',
-            'attachable_id'   => $job->id,
-            'file'            => UploadedFile::fake()->createWithContent('meter.pdf', $content),
+            'attachable_id' => $job->id,
+            'file' => UploadedFile::fake()->createWithContent('meter.pdf', $content),
         ], ['Accept' => 'application/json'])->assertCreated();
 
         $created->assertJsonPath('data.original_name', 'meter.pdf');
@@ -84,14 +91,14 @@ class AttachmentsTest extends TestCase
     public function test_the_list_says_a_photos_before_or_after_label(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         $id = $this->signedInAs($alpha['admin'])->post('/api/v1/attachments', [
             'attachable_type' => 'jobs',
-            'attachable_id'   => $job->id,
-            'file'            => UploadedFile::fake()->createWithContent('meter.pdf', "%PDF-1.4
+            'attachable_id' => $job->id,
+            'file' => UploadedFile::fake()->createWithContent('meter.pdf', '%PDF-1.4
 %%EOF
-"),
+'),
         ], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
 
         $this->signedInAs($alpha['admin'])
@@ -109,28 +116,28 @@ class AttachmentsTest extends TestCase
     public function test_a_jobs_list_carries_its_inspection_reports_labelled_photos(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
-        $list  = fn () => $this->signedInAs($alpha['admin'])
+        $job = $this->job($alpha);
+        $list = fn () => $this->signedInAs($alpha['admin'])
             ->getJson('/api/v1/attachments?attachable_type=jobs&attachable_id='.$job->id)->json('data');
 
         $ids = [];
         foreach (['before', null] as $label) {
             $ids[] = $id = $this->signedInAs($alpha['admin'])->post('/api/v1/attachments', [
                 'attachable_type' => 'jobs',
-                'attachable_id'   => $job->id,
-                'file'            => UploadedFile::fake()->createWithContent('p.pdf', "%PDF-1.4\n%%EOF\n"),
+                'attachable_id' => $job->id,
+                'file' => UploadedFile::fake()->createWithContent('p.pdf', "%PDF-1.4\n%%EOF\n"),
             ], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
         }
 
         $this->inTenant($alpha['org'], function () use ($alpha, $job, $ids) {
-            $definition = \App\Models\InspectionDefinition::create([
+            $definition = InspectionDefinition::create([
                 'name' => 'Level 1', 'created_by' => $alpha['admin']->id, 'published_at' => now(), 'screens' => [],
             ]);
-            $version = \App\Models\InspectionDefinitionVersion::create([
+            $version = InspectionDefinitionVersion::create([
                 'inspection_definition_id' => $definition->id, 'version' => 1,
                 'layout_preset' => 'step_strip', 'screens' => [], 'published_by' => $alpha['admin']->id,
             ]);
-            $report = \App\Models\InspectionReport::create([
+            $report = InspectionReport::create([
                 'customer_id' => $job->customer_id, 'job_id' => $job->id,
                 'inspection_definition_id' => $definition->id, 'inspection_definition_version_id' => $version->id,
                 'submitted_by' => $alpha['admin']->id, 'submitted_at' => now(), 'answers' => [],
@@ -155,7 +162,7 @@ class AttachmentsTest extends TestCase
     public function test_the_row_records_the_size_the_hash_and_the_detected_type(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         $this->attach($alpha, $job, UploadedFile::fake()->image('photo.png', 40, 40));
 
@@ -182,7 +189,7 @@ class AttachmentsTest extends TestCase
     public function test_the_client_supplied_mime_is_ignored(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         $lying = UploadedFile::fake()->image('photo.png', 20, 20);
 
@@ -205,7 +212,7 @@ class AttachmentsTest extends TestCase
     public function test_an_attachment_is_never_served_inline(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         $id = $this->attach($alpha, $job, UploadedFile::fake()->create('notes.txt', 1, 'text/plain'))
             ->json('data.id');
@@ -224,7 +231,7 @@ class AttachmentsTest extends TestCase
     public function test_reading_a_file_needs_the_permission_and_the_reach_of_its_record(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         $id = $this->attach($alpha, $job)->json('data.id');
 
@@ -234,8 +241,8 @@ class AttachmentsTest extends TestCase
 
             return Franchise::create([
                 'organization_id' => $alpha['org']->id,
-                'company_id'      => $company->id,
-                'name'            => 'Other F1',
+                'company_id' => $company->id,
+                'name' => 'Other F1',
             ]);
         });
 
@@ -266,14 +273,14 @@ class AttachmentsTest extends TestCase
      */
     public function test_attaching_and_removing_need_edit_rather_than_view(): void
     {
-        $alpha  = $this->provisionTenant('Alpha');
-        $job    = $this->job($alpha);
+        $alpha = $this->provisionTenant('Alpha');
+        $job = $this->job($alpha);
         $reader = $this->userWithRole($alpha, 'Reader', ['jobs.view']);
 
         $this->signedInAs($reader)->post('/api/v1/attachments', [
             'attachable_type' => 'jobs',
-            'attachable_id'   => $job->id,
-            'file'            => UploadedFile::fake()->create('a.pdf', 1, 'application/pdf'),
+            'attachable_id' => $job->id,
+            'file' => UploadedFile::fake()->create('a.pdf', 1, 'application/pdf'),
         ], ['Accept' => 'application/json'])->assertForbidden();
 
         $id = $this->attach($alpha, $job)->json('data.id');
@@ -284,7 +291,7 @@ class AttachmentsTest extends TestCase
     public function test_another_organizations_attachment_does_not_exist(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $beta  = $this->provisionTenant('Beta');
+        $beta = $this->provisionTenant('Beta');
 
         $id = $this->attach($alpha, $this->job($alpha))->json('data.id');
 
@@ -306,15 +313,15 @@ class AttachmentsTest extends TestCase
     public function test_a_request_cannot_choose_where_the_file_comes_from(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         $this->signedInAs($alpha['admin'])->post('/api/v1/attachments', [
             'attachable_type' => 'jobs',
-            'attachable_id'   => $job->id,
-            'path'            => 'logos/somebody-else/secret.png',
-            'disk'            => 'public',
-            'checksum'        => str_repeat('0', 64),
-            'file'            => UploadedFile::fake()->create('a.pdf', 1, 'application/pdf'),
+            'attachable_id' => $job->id,
+            'path' => 'logos/somebody-else/secret.png',
+            'disk' => 'public',
+            'checksum' => str_repeat('0', 64),
+            'file' => UploadedFile::fake()->create('a.pdf', 1, 'application/pdf'),
         ], ['Accept' => 'application/json'])->assertCreated();
 
         $row = $this->inTenant($alpha['org'], fn () => Attachment::firstOrFail());
@@ -333,8 +340,8 @@ class AttachmentsTest extends TestCase
         foreach (['users', 'App\\Models\\User'] as $type) {
             $this->signedInAs($alpha['admin'])->post('/api/v1/attachments', [
                 'attachable_type' => $type,
-                'attachable_id'   => $alpha['admin']->id,
-                'file'            => UploadedFile::fake()->create('a.pdf', 1, 'application/pdf'),
+                'attachable_id' => $alpha['admin']->id,
+                'file' => UploadedFile::fake()->create('a.pdf', 1, 'application/pdf'),
             ], ['Accept' => 'application/json'])
                 ->assertStatus(422)
                 ->assertJsonValidationErrors('attachable_type');
@@ -355,12 +362,12 @@ class AttachmentsTest extends TestCase
         config(['ezbizi.attachments.max_kilobytes' => 100]);
 
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         $this->signedInAs($alpha['admin'])->post('/api/v1/attachments', [
             'attachable_type' => 'jobs',
-            'attachable_id'   => $job->id,
-            'file'            => UploadedFile::fake()->create('huge.pdf', 400, 'application/pdf'),
+            'attachable_id' => $job->id,
+            'file' => UploadedFile::fake()->create('huge.pdf', 400, 'application/pdf'),
         ], ['Accept' => 'application/json'])
             ->assertStatus(422)
             ->assertJsonValidationErrors('file')
@@ -382,7 +389,7 @@ class AttachmentsTest extends TestCase
     public function test_a_file_php_refused_for_its_size_still_says_so(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         $refusedByPhp = new UploadedFile(
             // The path is not read: Symfony skips the existence check when an
@@ -393,8 +400,8 @@ class AttachmentsTest extends TestCase
 
         $this->signedInAs($alpha['admin'])->post('/api/v1/attachments', [
             'attachable_type' => 'jobs',
-            'attachable_id'   => $job->id,
-            'file'            => $refusedByPhp,
+            'attachable_id' => $job->id,
+            'file' => $refusedByPhp,
         ], ['Accept' => 'application/json'])
             ->assertStatus(422)
             ->assertJsonPath(
@@ -406,14 +413,14 @@ class AttachmentsTest extends TestCase
     public function test_an_extension_this_installation_does_not_take_is_refused(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         // SVG is deliberately absent from the list: it is a document a browser
         // executes script from, served from this app's own origin.
         $this->signedInAs($alpha['admin'])->post('/api/v1/attachments', [
             'attachable_type' => 'jobs',
-            'attachable_id'   => $job->id,
-            'file'            => UploadedFile::fake()->create('logo.svg', 2, 'image/svg+xml'),
+            'attachable_id' => $job->id,
+            'file' => UploadedFile::fake()->create('logo.svg', 2, 'image/svg+xml'),
         ], ['Accept' => 'application/json'])
             ->assertStatus(422)
             ->assertJsonValidationErrors('file');
@@ -432,7 +439,7 @@ class AttachmentsTest extends TestCase
         config(['ezbizi.attachments.max_kilobytes' => PHP_INT_MAX]);
 
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         $limits = $this->signedInAs($alpha['admin'])
             ->getJson('/api/v1/attachments?attachable_type=jobs&attachable_id='.$job->id)
@@ -457,7 +464,7 @@ class AttachmentsTest extends TestCase
     public function test_files_survive_a_soft_delete_and_go_with_a_force_delete(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         $this->attach($alpha, $job);
 
@@ -474,12 +481,65 @@ class AttachmentsTest extends TestCase
         $this->assertSame(0, $this->inTenant($alpha['org'], fn () => Attachment::count()));
     }
 
+    /**
+     * A delete that fails keeps its files (audit 2026-11-27).
+     *
+     * The cleanup ran before the parent's own DELETE, so a later refusal — a
+     * foreign key from a sale line to an inventory item — left the record in
+     * place with every file and attachment row already destroyed.
+     */
+    public function test_a_delete_that_fails_after_the_hook_keeps_every_file(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $job = $this->job($alpha);
+
+        $this->attach($alpha, $job);
+        $path = $this->inTenant($alpha['org'], fn () => Attachment::firstOrFail()->path);
+
+        // Stands in for the database refusing the row, after every other hook.
+        Event::listen('eloquent.deleting: '.Job::class, function () {
+            throw new \RuntimeException('a foreign key refused the delete');
+        });
+
+        try {
+            $this->inTenant($alpha['org'], fn () => $job->forceDelete());
+            $this->fail('the delete was expected to fail');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('a foreign key refused the delete', $e->getMessage());
+        }
+
+        Storage::disk('local')->assertExists($path);
+        $this->assertSame(1, $this->inTenant($alpha['org'], fn () => Attachment::count()));
+    }
+
+    /** And a delete rolled back with its transaction takes no bytes with it. */
+    public function test_a_rolled_back_delete_keeps_every_file(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $job = $this->job($alpha);
+
+        $this->attach($alpha, $job);
+        $path = $this->inTenant($alpha['org'], fn () => Attachment::firstOrFail()->path);
+
+        try {
+            $this->inTenant($alpha['org'], fn () => DB::transaction(function () use ($job) {
+                $job->forceDelete();
+
+                throw new \RuntimeException('something later in the same unit of work');
+            }));
+        } catch (\RuntimeException) {
+        }
+
+        Storage::disk('local')->assertExists($path);
+        $this->assertSame(1, $this->inTenant($alpha['org'], fn () => Attachment::count()));
+    }
+
     public function test_removing_an_attachment_removes_the_bytes_and_leaves_a_record_of_it(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
-        $id   = $this->attach($alpha, $job)->json('data.id');
+        $id = $this->attach($alpha, $job)->json('data.id');
         $path = $this->inTenant($alpha['org'], fn () => Attachment::firstOrFail()->path);
 
         $this->signedInAs($alpha['admin'])->deleteJson("/api/v1/attachments/{$id}")->assertOk();
@@ -516,7 +576,7 @@ class AttachmentsTest extends TestCase
         config(['filesystems.default' => 'elsewhere']);
 
         $alpha = $this->provisionTenant('Alpha');
-        $job   = $this->job($alpha);
+        $job = $this->job($alpha);
 
         $id = $this->attach($alpha, $job)->json('data.id');
 
@@ -583,9 +643,9 @@ class AttachmentsTest extends TestCase
     {
         $missing = [];
 
-        foreach (\App\Support\Files\Attachables::all() as $key => $class) {
+        foreach (Attachables::all() as $key => $class) {
             if (! in_array(
-                \App\Models\Concerns\HasAttachments::class,
+                HasAttachments::class,
                 class_uses_recursive($class),
                 true,
             )) {
@@ -606,17 +666,17 @@ class AttachmentsTest extends TestCase
         return $this->inTenant($tenant['org'], function () use ($tenant) {
             $customer = Customer::create([
                 'owning_franchise_id' => $tenant['franchise']->id,
-                'number'              => 'C-'.bin2hex(random_bytes(3)),
-                'name'                => 'A Customer',
+                'number' => 'C-'.bin2hex(random_bytes(3)),
+                'name' => 'A Customer',
             ]);
 
             return Job::create([
                 'franchise_id' => $tenant['franchise']->id,
-                'customer_id'  => $customer->id,
-                'number'       => 'J-'.bin2hex(random_bytes(3)),
-                'title'        => 'Work',
-                'status'       => 'scheduled',
-                'currency'     => 'USD',
+                'customer_id' => $customer->id,
+                'number' => 'J-'.bin2hex(random_bytes(3)),
+                'title' => 'Work',
+                'status' => 'scheduled',
+                'currency' => 'USD',
             ]);
         });
     }
@@ -625,8 +685,8 @@ class AttachmentsTest extends TestCase
     {
         return $this->signedInAs($tenant['admin'])->post('/api/v1/attachments', [
             'attachable_type' => 'jobs',
-            'attachable_id'   => $job->id,
-            'file'            => $file ?? UploadedFile::fake()->create('a.pdf', 3, 'application/pdf'),
+            'attachable_id' => $job->id,
+            'file' => $file ?? UploadedFile::fake()->create('a.pdf', 3, 'application/pdf'),
         ], ['Accept' => 'application/json'])->assertCreated();
     }
 }

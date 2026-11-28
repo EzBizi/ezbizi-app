@@ -8,8 +8,8 @@ use App\Models\User;
 use App\Notifications\PasswordResetLink;
 use App\Services\Auth\PasswordResets;
 use App\Services\Organizations\ProvisionOrganization;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use PragmaRX\Google2FA\Google2FA;
@@ -285,5 +285,84 @@ class PasswordTest extends TestCase
         // nothing anybody uses.
         Notification::assertCount(1);
         Notification::assertSentOnDemand(PasswordResetLink::class);
+    }
+
+    // ── a staff password covers its linked CRM sessions (audit 2026-11-27) ──
+
+    private function linkedStaff(): array
+    {
+        $totp = app(Google2FA::class);
+        $secret = $totp->generateSecretKey(32);
+
+        $staff = PlatformStaff::create([
+            'name' => 'Jose', 'email' => 'a@alpha.test',
+            'password' => 'the-staff-password',
+            'tier' => PlatformStaff::TIER_LEAD, 'is_active' => true,
+        ]);
+
+        $staff->forceFill(['totp_secret' => $secret, 'totp_confirmed_at' => now()])->save();
+
+        PlatformStaffLink::create([
+            'staff_id' => $staff->getKey(), 'user_id' => $this->alpha['admin']->getKey(),
+        ]);
+
+        return [$staff, $secret];
+    }
+
+    private function crmToken(PlatformStaff $staff, string $secret): string
+    {
+        PlatformStaff::whereKey($staff->getKey())->update(['last_totp_timestamp' => null]);
+
+        $token = $this->postJson('/api/v1/auth/login', [
+            'email' => 'a@alpha.test', 'password' => 'the-staff-password',
+            'code' => app(Google2FA::class)->getCurrentOtp($secret),
+        ])->assertOk()->json('token');
+
+        $this->app['auth']->forgetGuards();
+
+        return $token;
+    }
+
+    public function test_a_staff_reset_ends_the_linked_crm_sessions_too(): void
+    {
+        [$staff, $secret] = $this->linkedStaff();
+        $stolen = $this->crmToken($staff, $secret);
+
+        $token = app(PasswordResets::class)->issue($staff)['token'];
+
+        $this->postJson('/api/v1/auth/reset', [
+            'token' => $token,
+            'password' => 'a-brand-new-staff-password',
+            'password_confirmation' => 'a-brand-new-staff-password',
+        ])->assertOk();
+
+        $this->app['auth']->forgetGuards();
+
+        // The reset exists because the old password may be known. A CRM token
+        // minted from that password is the same credential's session.
+        $this->withHeader('Authorization', "Bearer {$stolen}")
+            ->getJson('/api/v1/me')->assertUnauthorized();
+    }
+
+    public function test_a_linked_password_change_keeps_this_crm_session_and_ends_the_others(): void
+    {
+        [$staff, $secret] = $this->linkedStaff();
+        $other = $this->crmToken($staff, $secret);
+        $here = $this->crmToken($staff, $secret);
+
+        $this->withHeader('Authorization', "Bearer {$here}")
+            ->postJson('/api/v1/me/password', [
+                'current_password' => 'the-staff-password',
+                'password' => 'a-brand-new-staff-password',
+                'password_confirmation' => 'a-brand-new-staff-password',
+            ])->assertOk();
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', "Bearer {$other}")
+            ->getJson('/api/v1/me')->assertUnauthorized();
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', "Bearer {$here}")
+            ->getJson('/api/v1/me')->assertOk();
     }
 }

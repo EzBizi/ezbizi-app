@@ -158,7 +158,7 @@ fi
 
 # The sync below wipes the relay's project directory. A release mid-build
 # there would lose its tree under xcodebuild's feet.
-if ssh "$MAC" 'pgrep -f "xcodebuild|flutter_tools" >/dev/null 2>&1'; then
+if ssh "$MAC" 'pgrep -f "xcodebuild|ezbizi-build" >/dev/null 2>&1'; then
   echo "✗ the relay is compiling something right now (xcodebuild or flutter running). Try again when it is quiet." >&2
   exit 4
 fi

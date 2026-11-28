@@ -1145,7 +1145,8 @@ class _Conn {
     id: json['id'] as String? ?? '',
     label: switch (json['scope_type'] as String?) {
       'organization' => 'The group',
-      _ => 'Company account',
+      // Named, so two companies' accounts can be told apart (audit 11-27).
+      _ => (json['scope_name'] as String?) ?? 'Company account',
     },
   );
 }

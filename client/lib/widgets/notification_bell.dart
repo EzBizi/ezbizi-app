@@ -8,6 +8,8 @@ import '../core/os_notifications.dart';
 import '../core/push_registration.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
+import '../screens/phone/chat/chat_calls.dart';
+import '../screens/phone/chat/chat_tab.dart';
 import 'alert_popup.dart';
 import 'list_search.dart';
 import 'side_panel.dart';
@@ -106,8 +108,7 @@ class _NotificationBellState extends State<NotificationBell>
   /// The inbox's tab and switch (monday port, 2026-11-09). Kept on the bell,
   /// not the panel, so reopening it shows what was last chosen.
   String _show = 'all';
-  bool _unreadOnly = false;
-  static const _shows = ['all', 'mentioned', 'assigned', 'questions'];
+  static const _shows = ['all', 'unread', 'mentioned', 'assigned', 'questions'];
   final _search = TextEditingController();
   String _query = '';
 
@@ -400,6 +401,21 @@ class _NotificationBellState extends State<NotificationBell>
       return;
     }
 
+    // A chat message or call: Communication › Chat, that chat (Jose 11-27).
+    if (ChatTab.chatOf(payload) case final chat? when widget.onOpenModule != null) {
+      _go((
+        module: 'phone',
+        filter: null,
+        record: null,
+        link: DeepLink(module: 'phone', type: 'chat', id: chat),
+      ));
+      // Answer on the phone's call screen: join it too.
+      if (ChatTab.callOf(payload) case final call?) {
+        unawaited(ChatCalls.instance.answerById(call));
+      }
+      return;
+    }
+
     // Unread-ness from the list as fetched, so a toast clicked twice does not
     // post the read twice. A failed read is not a reason to go nowhere: the
     // person clicked to see something, and the panel below still shows it.
@@ -546,8 +562,11 @@ class _NotificationBellState extends State<NotificationBell>
     final rows = <Object>[];
     String? last;
     for (final n in _items) {
-      if (_unreadOnly && n['read_at'] != null) continue;
-      if (_show != 'all' && n['kind'] != _show) continue;
+      if (_show == 'unread') {
+        if (n['read_at'] != null) continue;
+      } else if (_show != 'all' && n['kind'] != _show) {
+        continue;
+      }
       if (_query.isNotEmpty &&
           !'${n['header'] ?? ''} ${n['title'] ?? ''} ${n['body'] ?? ''}'
               .toLowerCase()
@@ -658,6 +677,8 @@ class _NotificationBellState extends State<NotificationBell>
                       key: const Key('notifications-show'),
                       labels: [
                         const ('All', Icons.inbox_outlined),
+                        // Monday's tabs (2026-11-27): Unread is a tab, not a switch.
+                        const ('Unread', Icons.mark_email_unread_outlined),
                         const ('Mentioned', Icons.alternate_email),
                         const ('Assigned to me', Icons.assignment_ind_outlined),
                         (
@@ -689,16 +710,6 @@ class _NotificationBellState extends State<NotificationBell>
                                 repaint(() {});
                               },
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Text('Unread only'),
-                          Switch(
-                            key: const Key('notifications-unread-only'),
-                            value: _unreadOnly,
-                            onChanged: (on) {
-                              _unreadOnly = on;
-                              repaint(() {});
-                            },
                           ),
                         ],
                       ),
@@ -796,16 +807,26 @@ class _NotificationBellState extends State<NotificationBell>
                               isLabelVisible: unread,
                               smallSize: 8,
                               backgroundColor: scheme.primary,
-                              child: Icon(
-                                icon ?? Icons.info_outline,
-                                size: 20,
-                                // A rule's "Mark as urgent (red)".
-                                color: n['urgent'] == true
-                                    ? scheme.error
-                                    : unread
-                                    ? scheme.primary
-                                    : scheme.onSurfaceVariant,
-                              ),
+                              // Monday's cards (2026-11-27): the person who did
+                              // it, with what they did as a small badge; the
+                              // module icon when nobody did (a rule, the system).
+                              child: switch (n['actor']) {
+                                {'name': final String name} => _ActorAvatar(
+                                  key: ValueKey('notification-actor-${n['id']}'),
+                                  name: name,
+                                  action: n['action'] as String?,
+                                ),
+                                _ => Icon(
+                                  icon ?? Icons.info_outline,
+                                  size: 20,
+                                  // A rule's "Mark as urgent (red)".
+                                  color: n['urgent'] == true
+                                      ? scheme.error
+                                      : unread
+                                      ? scheme.primary
+                                      : scheme.onSurfaceVariant,
+                                ),
+                              },
                             ),
                             // Header / what happened / content — the same three
                             // lines as the push (Jose, 2026-10-22).
@@ -834,6 +855,16 @@ class _NotificationBellState extends State<NotificationBell>
                                         )
                                       : null,
                                 ),
+                                // "Board · item", Monday's second line.
+                                if (n['context'] case final String where)
+                                  Text(
+                                    where,
+                                    key: ValueKey('notification-context-${n['id']}'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(color: scheme.onSurfaceVariant),
+                                  ),
                               ],
                             ),
                             subtitle: n['body'] != null
@@ -1297,3 +1328,65 @@ class _NotificationSettingsState extends State<NotificationSettings> {
 }
 
 
+
+/// The actor's initials with a small badge for what they did (Monday's phone
+/// notifications, 2026-11-27): assigned, wrote an update, replied, reacted.
+class _ActorAvatar extends StatelessWidget {
+  const _ActorAvatar({super.key, required this.name, this.action});
+
+  final String name;
+  final String? action;
+
+  IconData? get _badge => switch (action) {
+    'task.assigned' || 'task.subitem_assigned' => Icons.person_add_alt_1,
+    'task.mentioned' => Icons.alternate_email,
+    'task.reply.mine' || 'task.reply.thread' => Icons.reply,
+    'task.reaction' => Icons.thumb_up,
+    'task.reply' || 'task.update.owner' || 'task.update.subscribed' => Icons.chat_bubble,
+    'task.status' => Icons.swap_horiz,
+    'task.file' => Icons.attach_file,
+    'task.invited' => Icons.group_add,
+    _ => null,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final initials = name
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .take(2)
+        .map((p) => p[0].toUpperCase())
+        .join();
+
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: scheme.primaryContainer,
+            foregroundColor: scheme.onPrimaryContainer,
+            child: Text(initials, style: const TextStyle(fontSize: 13)),
+          ),
+          if (_badge case final IconData badge)
+            Positioned(
+              right: -3,
+              bottom: -3,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: scheme.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: scheme.surface, width: 1.5),
+                ),
+                child: Icon(badge, size: 10, color: scheme.onPrimary),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

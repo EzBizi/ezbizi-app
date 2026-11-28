@@ -783,9 +783,12 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     /** "Mark" from "Mark Mercer"; null for a phone number or an initial. */
     public static function firstNameOf(?string $name): ?string
     {
-        $word = preg_replace("/[^A-Za-z'’-]/u", '', explode(' ', trim((string) $name))[0]);
+        // \p{L}, not A-Z (audit 11-27: "José" became "Jos").
+        $word = preg_replace("/[^\p{L}'’-]/u", '', explode(' ', trim((string) $name))[0]);
 
-        return mb_strlen($word) < 2 ? null : ucfirst(mb_strtolower($word));
+        $word = mb_strtolower($word);
+
+        return mb_strlen($word) < 2 ? null : mb_strtoupper(mb_substr($word, 0, 1)).mb_substr($word, 1);
     }
 
     /**
@@ -897,7 +900,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         $said = (string) $this->conversations()->reorder()->where('participant', LeadConversation::FROM_CONSUMER)
             ->orderByDesc('occurred_at')->value('text');
         $offer = app(SlotOffer::class)
-            ->for((string) $this->postal_code, $today, RequestedWindow::from($said, $today));
+            ->for((string) $this->postal_code, $today, RequestedWindow::from($said, $today), SlotOffer::reach($this));
 
         return $offer['label'] ?? '';
     }

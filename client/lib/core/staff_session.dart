@@ -68,7 +68,7 @@ class StaffSession extends ChangeNotifier {
 
     // The staff token only: a customer session kept on this device is not
     // this session's to end (TokenStore.dropStaff).
-    if (!signedIn) {
+    if (!signedIn && !_unreachable) {
       TokenStore.dropStaff();
     }
 
@@ -89,13 +89,22 @@ class StaffSession extends ChangeNotifier {
 
     if (response.ok) {
       _me = StaffMe.fromJson(response.data as Map<String, dynamic>);
-    } else {
+      _unreachable = false;
+    } else if (response.unauthorized) {
       _me = null;
+      _unreachable = false;
       _api.setToken(null);
+    } else {
+      // A network blip or a 5xx is not a refusal. Ending the session and
+      // deleting its token on one signed somebody out of the control plane
+      // every time a deploy restarted the server.
+      _unreachable = true;
     }
 
     notifyListeners();
   }
+
+  bool _unreachable = false;
 
   void signOut() {
     _identityGeneration++;

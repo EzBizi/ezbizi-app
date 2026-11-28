@@ -207,8 +207,9 @@ class SchedulingBuildZipMap extends Command
             return self::SUCCESS;
         }
 
-        // zip => the best-evidenced claim, plus everyone who lost.
+        // company|zip => the best-evidenced claim, plus everyone who lost.
         $best = [];
+        $companyOf = Franchise::query()->pluck('company_id', 'id');
         $unmatched = [];
 
         foreach ($rows as $row) {
@@ -229,10 +230,10 @@ class SchedulingBuildZipMap extends Command
                 continue;
             }
 
-            // One area per zip in the ORGANIZATION (2026-09-25), so the
-            // contest is between every area that names this zip, whichever
-            // branch it belongs to.
-            $key = $zip;
+            // One area per zip in each COMPANY (ownership is per company since
+            // 2026-10-28; audit 11-27): the contest is between that company's
+            // areas only, so a sister company's area cannot take its zip.
+            $key = ($companyOf[$area->franchise_id] ?? '').'|'.$zip;
             $claim = [
                 'area' => $area,
                 'zip' => $zip,
@@ -263,7 +264,6 @@ class SchedulingBuildZipMap extends Command
 
         // A zip a person took out of its area stays out (2026-10-21).
         $released = ServiceAreaZipRelease::query()->get(['company_id', 'zip'])->mapWithKeys(fn ($r) => [$r->company_id.'|'.$r->zip => true]);
-        $companyOf = Franchise::query()->pluck('company_id', 'id');
 
         foreach ($best as $claim) {
             $company = $companyOf[$claim['area']->franchise_id] ?? null;

@@ -81,6 +81,31 @@ class TaskUpdateAttachmentsTest extends TestCase
             ['files' => [UploadedFile::fake()->image('x.png')]], ['Accept' => 'application/json'])->assertForbidden();
     }
 
+    /** Audit 11-27: another editor of the board may not delete the files on somebody's update; the author may. */
+    public function test_only_the_author_or_an_administrator_removes_an_updates_file(): void
+    {
+        $file = $this->postUpdate(['body' => 'Quote', 'files' => [UploadedFile::fake()->create('quote.pdf', 10, 'application/pdf')]])
+            ->assertCreated()->json('data.attachments.0.id');
+        $editor = $this->userWithRole($this->tenant, 'Editor', ['tasks.view', 'tasks.edit', 'tasks.create']);
+        $this->signedInAs($editor)->deleteJson("/api/v1/attachments/{$file}")->assertForbidden();
+        $this->signedInAs($this->tenant['admin'])->deleteJson("/api/v1/attachments/{$file}")->assertSuccessful();
+    }
+
+    /** Audit 11-27: a Files cell takes only files on this board's updates, not any attachment id. */
+    public function test_a_files_cell_refuses_a_file_from_elsewhere(): void
+    {
+        $board = $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('franchise_id', $this->tenant['franchise']->id)->first());
+        $other = $this->signedInAs($this->tenant['admin'])->postJson('/api/v1/task-boards', ['name' => 'Elsewhere', 'visibility' => 'main'])->assertCreated()->json('data.id');
+        $there = $this->signedInAs($this->tenant['admin'])->postJson('/api/v1/tasks', ['board_id' => $other, 'title' => 'Far'])->assertCreated()->json('data.id');
+        $foreign = $this->signedInAs($this->tenant['admin'])->post("/api/v1/tasks/{$there}/updates",
+            ['files' => [UploadedFile::fake()->create('far.pdf', 10, 'application/pdf')]], ['Accept' => 'application/json'])->json('data.attachments.0.id');
+        $mine = $this->postUpdate(['files' => [UploadedFile::fake()->create('near.pdf', 10, 'application/pdf')]])->json('data.attachments.0.id');
+        $col = $this->inTenant($this->tenant['org'], fn () => \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Docs', 'type' => 'files', 'position' => 5]));
+
+        $this->signedInAs($this->tenant['admin'])->patchJson("/api/v1/tasks/{$this->taskId}", ['values' => [$col->id => [$foreign]]])->assertUnprocessable();
+        $this->signedInAs($this->tenant['admin'])->patchJson("/api/v1/tasks/{$this->taskId}", ['values' => [$col->id => [$mine]]])->assertOk();
+    }
+
     public function test_a_text_file_never_opens_inline(): void
     {
         $id = $this->postUpdate(['files' => [UploadedFile::fake()->createWithContent('notes.txt', 'hello')]])

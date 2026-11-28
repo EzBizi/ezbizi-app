@@ -4068,3 +4068,33 @@ box) over the 10 LIVE pages ok - 4 terms, none present (control `ezbizi` hit all
 0651-0655 live, 0 folded or rolled back. Training 59/83/12, `phone_ring_groups` 6, numbers resolving to a group 6 of
 15, Scheduled Jobs Triplex Group 80 / 0 elsewhere (all unchanged; scheduling row stays unwritten). LSA leads 56,465
 all with `remote_id`. No new publisher. chats 8, chat_messages 22.
+
+## 2026-11-27: 0.0.0656-0.0.0665 live, and `/privacy/` said notifications were only about work assigned to you
+
+Production web is 0.0.0665 at `b201db3cd`; `/download/windows.json` reads 0.0.0665 at `b201db3cd`. Before the edit all
+10 live pages contained their WP post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's
+`/api/v1/openapi.json`.
+
+- **One edit, WP page 8 `/privacy/`** (pre-edit copies `~/ezb-wp-bak-20261127/page-8-before-push.html` and
+  `page-8-head-before-push.html` on the websites box; purged; live on www, bare 301s to it). Chat pushes (since 0647)
+  and, new in this window, an APNs VoIP push that rings a Chat call carrying the caller's name, chat id and call id,
+  plus FCM data-only Chat messages. Was: "Notifications, so EzBizi can tell you about something assigned to you" and
+  Apple/Google "carries its title and text". Now: "...something assigned to you, **a Chat message, or a Chat call
+  ringing for you**" and "...wake an app that is not open; **a Chat call that rings a phone also carries the caller's
+  name.**" Ids are not named (not personal data). Last updated 25 → 27 November, `_ezb_head` `dateModified` moved with it.
+- No sentence moves for: telematics/dashcam tables and routes dropped (no live page ever named them); `api.x.ai`
+  removed (Grok still runs through the CLI, `/privacy/` names xAI, still true); SMS sign-in codes now US/Canada only and
+  rate-limited (`/terms/` describes what the codes are for, no coverage claim); EzChat password-only chat token (no page
+  claims every sign-in needs an authenticator); Training excluded from Performance (Training is on the do-not list);
+  customer erasure now includes WhatsApp messages (`/delete-account/` makes no exclusion claim). 0 new hosts, scopes,
+  processors, public routes, Google/Meta writes; `app/Support/Social` 13 files changed, 0 added.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split, Python, on the
+box) over the 10 LIVE pages ok - 4 terms, none present (control `ezbizi` hit all 10), re-run after the edit ok. Stores:
+Play `200`; Apple `resultCount` 1, 0.0631. EzChat: Play 404, Apple `resultCount` 0.
+
+**Desk (11-28, ~00:00 UTC), recorded as given** (`docs/agents/done/website-daily-2026-11-27-desk-reply.md`):
+0656, 0657, 0658, 0661, 0665 live (0659/0660/0662/0663/0664 folded after failed gates), nothing rolled back.
+Training 59/83/12, `phone_ring_groups` 6, numbers resolving to a group 6 of 15, Scheduled Jobs Triplex Group 80 / 0
+elsewhere (all unchanged; scheduling row stays unwritten). LSA leads 56,601 all with `remote_id`. No new publisher.
+chats 17, chat_messages 26. Plaid 0/0/0.

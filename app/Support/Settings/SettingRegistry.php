@@ -1489,6 +1489,33 @@ class SettingRegistry
                 help: 'For missed-call alerts: a RingCentral line whose name starts with the text is that '
                     .'company\'s. Text is the start of the line name, name is the company.',
             ),
+            // Chat's automatic groups (Jose, 11-27): which roles feed each one.
+            new SettingDefinition(
+                key: 'phone.chat_groups_dispatchers',
+                label: 'Chat: roles in the Dispatchers group',
+                type: SettingDefinition::TYPE_ROLES,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Everyone active with one of these roles is in the "Dispatchers" chat group of their company, joined and left by the role itself. Empty: no Dispatchers group.',
+            ),
+            // Chat's automatic groups (Jose, 11-27): which roles feed each one.
+            new SettingDefinition(
+                key: 'phone.chat_groups_technicians',
+                label: 'Chat: roles in the Technicians group',
+                type: SettingDefinition::TYPE_ROLES,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Everyone active with one of these roles is in the "Technicians" chat group of their company, joined and left by the role itself. Empty: no Technicians group.',
+            ),
+            // Chat's automatic groups (Jose, 11-27): which roles feed each one.
+            new SettingDefinition(
+                key: 'phone.chat_groups_leadership',
+                label: 'Chat: roles in the Leadership group',
+                type: SettingDefinition::TYPE_ROLES,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Everyone active with one of these roles is in the "Leadership" chat group of their company, joined and left by the role itself. Empty: no Leadership group.',
+            ),
             new SettingDefinition(
                 key: 'phone.missed_call_fresh_minutes',
                 label: 'Missed-call alerts: newer than (minutes)',
@@ -1596,6 +1623,8 @@ class SettingRegistry
                     ['value' => 'done pending approval', 'label' => 'Done pending approval'],
                 ],
                 help: 'A job in one of these statuses holds no spot in its window. Every other status does.',
+                // Audit 11-27: read for the organization only, so offered there only.
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
             ),
             new SettingDefinition(
                 key: 'scheduling.excluded_tags', label: 'Job tags that free a spot',
@@ -1604,11 +1633,15 @@ class SettingRegistry
                     ['value' => 'deposit received', 'label' => 'DEPOSIT RECEIVED'],
                 ],
                 help: 'A job carrying one of these tags holds no spot (matched ignoring case).',
+                // Audit 11-27: read for the organization only, so offered there only.
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
             ),
             new SettingDefinition(
                 key: 'scheduling.full_days', label: 'Fully booked means no spot for',
                 type: SettingDefinition::TYPE_INT, default: 10,
                 help: 'Days in a row with no spot before an area counts as fully booked (the morning email, Overbooking and the dashboard).',
+                // Audit 11-27: read for the organization only, so offered there only.
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
             ),
             new SettingDefinition(
                 key: 'scheduling.offer_horizon_days', label: 'Earlier-opening text: look at jobs booked up to',

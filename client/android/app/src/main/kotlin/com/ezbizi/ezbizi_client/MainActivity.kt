@@ -177,6 +177,21 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        // The session native chat actions use (ChatPush.kt), set at push
+        // registration and cleared at sign-out.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SESSION_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "set" -> {
+                        NativeSession.set(applicationContext,
+                            call.argument<String>("token"), call.argument<String>("api_base"))
+                        result.success(null)
+                    }
+                    "clear" -> { NativeSession.clear(applicationContext); result.success(null) }
+                    else -> result.notImplemented()
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 if (call.method != "getToken") {
@@ -216,6 +231,7 @@ class MainActivity : FlutterActivity() {
     private companion object {
         const val CHANNEL = "com.ezbizi.app/fcm"
         const val TAP_CHANNEL = "com.ezbizi.app/notification_tap"
+        const val SESSION_CHANNEL = "com.ezbizi.app/native_session"
         const val PERMISSIONS_CHANNEL = "ezbizi/permissions"
         const val PERMISSIONS_REQUEST = 4711
     }

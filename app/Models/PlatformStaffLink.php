@@ -38,13 +38,17 @@ class PlatformStaffLink extends Model
     }
 
     /**
-     * The staff account behind a tenant user, if there is one.
+     * The staff account behind a tenant user, if it can sign in.
      *
-     * Only ACTIVE, fully-enrolled staff count. A deactivated or half-enrolled
-     * staff account must not be able to change how its linked user signs in —
-     * otherwise disabling somebody's platform access would lock them out of their
-     * own CRM as a side effect, or worse, leave them authenticating against a
-     * credential nobody can use.
+     * Only ACTIVE, fully-enrolled staff count here. A half-enrolled one is
+     * ignored, so its linked user keeps their own CRM password rather than
+     * being pointed at a credential nobody can use.
+     *
+     * A DEACTIVATED one is different, and is not a fallback: Jose, 2026-11-27,
+     * "if an account is deactivated they should not be able to log in to
+     * ezbizi". Callers that authenticate ask [deactivatedFor] first and refuse
+     * the user outright — the old CRM password, with no second factor, must not
+     * reopen an account somebody switched off.
      */
     public static function staffFor(string $userId): ?PlatformStaff
     {
@@ -53,5 +57,13 @@ class PlatformStaffLink extends Model
         $staff = $link?->staff;
 
         return ($staff !== null && $staff->canAuthenticate()) ? $staff : null;
+    }
+
+    /** Is this user linked to a staff account that has been deactivated? (Jose, 11-27) */
+    public static function deactivatedFor(string $userId): bool
+    {
+        $staff = static::query()->where('user_id', $userId)->first()?->staff;
+
+        return $staff !== null && ! $staff->is_active;
     }
 }

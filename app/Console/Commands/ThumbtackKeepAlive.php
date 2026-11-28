@@ -30,7 +30,9 @@ class ThumbtackKeepAlive extends Command
             ->where('provider', SocialProvider::Thumbtack->value)
             ->where('status', SocialConnection::STATUS_CONNECTED)
             ->get()
-            ->unique('organization_id');
+            // One refresh per grant, not per organization (audit 11-27: a second
+            // login in the same organization went idle and stopped delivering).
+            ->unique(fn (SocialConnection $c) => (string) (((array) $c->credentials)['refresh_token'] ?? $c->getKey()));
 
         foreach ($rows as $row) {
             $organization = Organization::query()->withoutGlobalScopes()->find($row->organization_id);

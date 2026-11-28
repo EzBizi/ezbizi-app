@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\AuditEvent;
 use App\Models\PlatformStaff;
 use App\Models\PlatformStaffLink;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use PragmaRX\Google2FA\Google2FA;
 use Tests\TestCase;
 
@@ -25,8 +27,11 @@ class LinkedAccountTest extends TestCase
     use RefreshDatabase;
 
     private Google2FA $totp;
+
     private array $org;
+
     private PlatformStaff $staff;
+
     private string $secret;
 
     protected function setUp(): void
@@ -59,7 +64,7 @@ class LinkedAccountTest extends TestCase
     {
         PlatformStaffLink::create([
             'staff_id' => $this->staff->getKey(),
-            'user_id'  => $this->org['admin']->getKey(),
+            'user_id' => $this->org['admin']->getKey(),
         ]);
     }
 
@@ -208,6 +213,34 @@ class LinkedAccountTest extends TestCase
             ->assertForbidden();
     }
 
+    /** Per account, not only per IP, and the limit leaves a mark in the security record. */
+    public function test_development_unlock_guesses_are_capped_per_account(): void
+    {
+        $this->link();
+
+        $tenantToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'jose@ezbizi.test', 'password' => 'a-sufficiently-long-staff-password',
+            'code' => $this->code(),
+        ])->assertOk()->json('token');
+
+        for ($i = 1; $i <= 10; $i++) {
+            $this->app['auth']->forgetGuards();
+            $this->withServerVariables(['REMOTE_ADDR' => "10.0.0.{$i}"])
+                ->withHeader('Authorization', "Bearer {$tenantToken}")
+                ->postJson('/api/v1/me/development/unlock', ['code' => '000000'])
+                ->assertUnauthorized();
+        }
+
+        $this->app['auth']->forgetGuards();
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.1.1'])
+            ->withHeader('Authorization', "Bearer {$tenantToken}")
+            ->postJson('/api/v1/me/development/unlock', ['code' => $this->code()])
+            ->assertStatus(429);
+
+        $this->assertSame(1, AuditEvent::withoutGlobalScopes()
+            ->where('action', 'staff.development_unlock_throttled')->count());
+    }
+
     public function test_me_reports_the_development_access_that_drives_the_sidebar(): void
     {
         $this->link();
@@ -282,14 +315,88 @@ class LinkedAccountTest extends TestCase
         ])->assertOk()->assertJsonPath('status', 'authenticated');
     }
 
-    public function test_a_deactivated_staff_account_does_not_govern_the_tenant_login(): void
+    /**
+     * Jose, 2026-11-27: "if an account is deactivated they should not be able
+     * to log in to ezbizi". The old CRM password, with no second factor, used
+     * to reopen an account whose staff record had been switched off.
+     */
+    public function test_a_deactivated_staff_account_cannot_sign_in_to_the_crm_either(): void
     {
-        $this->staff->forceFill(['is_active' => false])->save();
         $this->link();
+        $this->staff->forceFill(['is_active' => false])->save();
+
+        // Not by the old CRM password...
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'jose@ezbizi.test', 'password' => 'tenant-password',
+        ])->assertUnauthorized()->assertJsonPath('code', 'invalid_credentials');
+
+        // ...nor by the staff credentials.
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'jose@ezbizi.test', 'password' => 'a-sufficiently-long-staff-password',
+            'code' => $this->code(),
+        ])->assertUnauthorized()->assertJsonPath('code', 'invalid_credentials');
+
+        // Nor through the organization picker.
+        $this->postJson('/api/v1/auth/choose', [
+            'user_id' => $this->org['admin']->getKey(), 'email' => 'jose@ezbizi.test',
+            'password' => 'tenant-password',
+        ])->assertUnauthorized();
+    }
+
+    /** The same refusal a deactivated CRM user gets, which already held. */
+    public function test_a_deactivated_crm_user_is_refused_with_the_same_answer(): void
+    {
+        User::withoutGlobalScopes()->whereKey($this->org['admin']->getKey())->update(['is_active' => false]);
 
         $this->postJson('/api/v1/auth/login', [
             'email' => 'jose@ezbizi.test', 'password' => 'tenant-password',
-        ])->assertOk()->assertJsonPath('status', 'authenticated');
+        ])->assertUnauthorized()->assertJsonPath('code', 'invalid_credentials');
+    }
+
+    /** A reset link must not reopen it. */
+    public function test_a_deactivated_staff_account_gets_no_reset_link_for_its_crm_login(): void
+    {
+        Notification::fake();
+        $this->link();
+        $this->staff->forceFill(['is_active' => false])->save();
+
+        $this->postJson('/api/v1/auth/forgot', ['email' => 'jose@ezbizi.test'])->assertOk();
+
+        Notification::assertNothingSent();
+    }
+
+    /** Deactivating ends the linked CRM sessions too, not only new sign-ins. */
+    public function test_deactivating_the_staff_account_ends_its_crm_sessions(): void
+    {
+        $this->link();
+
+        $crm = $this->postJson('/api/v1/auth/login', [
+            'email' => 'jose@ezbizi.test', 'password' => 'a-sufficiently-long-staff-password',
+            'code' => $this->code(),
+        ])->assertOk()->json('token');
+
+        $other = PlatformStaff::create([
+            'name' => 'Other Lead', 'email' => 'lead2@ezbizi.test',
+            'password' => 'a-sufficiently-long-staff-password',
+            'tier' => PlatformStaff::TIER_LEAD, 'is_active' => true,
+        ]);
+        $otherSecret = $this->totp->generateSecretKey(32);
+        $other->forceFill(['totp_secret' => $otherSecret, 'totp_confirmed_at' => now()])->save();
+
+        $this->app['auth']->forgetGuards();
+        $leadToken = $this->postJson('/api/v1/staff/auth/login', [
+            'email' => 'lead2@ezbizi.test', 'password' => 'a-sufficiently-long-staff-password',
+            'code' => $this->totp->getCurrentOtp($otherSecret),
+        ])->assertOk()->json('token');
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', "Bearer {$leadToken}")
+            ->patchJson("/api/v1/staff/accounts/{$this->staff->id}", ['is_active' => false])
+            ->assertOk();
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', "Bearer {$crm}")
+            ->getJson('/api/v1/me')->assertUnauthorized();
     }
 
     // ── linking is a deliberate, audited act ─────────────────────

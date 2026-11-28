@@ -430,7 +430,22 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     return max == null ? sum : (sum < max ? sum : max);
   }
 
+  static String? _badLimit(Map<int, TextEditingController> fields) {
+    for (final f in fields.values) {
+      final t = f.text.trim();
+      if (t.isNotEmpty && (int.tryParse(t) ?? -1) < 0) {
+        return '"$t" is not a number. Leave it empty for no limit.';
+      }
+    }
+    return null;
+  }
+
   Future<void> _saveAreaLimits(String areaId) async {
+    // Audit 11-27: "ten" is refused, not saved as no limit.
+    if (_badLimit(_areaLimitFields) case final bad?) {
+      setState(() => _paneError = bad);
+      return;
+    }
     final limits = <String, int?>{
       for (final e in _areaLimitFields.entries)
         '${e.key}': int.tryParse(e.value.text.trim()),
@@ -658,8 +673,20 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       _zipList = next;
     });
 
+    // Audit 11-27: only what changed, so zips added elsewhere since this
+    // list was loaded are kept.
+    String z(Map<String, dynamic> e) => '${e['zip']}';
+    final had = {for (final e in previous) z(e): e};
+    final now = {for (final e in next) z(e): e};
     final response = await widget.api.put('/scheduling/areas/$id/zips', {
-      'zips': next,
+      'add': [
+        for (final e in next)
+          if (had[z(e)] == null || '${had[z(e)]!['city']}' != '${e['city']}') e,
+      ],
+      'remove': [
+        for (final k in had.keys)
+          if (!now.containsKey(k)) k,
+      ],
     });
 
     if (!mounted) return;
@@ -2699,6 +2726,11 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// The open franchise's limit fields, as typed. Blank is no limit; the
   /// server refuses a zero, which is not a limit but a closure.
   Future<void> _saveLimits(String franchiseId) async {
+    // Audit 11-27: "ten" is refused, not saved as no limit.
+    if (_badLimit(_limitFields) case final bad?) {
+      setState(() => _paneError = bad);
+      return;
+    }
     final limits = <String, int?>{
       for (final e in _limitFields.entries)
         '${e.key}': int.tryParse(e.value.text.trim()),

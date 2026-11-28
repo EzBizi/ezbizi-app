@@ -43,7 +43,7 @@ class AuthenticateUser
      * @param  string|null  $code  the second factor, required only for accounts
      *                             linked to a staff record (§4.2)
      */
-    public function __invoke(string $email, string $password, ?string $code = null): AuthenticationResult
+    public function __invoke(string $email, string $password, ?string $code = null, bool $chatOnly = false): AuthenticationResult
     {
         // Users are tenant-scoped, and at login there is no tenant yet — so the
         // lookup deliberately runs outside tenancy. This is one of the few
@@ -83,6 +83,12 @@ class AuthenticateUser
              */
             $staff = PlatformStaffLink::staffFor($account->getKey());
 
+            // A deactivated staff account closes its linked CRM login too
+            // (Jose, 11-27: "if an account is deactivated they should not be
+            // able to log in to ezbizi"). Treated exactly like an inactive user,
+            // and never a fall back to the old CRM password.
+            $deactivated = $staff === null && PlatformStaffLink::deactivatedFor($account->getKey());
+
             $passwordOk = $staff !== null
                 ? Hash::check($password, $staff->password)
                 // Hash::check is constant-time internally, but skipping it for
@@ -90,7 +96,7 @@ class AuthenticateUser
                 // "wrong password" — so verify first, filter after.
                 : Hash::check($password, $account->password);
 
-            if (! $passwordOk || ! $account->is_active || $account->organization === null) {
+            if (! $passwordOk || $deactivated || ! $account->is_active || $account->organization === null) {
                 continue;
             }
 
@@ -98,7 +104,9 @@ class AuthenticateUser
             // staff link. Either way, once there is one it is required — an
             // account that has switched 2FA on and can still be entered with a
             // password alone has not switched anything on.
-            $needsCode = $staff !== null || $account->hasTotp();
+            // EzChat asks no authenticator (Jose, 11-27); what it gets is a
+            // chat-only token (ChatToken), never the CRM.
+            $needsCode = ! $chatOnly && ($staff !== null || $account->hasTotp());
 
             if ($needsCode) {
                 if ($code === null || $code === '') {
@@ -200,13 +208,17 @@ class AuthenticateUser
      * arrives from the client, so treating it as proof of anything would let
      * someone swap in another user's id and skip authentication entirely.
      */
-    public function completeChoice(string $userId, string $email, string $password, ?string $code = null): AuthenticationResult
+    public function completeChoice(string $userId, string $email, string $password, ?string $code = null, bool $chatOnly = false): AuthenticationResult
     {
         $user = $this->tenant->runWithoutTenant(
             fn () => User::query()->with('organization')->find($userId)
         );
 
-        if ($user === null || $user->email !== $email || ! $user->is_active) {
+        // Case-insensitive, as the first step's lookup is (MySQL's collation):
+        // typing Jose@… there offered the picker, and an exact compare here
+        // then refused every choice it had just offered.
+        if ($user === null || strcasecmp((string) $user->email, trim($email)) !== 0 || ! $user->is_active
+            || PlatformStaffLink::deactivatedFor($user->getKey())) {
             return AuthenticationResult::failed();
         }
 
@@ -223,7 +235,9 @@ class AuthenticateUser
             return AuthenticationResult::failed();
         }
 
-        if ($staff !== null) {
+        if ($chatOnly) {
+            // EzChat: password only, chat-only token (see __invoke).
+        } elseif ($staff !== null) {
             if (! app(FactorAttempts::class)->verify($staff, (string) $code,
                 fn () => $this->staffAuth->verifySecondFactor($staff, (string) $code))) {
                 return AuthenticationResult::failed();

@@ -27,5 +27,12 @@ class UpdateTellsFollowersTest extends TestCase
 
         $bells = $this->inTenant($t['org'], fn () => Notification::query()->whereIn('kind', ['task.update.owner', 'task.update.subscribed'])->pluck('user_id')->all());
         $this->assertSame([$jennine->id], $bells);
+        // Row 70: the bell names who wrote it, for Monday's avatar card.
+        $this->assertSame([$tech->id], $this->inTenant($t['org'], fn () => Notification::query()
+            ->whereIn('kind', ['task.update.owner', 'task.update.subscribed'])->pluck('actor_user_id')->all()));
+        // And who assigned: Jennine gives the task to the tech.
+        $this->signedInAs($jennine)->patchJson("/api/v1/tasks/$task", ['assignee_user_ids' => [$jennine->id, $tech->id]])->assertOk();
+        $this->assertSame([$jennine->id], $this->inTenant($t['org'], fn () => Notification::query()
+            ->where('kind', 'task.assigned')->where('user_id', $tech->id)->pluck('actor_user_id')->all()));
     }
 }

@@ -2,8 +2,20 @@
 
 namespace App\Support\Live;
 
+use App\Models\Franchise;
+use App\Models\MonitoredDevice;
+use App\Models\PhoneCall;
+use App\Models\PhoneMessage;
+use App\Models\Promotion;
+use App\Models\SocialConnection;
+use App\Models\SocialPostTarget;
 use App\Models\User;
+use App\Support\Access\ScopeReach;
+use App\Support\Email\MailboxAccess;
+use App\Support\Phone\PhoneNumberAccess;
+use App\Support\Social\SocialConnectionAccess;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -171,9 +183,17 @@ class ChangeFeed
     {
         self::flush();
         $org = (string) $user->organization_id;
-        $head = (int) DB::table('change_events')->where('organization_id', $org)->max('id');
+        $pruned = self::prunedThrough($org);
+        // Never below what was pruned, so a cursor handed out after an
+        // organization's rows all aged away is not itself "too old".
+        $head = max($pruned, (int) DB::table('change_events')->where('organization_id', $org)->max('id'));
         if ($since === null || $since > $head) {
             return ['cursor' => $head, 'reload' => false, 'changes' => []];
+        }
+        // Older than the prune: changes after this cursor may be gone, and
+        // answering "nothing changed" would be a quiet lie. Reload instead.
+        if ($since < $pruned) {
+            return ['cursor' => $head, 'reload' => true, 'changes' => []];
         }
         $types = array_values(array_filter($types,
             fn (string $t) => isset(self::TYPES[$t]) && array_filter((array) self::TYPES[$t], $user->hasPermission(...)) !== []));
@@ -223,25 +243,25 @@ class ChangeFeed
     /** @param  string[]  $ids  @return string[] */
     private static function readableCalls(User $user, array $ids): array
     {
-        return self::onReadableLines(\App\Models\PhoneCall::class, $user, $ids);
+        return self::onReadableLines(PhoneCall::class, $user, $ids);
     }
 
     private static function readableMessages(User $user, array $ids): array
     {
-        return self::onReadableLines(\App\Models\PhoneMessage::class, $user, $ids);
+        return self::onReadableLines(PhoneMessage::class, $user, $ids);
     }
 
     /**
      * Calls and texts are filed on a LINE, not a branch: the ones on lines the
      * reader may open (PhoneNumberAccess, as GET phone/calls and phone/messages).
      *
-     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $class
+     * @param  class-string<Model>  $class
      * @param  string[]  $ids
      * @return string[]
      */
     private static function onReadableLines(string $class, User $user, array $ids): array
     {
-        $lines = app(\App\Support\Phone\PhoneNumberAccess::class)->readable($user)->pluck('id')->all();
+        $lines = app(PhoneNumberAccess::class)->readable($user)->pluck('id')->all();
 
         return $class::withoutGlobalScopes()
             ->where('organization_id', $user->organization_id)
@@ -260,7 +280,7 @@ class ChangeFeed
         return User::withoutGlobalScopes()
             ->where('organization_id', $user->organization_id)
             ->whereIn('id', $ids)
-            ->where(fn ($q) => app(\App\Support\Access\ScopeReach::class)->constrainToVisiblePeople($q, $user))
+            ->where(fn ($q) => app(ScopeReach::class)->constrainToVisiblePeople($q, $user))
             ->pluck('id')->map(fn ($id) => (string) $id)->all();
     }
 
@@ -274,7 +294,7 @@ class ChangeFeed
     private static function readablePromotions(User $user, array $ids): array
     {
         $reach = self::reach($user);
-        $promotions = \App\Models\Promotion::withoutGlobalScopes()
+        $promotions = Promotion::withoutGlobalScopes()
             ->where('organization_id', $user->organization_id)
             ->whereIn('id', $ids)->get(['id', 'franchise_ids']);
         if ($reach === null) {
@@ -299,21 +319,21 @@ class ChangeFeed
         if ($user->canActOnOrganization($user->organization)) {
             return $ids;
         }
-        $access = app(\App\Support\Social\SocialConnectionAccess::class);
-        $connections = \App\Models\SocialConnection::withoutGlobalScopes()
+        $access = app(SocialConnectionAccess::class);
+        $connections = SocialConnection::withoutGlobalScopes()
             ->where('organization_id', $user->organization_id)
-            ->whereIn('id', \App\Models\SocialPostTarget::withoutGlobalScopes()
+            ->whereIn('id', SocialPostTarget::withoutGlobalScopes()
                 ->whereIn('social_post_id', $ids)->select('social_connection_id'))
             ->get();
         $branchCompanies = $user->reachableFranchises()->pluck('company_id')->all();
         $open = $connections->filter(fn ($c) => match ($c->scope_type) {
-            \App\Models\SocialConnection::SCOPE_ORGANIZATION => true,
-            \App\Models\SocialConnection::SCOPE_COMPANY => $access->reaches($user, $c)
+            SocialConnection::SCOPE_ORGANIZATION => true,
+            SocialConnection::SCOPE_COMPANY => $access->reaches($user, $c)
                 || in_array($c->scope_id, $branchCompanies, true),
             default => $access->reaches($user, $c),
         })->modelKeys();
 
-        return \App\Models\SocialPostTarget::withoutGlobalScopes()
+        return SocialPostTarget::withoutGlobalScopes()
             ->whereIn('social_post_id', $ids)->whereIn('social_connection_id', $open)
             ->distinct()->pluck('social_post_id')->map(fn ($id) => (string) $id)->all();
     }
@@ -327,7 +347,7 @@ class ChangeFeed
      */
     private static function readableMailboxes(User $user, array $ids): array
     {
-        $readable = app(\App\Support\Email\MailboxAccess::class)->readable($user)
+        $readable = app(MailboxAccess::class)->readable($user)
             ->map(fn ($m) => (string) $m->getKey())->all();
 
         return array_values(array_intersect($ids, $readable));
@@ -336,7 +356,7 @@ class ChangeFeed
     /** @param  string[]  $franchises  @return string[] */
     private static function companiesOwning(array $franchises): array
     {
-        return \App\Models\Franchise::withoutGlobalScopes()->whereIn('id', $franchises)
+        return Franchise::withoutGlobalScopes()->whereIn('id', $franchises)
             ->pluck('company_id')->filter()->unique()->values()->all();
     }
 
@@ -364,12 +384,12 @@ class ChangeFeed
      */
     private static function visibleDevices(User $user, array $ids): array
     {
-        return \App\Models\MonitoredDevice::withoutGlobalScopes()
+        return MonitoredDevice::withoutGlobalScopes()
             ->where('organization_id', $user->organization_id)
             ->whereIn('id', $ids)
             ->whereIn('user_id', User::withoutGlobalScopes()
                 ->where('organization_id', $user->organization_id)
-                ->where(fn ($q) => app(\App\Support\Access\ScopeReach::class)->constrainToVisiblePeople($q, $user))
+                ->where(fn ($q) => app(ScopeReach::class)->constrainToVisiblePeople($q, $user))
                 ->select('id'))
             ->pluck('id')->map(fn ($id) => (string) $id)->all();
     }
@@ -389,6 +409,30 @@ class ChangeFeed
 
     public static function prune(): int
     {
-        return DB::table('change_events')->where('changed_at', '<', now()->subDay())->delete();
+        $cutoff = now()->subDay();
+
+        // Remembered per organization before the rows go, so since() can tell
+        // a cursor that predates them from one that is merely quiet.
+        DB::table('change_events')->where('changed_at', '<', $cutoff)
+            ->groupBy('organization_id')
+            ->selectRaw('organization_id, max(id) as through')
+            ->get()
+            ->each(fn ($row) => Cache::forever(
+                self::prunedKey((string) $row->organization_id),
+                max((int) $row->through, self::prunedThrough((string) $row->organization_id)),
+            ));
+
+        return DB::table('change_events')->where('changed_at', '<', $cutoff)->delete();
+    }
+
+    /** The highest id pruned for an organization (0 when none, or when the cache was lost). */
+    private static function prunedThrough(string $org): int
+    {
+        return (int) Cache::get(self::prunedKey($org), 0);
+    }
+
+    private static function prunedKey(string $org): string
+    {
+        return 'change-feed:pruned-through:'.$org;
     }
 }

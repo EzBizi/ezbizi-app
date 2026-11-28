@@ -98,7 +98,7 @@ final class BookingBot
         $today = CarbonImmutable::now($zone)->startOfDay();
         $from = Openings::tomorrow($zone);
         $asked = RequestedWindow::from(trim(($read['asked_for'] ?? '').' '.$this->lastSaid($lead)), $today, $from);
-        $slot = $this->slots->for((string) $lead->postal_code, $from, $asked);
+        $slot = $this->slots->for((string) $lead->postal_code, $from, $asked, SlotOffer::reach($lead));
 
         if ($slot === null) {
             return ['reply' => 'Thank you! A dispatcher will reach out shortly with a time.', 'why' => 'No open window near this ZIP.'];

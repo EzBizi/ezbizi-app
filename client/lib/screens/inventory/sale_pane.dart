@@ -1,3 +1,4 @@
+import '../../widgets/confirm_panel.dart';
 import 'package:flutter/material.dart';
 
 
@@ -374,7 +375,18 @@ class _SalePaneState extends State<SalePane> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: OutlinedButton(
-                      onPressed: _busy ? null : _cancelSale,
+                      onPressed: _busy
+                          ? null
+                          : () async {
+                              if (await confirmInPanel(
+                                context,
+                                title: 'Cancel this sale?',
+                                body: 'The sale is cancelled. This cannot be undone.',
+                                confirm: 'Cancel sale',
+                              )) {
+                                _cancelSale();
+                              }
+                            },
                       child: const Text('Cancel sale'),
                     ),
                   ),

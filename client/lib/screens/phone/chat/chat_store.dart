@@ -11,7 +11,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/push_registration.dart';
 import '../../../widgets/side_panel.dart';
+import 'chat_alerts.dart';
 
 typedef Json = Map<String, dynamic>;
 
@@ -78,7 +80,12 @@ class ChatStore extends ChangeNotifier with WidgetsBindingObserver {
     if (_pulsing || _disposed) return;
     _pulsing = true;
     try {
-      final r = await api.get('/chat/pulse');
+      final viewing = ChatAlerts.viewing;
+      final device = PushRegistration.token;
+      final r = await api.get('/chat/pulse', {
+        if (viewing != null && device != null) 'viewing': viewing,
+        if (viewing != null && device != null) 'device': device,
+      });
       if (_disposed || !r.ok || r.data is! Map) return;
       final data = r.data as Map;
       final rev = (data['rev'] ?? '').toString();

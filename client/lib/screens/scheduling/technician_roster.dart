@@ -72,7 +72,12 @@ class _TechnicianRosterState extends State<TechnicianRoster> {
     super.dispose();
   }
 
+  /// Audit 11-27: only the newest load lands, so a quick branch change never
+  /// shows the previous branch's roster.
+  int _ticket = 0;
+
   Future<void> _load() async {
+    final ticket = ++_ticket;
     setState(() {
       _loading = _rows.isEmpty;
       _error = null;
@@ -86,7 +91,7 @@ class _TechnicianRosterState extends State<TechnicianRoster> {
       if (_canEdit && _areas.isEmpty) widget.api.get('/scheduling/areas'),
     ]);
 
-    if (!mounted) return;
+    if (!mounted || ticket != _ticket) return;
 
     final roster = results.first;
     setState(() {

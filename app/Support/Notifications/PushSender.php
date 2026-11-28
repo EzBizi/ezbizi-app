@@ -118,7 +118,9 @@ class PushSender
      */
     public function platforms(): array
     {
-        return ['android', 'ios'];
+        // ios_voip: a PushKit token for CallKit rings (Apple, 11-27). It only
+        // ever gets VoIP pushes for a ringing call, never an ordinary one.
+        return ['android', 'ios', 'ios_voip'];
     }
 
     /**
@@ -144,7 +146,7 @@ class PushSender
      * @param  Collection<int, DeviceToken>  $devices
      * @return int how many devices accepted the message
      */
-    public function send(Collection $devices, string $title, ?string $body, bool $urgent = false, ?string $notificationId = null, ?string $subtitle = null): int
+    public function send(Collection $devices, string $title, ?string $body, bool $urgent = false, ?string $notificationId = null, ?string $subtitle = null, ?string $thread = null, ?int $badge = null, ?string $category = null): int
     {
         if ($devices->isEmpty()) {
             return 0;
@@ -157,9 +159,11 @@ class PushSender
          * exists; it asks for a notification to reach a set of handsets and
          * this decides how each one is reached.
          */
+        // iOS kills an app whose VoIP push reports no call: those never get these.
+        $devices = $devices->reject(fn (DeviceToken $device) => $device->platform === 'ios_voip');
         [$apple, $google] = $devices->partition(fn (DeviceToken $device) => $device->platform === 'ios');
 
-        $sent = $this->apns->send($apple, $title, $body, $notificationId, $subtitle);
+        $sent = $this->apns->send($apple, $title, $body, $notificationId, $subtitle, $thread, $badge, $category);
 
         // Android has no subtitle line a data-less FCM notification can set, so
         // what happened leads the body (Jose, 2026-10-21: Title / Subtitle /
@@ -188,7 +192,7 @@ class PushSender
         }
 
         foreach ($devices as $device) {
-            if ($this->deliver($device, $accessToken, $title, $body, $urgent, $notificationId)) {
+            if ($this->deliver($device, $accessToken, $title, $body, $urgent, $notificationId, $thread, $badge)) {
                 $sent++;
             }
         }
@@ -208,7 +212,7 @@ class PushSender
      * arrives keeps the table honest without a sweep that would have to
      * re-derive what the API just said out loud.
      */
-    private function deliver(DeviceToken $device, string $accessToken, string $title, ?string $body, bool $urgent = false, ?string $notificationId = null): bool
+    private function deliver(DeviceToken $device, string $accessToken, string $title, ?string $body, bool $urgent = false, ?string $notificationId = null, ?string $thread = null, ?int $badge = null): bool
     {
         try {
             $response = Http::timeout(self::TIMEOUT)
@@ -220,7 +224,13 @@ class PushSender
                             'title' => $title,
                             'body' => $body,
                         ]),
-                        'android' => ['notification' => ['channel_id' => $urgent ? self::ANDROID_URGENT_CHANNEL : self::ANDROID_CHANNEL]],
+                        // `tag`: one notification per chat, the newest replacing the last;
+                        // `notification_count`: the launcher badge.
+                        'android' => ['notification' => array_filter([
+                            'channel_id' => $urgent ? self::ANDROID_URGENT_CHANNEL : self::ANDROID_CHANNEL,
+                            'tag' => $thread,
+                            'notification_count' => $badge,
+                        ], fn ($v) => $v !== null)],
                         // Which bell row a tap opens: the app routes it exactly as
                         // tapping that row (Bar, 2026-10-12). The KEY is dropped,
                         // not emptied, when there is no row: PHP's empty array
@@ -265,6 +275,54 @@ class PushSender
      * arrive after it expired — and re-minting costs a signature and a round
      * trip that every notification in that hour would otherwise repeat.
      */
+    /**
+     * A data-only FCM message, at high priority so Doze does not hold it (a
+     * call that rings minutes late is worse than none), for Android handsets
+     * that build the notification themselves. Every value is sent as a string,
+     * as FCM requires. `ttl`: seconds before FCM drops it (a stale call invite).
+     *
+     * @param  array<string, scalar|null>  $data
+     */
+    public function sendData(Collection $devices, array $data, ?int $ttl = null): int
+    {
+        $devices = $devices->filter(fn (DeviceToken $d) => $d->platform === 'android');
+        if ($devices->isEmpty() || ! $this->fcmConfigured()) {
+            return 0;
+        }
+        try {
+            $accessToken = $this->accessToken();
+        } catch (Throwable $exception) {
+            Log::warning('Push not sent: could not authenticate to FCM.', ['error' => $exception->getMessage(), 'devices' => $devices->count()]);
+
+            return 0;
+        }
+        $data = array_map(fn ($v) => (string) $v, array_filter($data, fn ($v) => $v !== null));
+        $sent = 0;
+        foreach ($devices as $device) {
+            try {
+                $response = Http::timeout(self::TIMEOUT)->withToken($accessToken)
+                    ->post(sprintf(self::FCM_ENDPOINT, $this->projectId()), ['message' => [
+                        'token' => $device->token,
+                        'data' => $data,
+                        'android' => array_filter(['priority' => 'HIGH', 'ttl' => $ttl === null ? null : $ttl.'s']),
+                    ]]);
+            } catch (ConnectionException $exception) {
+                Log::warning('Push not sent: FCM unreachable.', ['device_token_id' => $device->getKey(), 'error' => $exception->getMessage()]);
+
+                continue;
+            }
+            if ($response->successful()) {
+                $sent++;
+            } elseif ($response->status() === 404 || $response->json('error.status') === 'NOT_FOUND') {
+                $device->delete();
+            } else {
+                Log::warning('Push refused by FCM.', ['device_token_id' => $device->getKey(), 'status' => $response->status(), 'reason' => $response->json('error.status')]);
+            }
+        }
+
+        return $sent;
+    }
+
     private function accessToken(): string
     {
         return Cache::remember('notifications.fcm.access_token', now()->addMinutes(55), function (): string {

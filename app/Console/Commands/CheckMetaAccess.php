@@ -99,7 +99,7 @@ final class CheckMetaAccess extends Command
         };
 
         try {
-            $r = Http::timeout(self::TIMEOUT)->get($url.$id, ['fields' => 'id', 'access_token' => $token]);
+            $r = Http::withToken($token)->timeout(self::TIMEOUT)->get($url.$id, ['fields' => 'id']);
         } catch (ConnectionException) {
             return null;
         }
@@ -108,6 +108,10 @@ final class CheckMetaAccess extends Command
             return true;
         }
 
-        return $r->serverError() ? null : false;
+        // A rate limit is not a refusal: only auth/permission answers mark a connection broken (audit 11-27).
+        $code = (int) $r->json('error.code');
+        $throttled = in_array($code, [4, 17, 32, 613], true) || ($code >= 80000 && $code < 80100);
+
+        return $r->serverError() || $throttled ? null : false;
     }
 }

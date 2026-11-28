@@ -77,6 +77,10 @@ class Notification extends Model implements HoldsPersonalData
                     .'blanked anyway — it is NOT NULL and it is what the list is queried '
                     .'by, so an anonymised notification would be one nobody could ever '
                     .'read or delete.')),
+            new PersonalDataEntry('actor_user_id', PersonalDataEntry::ACTIVITY,
+                'Who caused it, for the avatar on the row (Monday parity, 2026-11-27).',
+                Erasure::drop('It goes with the row above. An erased actor is a '
+                    .'deleted user, and the foreign key nulls the column on delete.')),
             new PersonalDataEntry('title, body', PersonalDataEntry::CONTENT,
                 'The message. Composed by whatever raised it, so it can contain the name '
                 .'or details of a third party rather than of the person it was sent to.',
@@ -99,6 +103,12 @@ class Notification extends Model implements HoldsPersonalData
         return $subject instanceof User
             ? static::query()->where('user_id', $subject->getKey())
             : null;
+    }
+
+    /** Who caused it, when a person did. */
+    public function actor(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'actor_user_id');
     }
 
     public const UPDATED_AT = null;   // read_at is the only mutation

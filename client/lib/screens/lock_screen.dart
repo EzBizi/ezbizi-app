@@ -137,8 +137,8 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
 
   Future<void> _signOut() async {
     unawaited(ClockWindow.release());
-    await widget.api.post('/auth/logout', {});
-    widget.session.signOut();
+    // The one sign-out path: push withdrawn, token revoked.
+    await widget.session.logOut();
   }
 
   /// UI queue 36, Jose's 1 + 4 (2026-09-30: "the clock in lock screen could

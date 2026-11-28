@@ -11,12 +11,14 @@ use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Data\ResourceMap;
 use App\Support\Modules\ModuleRegistry;
+use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Concerns\BranchManagerRole;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -37,6 +39,7 @@ class DataTest extends TestCase
     use RefreshDatabase;
 
     private array $alpha;
+
     private array $beta;
 
     protected function setUp(): void
@@ -46,7 +49,7 @@ class DataTest extends TestCase
         SubscriptionGuard::flush();
 
         $this->alpha = $this->provision('Alpha', 'a@alpha.test');
-        $this->beta  = $this->provision('Beta', 'b@beta.test');
+        $this->beta = $this->provision('Beta', 'b@beta.test');
     }
 
     private function provision(string $name, string $email): array
@@ -126,9 +129,9 @@ class DataTest extends TestCase
         $this->makeCustomer($this->alpha, ['name' => 'Alpha Person']);
         $company = 'Co'; // provision()'s companyName
 
-        [$header, $row] = array_map('str_getcsv', array_slice(explode("
-", trim(
-            ltrim($this->as($this->alpha)->get('/api/v1/exports/customers')->assertOk()->streamedContent(), "ï»¿")
+        [$header, $row] = array_map('str_getcsv', array_slice(explode('
+', trim(
+            ltrim($this->as($this->alpha)->get('/api/v1/exports/customers')->assertOk()->streamedContent(), 'ï»¿')
         )), 0, 2));
 
         $this->assertSame($company, $row[array_search('owning_company', $header, true)]);
@@ -338,7 +341,7 @@ class DataTest extends TestCase
 
             $user = User::create([
                 'organization_id' => $this->alpha['organization']->id,
-                'role_id' => \Tests\Concerns\BranchManagerRole::idFor($this->alpha['admin']),
+                'role_id' => BranchManagerRole::idFor($this->alpha['admin']),
                 'name' => 'Branch', 'email' => 'branch@alpha.test',
                 'password' => 'a-real-password', 'is_active' => true,
             ]);
@@ -388,6 +391,28 @@ class DataTest extends TestCase
         // reports a number that is too big.
         $this->assertStringContainsString('JOB-BRANCH', $body);
         $this->assertStringNotContainsString('JOB-HQ', $body);
+    }
+
+    /** One franchise read per chunk, not per job (audit 2026-11-27: `timezone` was not loaded). */
+    public function test_the_job_export_does_not_query_a_franchise_per_row(): void
+    {
+        $customer = $this->makeCustomer($this->alpha, ['name' => 'Shared Person']);
+
+        foreach (['JOB-1', 'JOB-2', 'JOB-3'] as $number) {
+            $job = $this->job($this->alpha['franchise'], $number, $customer);
+            app(TenantContext::class)->run($this->alpha['organization'],
+                fn () => $job->forceFill(['scheduled_for' => '2026-12-01 09:00:00'])->save());
+        }
+
+        $request = $this->as($this->alpha);
+        DB::enableQueryLog();
+        $request->get('/api/v1/exports/jobs')->assertOk()->streamedContent();
+
+        $perRow = collect(DB::getQueryLog())
+            ->filter(fn ($q) => str_contains($q['query'], 'select `timezone` from `franchises`'))
+            ->count();
+
+        $this->assertSame(0, $perRow);
     }
 
     public function test_the_json_bundle_stops_at_the_callers_reach(): void
@@ -442,6 +467,55 @@ class DataTest extends TestCase
 
         $this->assertNotContains(null, $numbers);
         $this->assertContains('C-9', $numbers);
+    }
+
+    /**
+     * An imported number the generator would issue itself moves the sequence
+     * past it (audit 2026-11-27). Otherwise the generator later hands out the
+     * same number and every create in the organization rolls back on it.
+     */
+    public function test_an_imported_number_is_never_generated_again(): void
+    {
+        $numbers = app(RecordNumberGenerator::class);
+        $tenant = app(TenantContext::class);
+        $franchise = $this->alpha['franchise'];
+
+        $upcoming = $tenant->run($this->alpha['organization'],
+            fn () => $numbers->peek(RecordNumberGenerator::CUSTOMERS, $franchise));
+
+        $this->import($this->alpha, $this->csv([[$upcoming, 'Ada']], ['number', 'name']))
+            ->assertOk()->assertJsonPath('imported', 1);
+
+        $next = $tenant->run($this->alpha['organization'],
+            fn () => $numbers->next(RecordNumberGenerator::CUSTOMERS, $franchise));
+
+        $this->assertNotSame($upcoming, $next, 'the generator handed out a number an import already used');
+    }
+
+    /** The app's own export imports back: its export-only columns are not "unrecognised". */
+    public function test_the_apps_own_customer_export_imports(): void
+    {
+        $this->makeCustomer($this->alpha, ['name' => 'Ada', 'email' => 'ada@example.test']);
+
+        $export = $this->as($this->alpha)->get('/api/v1/exports/customers')->assertOk()->streamedContent();
+
+        $this->assertStringContainsString('owning_company', $export);
+        $this->assertStringContainsString('created_at', $export);
+
+        // Into another organization, where the number is free.
+        $this->import($this->beta, $export)->assertOk()
+            ->assertJsonPath('imported', 1)->assertJsonPath('failed', 0);
+    }
+
+    /** "maybe" is not a yes or a no, and is refused rather than quietly dropped. */
+    public function test_an_unreadable_yes_or_no_is_refused(): void
+    {
+        $response = $this->import($this->alpha, $this->csv([['Ada', 'maybe'], ['Grace', 'yes']], ['name', 'is_active']))
+            ->assertOk()->assertJsonPath('imported', 1)->assertJsonPath('failed', 1);
+
+        // Said as what it is. It used to reach the database as null and come
+        // back as "conflicts with an existing record".
+        $this->assertStringContainsString('true or false', $response->json('errors.0.messages.0'));
     }
 
     public function test_a_row_with_a_stray_comma_is_reported_not_truncated(): void
@@ -518,14 +592,14 @@ class DataTest extends TestCase
      */
     public function test_the_catalogue_separates_what_cannot_be_imported_from_who_may_not(): void
     {
-        $alpha  = $this->provisionTenant('Gamma');
+        $alpha = $this->provisionTenant('Gamma');
         $reader = $this->userWithRole($alpha, 'Reader', ['customers.view', 'jobs.view']);
 
         $body = $this->signedInAs($reader)->getJson('/api/v1/exports')
             ->assertOk()->json();
 
         $customers = collect($body['resources'])->firstWhere('key', 'customers');
-        $jobs      = collect($body['resources'])->firstWhere('key', 'jobs');
+        $jobs = collect($body['resources'])->firstWhere('key', 'jobs');
 
         // Customers CAN be imported. This reader may not, and the tab has to be
         // able to say so rather than quietly omit the control.
@@ -594,7 +668,7 @@ class DataTest extends TestCase
      */
     public function test_the_refusal_the_catalogue_publishes_is_the_one_the_endpoint_gives(): void
     {
-        $alpha   = $this->provisionTenant('Epsilon');
+        $alpha = $this->provisionTenant('Epsilon');
         $partial = $this->userWithRole($alpha, 'Partial', ['customers.view']);
 
         $published = $this->signedInAs($partial)->getJson('/api/v1/exports')
@@ -714,18 +788,18 @@ class DataTest extends TestCase
 
         // The pre-migration world: the permission exists and a role holds it.
         DB::table('permissions')->insert([
-            'id'         => $id,
-            'key'        => 'data.view',
-            'module'     => 'data',
-            'action'     => 'view',
-            'label'      => 'View import & export',
+            'id' => $id,
+            'key' => 'data.view',
+            'module' => 'data',
+            'action' => 'view',
+            'label' => 'View import & export',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
         DB::table('permission_role')->insert([
             'permission_id' => $id,
-            'role_id'       => \Tests\Concerns\BranchManagerRole::idFor($alpha['admin']),
+            'role_id' => BranchManagerRole::idFor($alpha['admin']),
         ]);
 
         $migration = require database_path(
@@ -813,7 +887,7 @@ class DataTest extends TestCase
         $alpha = $this->provisionTenant('Iota');
         $this->makeCustomerIn($alpha, 'Alpha Person');
 
-        $viewer   = $this->userWithRole($alpha, 'Viewer', ['customers.view']);
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['customers.view']);
         $exporter = $this->userWithRole($alpha, 'Exporter', ['customers.view', 'customers.export']);
 
         $message = $this->signedInAs($viewer)->get('/api/v1/exports/customers')
@@ -846,7 +920,7 @@ class DataTest extends TestCase
      */
     public function test_the_catalogue_publishes_the_export_refusal_the_endpoint_gives(): void
     {
-        $alpha  = $this->provisionTenant('Kappa');
+        $alpha = $this->provisionTenant('Kappa');
         $viewer = $this->userWithRole($alpha, 'Viewer', ['customers.view', 'customers.create']);
 
         $customers = collect(
@@ -941,7 +1015,7 @@ class DataTest extends TestCase
      */
     public function test_the_inventory_still_takes_the_view_permissions_and_not_the_export_ones(): void
     {
-        $alpha  = $this->provisionTenant('Mu');
+        $alpha = $this->provisionTenant('Mu');
         $reader = $this->userWithRole($alpha, 'Reader', ['customers.view', 'jobs.view']);
 
         $inventory = $this->signedInAs($reader)->getJson('/api/v1/exports/inventory')
@@ -1083,7 +1157,7 @@ class DataTest extends TestCase
         return $this->inTenant($tenant['org'], fn () => Customer::create([
             'owning_franchise_id' => $tenant['franchise']->id,
             'number' => 'C-'.bin2hex(random_bytes(3)),
-            'name'   => $name,
+            'name' => $name,
         ]));
     }
 }

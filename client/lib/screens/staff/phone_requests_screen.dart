@@ -128,6 +128,13 @@ class _PhoneRequestsScreenState extends State<PhoneRequestsScreen> {
   }
 
   void _open(Map<String, dynamic> row) {
+    // A note being written for another request is not thrown away
+    // (audit 11-27).
+    if (_openId != null && _openId != row['id'] && _note.text.trim().isNotEmpty) {
+      setState(() => _formError =
+          'Finish or clear the note on the open request first.');
+      return;
+    }
     setState(() {
       _openId = row['id'] as String?;
       _formError = null;

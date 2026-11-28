@@ -7,6 +7,7 @@ use App\Support\Sms\PlatformSms;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -36,6 +37,14 @@ use Symfony\Component\HttpFoundation\Response;
  * It is a password for the ten minutes it exists. Hashed for the same reason
  * the password column is, and expiring so a code read off an old handset
  * months later opens nothing.
+ *
+ * ── Why sending and confirming are rate-limited ──────────────────
+ *
+ * Every send is a paid text. Unlimited, a script on a signed-in session sends
+ * as many as it likes to whatever number it likes — premium-rate destinations
+ * included — and an unlimited confirm is a brute force of a six-digit code.
+ * So: few sends per person and per number (config `ezbizi.sms_codes`), US and
+ * Canadian numbers only, and a code that dies after a handful of wrong guesses.
  */
 class SmsCodesController extends Controller
 {
@@ -53,10 +62,10 @@ class SmsCodesController extends Controller
 
         return response()->json(['data' => [
             'available' => $this->sms->configured(),
-            'number'    => $this->mask($user->sms_code_number),
+            'number' => $this->mask($user->sms_code_number),
             'consented' => $user->sms_code_consent_at !== null,
             'confirmed' => $user->sms_code_confirmed_at !== null,
-            'pending'   => $user->sms_code_number !== null
+            'pending' => $user->sms_code_number !== null
                 && $user->sms_code_confirmed_at === null,
         ]]);
     }
@@ -78,7 +87,7 @@ class SmsCodesController extends Controller
         }
 
         $input = $request->validate([
-            'phone'   => ['required', 'string', 'max:20'],
+            'phone' => ['required', 'string', 'max:20'],
             'consent' => ['required', 'in:accepted'],
         ]);
 
@@ -91,15 +100,40 @@ class SmsCodesController extends Controller
             );
         }
 
+        if (! $this->allowedDestination($number)) {
+            return $this->refuse('Text codes can only be sent to a US or Canadian mobile number.');
+        }
+
         $user = $request->user();
+
+        // Charged before the send, not after: a send that Twilio refuses still
+        // costs a request, and the loop this stops does not care whether its
+        // texts arrive.
+        $limits = [
+            $this->sendKey('user', $user->getKey()) => [(int) config('ezbizi.sms_codes.sends_per_user_per_hour', 3), 3600],
+            $this->sendKey('number', $number) => [(int) config('ezbizi.sms_codes.sends_per_number_per_day', 5), 86400],
+        ];
+
+        foreach ($limits as $key => [$max]) {
+            if (RateLimiter::tooManyAttempts($key, $max)) {
+                return $this->throttled($key);
+            }
+        }
+
+        foreach ($limits as $key => [, $decay]) {
+            RateLimiter::hit($key, $decay);
+        }
+
+        // A new code gets its own guesses.
+        RateLimiter::clear($this->confirmKey($user->getKey()));
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
         $user->forceFill([
-            'sms_code_number'       => $number,
-            'sms_code_consent_at'   => now(),
+            'sms_code_number' => $number,
+            'sms_code_consent_at' => now(),
             'sms_code_confirmed_at' => null,
-            'sms_code_hash'         => Hash::make($code),
-            'sms_code_expires_at'   => now()->addMinutes(self::CODE_TTL_MINUTES),
+            'sms_code_hash' => Hash::make($code),
+            'sms_code_expires_at' => now()->addMinutes(self::CODE_TTL_MINUTES),
         ])->save();
 
         // Worded to match the sample message filed with the carrier. A code
@@ -125,7 +159,7 @@ class SmsCodesController extends Controller
 
         return response()->json(['data' => [
             'number' => $this->mask($number),
-            'sent'   => true,
+            'sent' => true,
         ]]);
     }
 
@@ -133,7 +167,13 @@ class SmsCodesController extends Controller
     public function confirm(Request $request): JsonResponse
     {
         $input = $request->validate(['code' => ['required', 'string']]);
-        $user  = $request->user();
+        $user = $request->user();
+        $key = $this->confirmKey($user->getKey());
+        $max = (int) config('ezbizi.sms_codes.confirm_attempts', 5);
+
+        if (RateLimiter::tooManyAttempts($key, $max)) {
+            return $this->throttled($key);
+        }
 
         if ($user->sms_code_hash === null) {
             return $this->refuse('There is no code waiting to be confirmed.');
@@ -144,20 +184,34 @@ class SmsCodesController extends Controller
         }
 
         if (! Hash::check(trim($input['code']), $user->sms_code_hash)) {
+            RateLimiter::hit($key, self::CODE_TTL_MINUTES * 60);
+
+            // The cap kills the code itself, not just the next few minutes:
+            // six digits survive a handful of guesses, not a patient script.
+            if (RateLimiter::attempts($key) >= $max) {
+                $user->forceFill(['sms_code_hash' => null, 'sms_code_expires_at' => null])->save();
+
+                $this->audit->log('user.sms_codes_confirm_locked', $user);
+
+                return $this->refuse('Too many wrong codes. Ask for a new one.');
+            }
+
             return $this->refuse('That code did not match. Check the message and try again.');
         }
 
+        RateLimiter::clear($key);
+
         $user->forceFill([
             'sms_code_confirmed_at' => now(),
-            'sms_code_hash'         => null,
-            'sms_code_expires_at'   => null,
+            'sms_code_hash' => null,
+            'sms_code_expires_at' => null,
         ])->save();
 
         $this->audit->log('user.sms_codes_confirmed', $user);
 
         return response()->json(['data' => [
             'confirmed' => true,
-            'number'    => $this->mask($user->sms_code_number),
+            'number' => $this->mask($user->sms_code_number),
         ]]);
     }
 
@@ -174,11 +228,11 @@ class SmsCodesController extends Controller
         $user = $request->user();
 
         $user->forceFill([
-            'sms_code_number'       => null,
-            'sms_code_consent_at'   => null,
+            'sms_code_number' => null,
+            'sms_code_consent_at' => null,
             'sms_code_confirmed_at' => null,
-            'sms_code_hash'         => null,
-            'sms_code_expires_at'   => null,
+            'sms_code_hash' => null,
+            'sms_code_expires_at' => null,
         ])->save();
 
         $this->audit->log('user.sms_codes_consent_withdrawn', $user);
@@ -226,6 +280,39 @@ class SmsCodesController extends Controller
         }
 
         return strlen($digits) === 10 ? '+1'.$digits : null;
+    }
+
+    /**
+     * US and Canada only. +1 is the whole North American Numbering Plan, which
+     * also covers Caribbean nations and premium-rate codes — the destinations
+     * toll fraud pumps — so the area code is checked as well.
+     */
+    private function allowedDestination(string $number): bool
+    {
+        if (! preg_match('/^\+1([2-9]\d{2})[2-9]\d{6}$/', $number, $m)) {
+            return false;
+        }
+
+        return ! in_array($m[1], (array) config('ezbizi.sms_codes.blocked_area_codes', []), true);
+    }
+
+    private function sendKey(string $by, string $value): string
+    {
+        return 'sms-codes:send:'.$by.':'.$value;
+    }
+
+    private function confirmKey(string $userId): string
+    {
+        return 'sms-codes:confirm:'.$userId;
+    }
+
+    private function throttled(string $key): JsonResponse
+    {
+        return response()->json([
+            'message' => 'Too many codes asked for. Try again later.',
+            'code' => 'throttled',
+            'retry_after' => RateLimiter::availableIn($key),
+        ], Response::HTTP_TOO_MANY_REQUESTS);
     }
 
     private function refuse(string $message): JsonResponse

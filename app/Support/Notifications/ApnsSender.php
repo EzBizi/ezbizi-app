@@ -73,7 +73,7 @@ class ApnsSender
      * @param  Collection<int, DeviceToken>  $devices
      * @return int how many devices accepted the message
      */
-    public function send(Collection $devices, string $title, ?string $body, ?string $notificationId = null, ?string $subtitle = null): int
+    public function send(Collection $devices, string $title, ?string $body, ?string $notificationId = null, ?string $subtitle = null, ?string $thread = null, ?int $badge = null, ?string $category = null): int
     {
         if ($devices->isEmpty() || ! $this->configured()) {
             return 0;
@@ -93,7 +93,7 @@ class ApnsSender
         $sent = 0;
 
         foreach ($devices as $device) {
-            if ($this->deliver($device, $jwt, $title, $body, $notificationId, $subtitle)) {
+            if ($this->deliver($device, $jwt, $title, $body, $notificationId, $subtitle, $thread, $badge, $category)) {
                 $sent++;
             }
         }
@@ -114,7 +114,7 @@ class ApnsSender
      * environment, and deleting on it would throw away a good token every time
      * somebody pointed a sandbox build at production.
      */
-    private function deliver(DeviceToken $device, string $jwt, string $title, ?string $body, ?string $notificationId = null, ?string $subtitle = null): bool
+    private function deliver(DeviceToken $device, string $jwt, string $title, ?string $body, ?string $notificationId = null, ?string $subtitle = null, ?string $thread = null, ?int $badge = null, ?string $category = null): bool
     {
         try {
             $response = Http::timeout(self::TIMEOUT)
@@ -126,10 +126,15 @@ class ApnsSender
                     'apns-priority' => '10',
                 ])
                 ->post($this->endpoint().$device->token, array_filter([
-                    'aps' => [
+                    'aps' => array_filter([
                         'alert' => array_filter(['title' => $title, 'subtitle' => $subtitle, 'body' => $body]),
                         'sound' => 'default',
-                    ],
+                        // One stack per chat on the lock screen, and the icon's count.
+                        'thread-id' => $thread,
+                        'badge' => $badge,
+                        // Chat's Reply / Mark read actions (Apple registers the category).
+                        'category' => $category,
+                    ], fn ($v) => $v !== null),
                     // Which bell row a tap opens — a custom key beside `aps`,
                     // which is where APNs puts app data (Bar, 2026-10-12).
                     'notification_id' => $notificationId,
@@ -276,6 +281,54 @@ class ApnsSender
      * key signs for both; a token sent with the other app's topic is refused
      * with DeviceTokenNotForTopic.
      */
+    /**
+     * A push the app handles itself: `voip` (PushKit: a CallKit ring, topic
+     * {bundle}.voip) or `background` (content-available: stop a ring, clear a
+     * read chat). Chat's, for iOS (Apple, 11-27). Same dead-token rule as send().
+     *
+     * @param  array<string, mixed>  $payload  beside aps
+     */
+    public function sendRaw(Collection $devices, array $payload, string $type): int
+    {
+        if ($devices->isEmpty() || ! $this->configured()) {
+            return 0;
+        }
+        try {
+            $jwt = $this->providerToken();
+        } catch (RuntimeException $exception) {
+            Log::warning('Push not sent: could not sign an APNs provider token.', ['error' => $exception->getMessage()]);
+
+            return 0;
+        }
+        $voip = $type === 'voip';
+        $sent = 0;
+        foreach ($devices as $device) {
+            try {
+                $response = Http::timeout(self::TIMEOUT)->withOptions(['version' => 2.0])
+                    ->withHeaders([
+                        'authorization' => 'bearer '.$jwt,
+                        'apns-topic' => $this->topicFor($device).($voip ? '.voip' : ''),
+                        'apns-push-type' => $voip ? 'voip' : 'background',
+                        'apns-priority' => $voip ? '10' : '5',
+                    ])
+                    ->post($this->endpoint().$device->token, $voip ? $payload : ['aps' => ['content-available' => 1], ...$payload]);
+            } catch (ConnectionException $exception) {
+                Log::warning('Push not sent: APNs unreachable.', ['device_token_id' => $device->getKey(), 'error' => $exception->getMessage()]);
+
+                continue;
+            }
+            if ($response->successful()) {
+                $sent++;
+            } elseif ($response->status() === 410 || $response->json('reason') === 'Unregistered') {
+                $device->delete();
+            } else {
+                Log::warning('Push refused by APNs.', ['device_token_id' => $device->getKey(), 'status' => $response->status(), 'reason' => $response->json('reason')]);
+            }
+        }
+
+        return $sent;
+    }
+
     private function topicFor(DeviceToken $device): string
     {
         return $device->app === 'ezchat'

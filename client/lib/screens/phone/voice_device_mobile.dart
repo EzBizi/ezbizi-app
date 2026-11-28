@@ -621,9 +621,10 @@ class MobileVoiceDevice implements VoiceDevice, SendsDigits {
         // their own voicemail for two days.
         extraOptions: {'EzBiziDirection': 'outbound'},
       );
-    } catch (_) {
-      // Reported by the desk rather than thrown: a failed dial is a state,
-      // not an exception the screen can do anything with.
+    } catch (e) {
+      // Thrown (audit 11-27): swallowing it left a fake "On a call" state and
+      // marked this person on_call for a call that never started.
+      throw CallRefused('The call could not be placed: $e');
     }
   }
 

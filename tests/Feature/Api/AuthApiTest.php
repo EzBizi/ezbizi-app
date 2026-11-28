@@ -4,8 +4,9 @@ namespace Tests\Feature\Api;
 
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Crypt;
+use PragmaRX\Google2FA\Google2FA;
 use Tests\TestCase;
 
 /**
@@ -59,8 +60,8 @@ class AuthApiTest extends TestCase
         // A bigint column truncates a UUID silently on some configurations and
         // errors on others. Assert the stored value round-trips exactly.
         $this->assertDatabaseHas('personal_access_tokens', [
-            'tokenable_id'   => $admin->id,
-            'tokenable_type' => \App\Models\User::class,
+            'tokenable_id' => $admin->id,
+            'tokenable_type' => User::class,
         ]);
     }
 
@@ -120,8 +121,8 @@ class AuthApiTest extends TestCase
         $chosen = collect($choices)->firstWhere('organization_id', $alpha->id);
 
         $token = $this->postJson('/api/v1/auth/choose', [
-            'user_id'  => $chosen['user_id'],
-            'email'    => 'shared@example.com',
+            'user_id' => $chosen['user_id'],
+            'email' => 'shared@example.com',
             'password' => 'same-password',
         ])->assertOk()->json('token');
 
@@ -129,6 +130,25 @@ class AuthApiTest extends TestCase
             ->getJson('/api/v1/me')
             ->assertOk()
             ->assertJsonPath('data.organization.id', $alpha->id);
+    }
+
+    /** The picker the first step offered must work whatever case was typed. */
+    public function test_choosing_works_when_the_typed_email_case_differs(): void
+    {
+        ['organization' => $alpha] = $this->org('Alpha', 'shared@example.com', 'same-password');
+        $this->org('Bravo', 'shared@example.com', 'same-password');
+
+        $choices = $this->postJson('/api/v1/auth/login', [
+            'email' => 'Shared@Example.com', 'password' => 'same-password',
+        ])->assertJsonPath('status', 'choose_organization')->json('choices');
+
+        $chosen = collect($choices)->firstWhere('organization_id', $alpha->id);
+
+        $this->postJson('/api/v1/auth/choose', [
+            'user_id' => $chosen['user_id'],
+            'email' => 'Shared@Example.com',
+            'password' => 'same-password',
+        ])->assertOk()->assertJsonPath('status', 'authenticated');
     }
 
     public function test_logout_revokes_the_token(): void
@@ -179,10 +199,10 @@ class AuthApiTest extends TestCase
     {
         $r = $this->org('Alpha', 'a@alpha.test');
 
-        $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
+        $totp = app(Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
+        User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
             'totp_secret' => Crypt::encryptString($secret), 'totp_confirmed_at' => now(),
         ]);
 
@@ -201,10 +221,10 @@ class AuthApiTest extends TestCase
     {
         $r = $this->org('Alpha', 'a@alpha.test');
 
-        $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
+        $totp = app(Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
+        User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
             'totp_secret' => Crypt::encryptString($secret), 'totp_confirmed_at' => now(),
         ]);
 
@@ -225,15 +245,15 @@ class AuthApiTest extends TestCase
 
         for ($i = 0; $i < 5; $i++) {
             $this->postJson('/api/v1/auth/choose', [
-                'user_id'  => $admin->id,
-                'email'    => 'shared@example.com',
+                'user_id' => $admin->id,
+                'email' => 'shared@example.com',
                 'password' => 'wrong',
             ])->assertUnauthorized();
         }
 
         $this->postJson('/api/v1/auth/choose', [
-            'user_id'  => $admin->id,
-            'email'    => 'shared@example.com',
+            'user_id' => $admin->id,
+            'email' => 'shared@example.com',
             'password' => 'wrong',
         ])->assertStatus(429)->assertJsonPath('code', 'throttled');
     }
@@ -258,15 +278,15 @@ class AuthApiTest extends TestCase
 
     // ── two organizations, one protected (plan §4) ───────────────
 
-    /** @return array{0: \App\Models\User, 1: string} the protected account and its secret */
+    /** @return array{0: User, 1: string} the protected account and its secret */
     private function protectedTwin(string $email, string $password = 'a-real-password'): array
     {
         $r = $this->org('Beta', $email, $password);
 
-        $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
+        $totp = app(Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
+        User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
             // encryptString, not encrypt(). The `encrypted` cast reads with
             // decryptString, which does not unserialize — encrypt() wraps a
             // SERIALIZED value, so the secret came back as `s:32:"..."` and
@@ -284,6 +304,46 @@ class AuthApiTest extends TestCase
         ]);
 
         return [$r['administrator']->fresh(), $secret];
+    }
+
+    /**
+     * EzChat (Jose, 11-27): "no need to use authenthicator to log in there".
+     * Email and password only, and the token reaches chat and nothing else;
+     * the same account signing in to EzBizi is still asked for its code.
+     */
+    public function test_ezchat_signs_in_without_the_authenticator_to_a_chat_only_token(): void
+    {
+        [$user] = $this->protectedTwin('chat@example.test');
+
+        $this->postJson('/api/v1/auth/login', ['email' => 'chat@example.test', 'password' => 'a-real-password'])
+            ->assertOk()->assertJsonPath('status', 'second_factor_required');
+
+        $token = $this->postJson('/api/v1/auth/login', [
+            'email' => 'chat@example.test', 'password' => 'a-real-password', 'app' => 'ezchat',
+        ])->assertOk()->assertJsonPath('status', 'authenticated')
+            ->assertJsonPath('two_factor_enrolment_required', false)->json('token');
+
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/v1/me')->assertOk();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/v1/chat/chats')->assertOk();
+        foreach (['/api/v1/customers', '/api/v1/jobs', '/api/v1/me/sessions', '/api/v1/settings'] as $crm) {
+            $this->app['auth']->forgetGuards();
+            $this->withToken($token)->getJson($crm)->assertForbidden()->assertJsonPath('code', 'chat_only_token');
+        }
+
+        // A wrong password is still a wrong password, and still counts.
+        $this->postJson('/api/v1/auth/login', ['email' => 'chat@example.test', 'password' => 'nope', 'app' => 'ezchat'])
+            ->assertUnauthorized();
+    }
+
+    public function test_a_deactivated_account_never_signs_in_to_ezchat(): void
+    {
+        $r = $this->org('Alpha', 'gone@alpha.test');
+        User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update(['is_active' => false]);
+
+        $this->postJson('/api/v1/auth/login', ['email' => 'gone@alpha.test', 'password' => 'a-real-password', 'app' => 'ezchat'])
+            ->assertUnauthorized();
     }
 
     public function test_an_account_behind_an_authenticator_is_not_silently_skipped(): void
@@ -333,10 +393,10 @@ class AuthApiTest extends TestCase
         [$beta, $secret] = $this->protectedTwin('both@example.test');
 
         $this->postJson('/api/v1/auth/choose', [
-            'user_id'  => $beta->id,
-            'email'    => 'both@example.test',
+            'user_id' => $beta->id,
+            'email' => 'both@example.test',
             'password' => 'a-real-password',
-            'code'     => app(\PragmaRX\Google2FA\Google2FA::class)->getCurrentOtp($secret),
+            'code' => app(Google2FA::class)->getCurrentOtp($secret),
         ])->assertOk()->assertJsonStructure(['token']);
     }
 
@@ -344,10 +404,10 @@ class AuthApiTest extends TestCase
     {
         $r = $this->org('Alpha', 'a@alpha.test');
 
-        $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
+        $totp = app(Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
+        User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
             // encryptString, not encrypt(). The `encrypted` cast reads with
             // decryptString, which does not unserialize — encrypt() wraps a
             // SERIALIZED value, so the secret came back as `s:32:"..."` and
@@ -379,10 +439,10 @@ class AuthApiTest extends TestCase
     {
         $r = $this->org('Alpha', 'a@alpha.test');
 
-        $totp   = app(\PragmaRX\Google2FA\Google2FA::class);
+        $totp = app(Google2FA::class);
         $secret = $totp->generateSecretKey(32);
 
-        \App\Models\User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
+        User::withoutGlobalScopes()->whereKey($r['administrator']->id)->update([
             // encryptString, not encrypt(). The `encrypted` cast reads with
             // decryptString, which does not unserialize — encrypt() wraps a
             // SERIALIZED value, so the secret came back as `s:32:"..."` and
