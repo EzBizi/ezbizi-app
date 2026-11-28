@@ -262,6 +262,10 @@ class FleetGlanceTest extends TestCase
      */
     public function test_attention_puts_overdue_first_and_keeps_three(): void
     {
+        // Midday UTC: the fixtures below take dates from now() in UTC and the
+        // box reads the reader's calendar, which in the evening is a day
+        // behind UTC (gate failure 00:35 UTC, 2026-11-28).
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-27 17:00:00', 'UTC'));
         $this->inTenant(function () {
             $van = fn (array $attributes = []) => Vehicle::factory()->create([
                 'company_id' => $this->alpha['company']->id,
