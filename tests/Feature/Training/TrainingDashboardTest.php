@@ -42,6 +42,14 @@ class TrainingDashboardTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    // Fixtures write UTC days; the code reads the viewer's local day. Pin
+    // midday UTC so both name the same day (00-05 UTC they differ).
+    protected function setUp(): void
+    {
+        parent::setUp();
+        \Illuminate\Support\Carbon::setTestNow(now()->utc()->setTime(16, 0));
+    }
+
     // ── overdue vs retaking ────────────────────────────────────────
 
     public function test_overdue_and_retaking_are_counted_as_two_different_numbers(): void

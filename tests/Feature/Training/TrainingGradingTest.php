@@ -54,6 +54,14 @@ class TrainingGradingTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    // Fixtures write UTC days; the code reads the viewer's local day. Pin
+    // midday UTC so both name the same day (00-05 UTC they differ).
+    protected function setUp(): void
+    {
+        parent::setUp();
+        \Illuminate\Support\Carbon::setTestNow(now()->utc()->setTime(16, 0));
+    }
+
     // ── The brief's own four cases ────────────────────────────────
 
     public function test_a_gated_test_refuses_until_the_guide_is_finished(): void
